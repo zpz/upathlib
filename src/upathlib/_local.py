@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 import shutil
-from ._file_store import FileStore
+from ._upath import FileStore
 
 logger = logging.getLogger(__name__)
 

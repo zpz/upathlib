@@ -9,7 +9,7 @@ from typing import List, Any
 
 from ..path import join_path
 from ._local import LocalFileStore
-from ._file_store import FileStore
+from ._upath import FileStore
 from ._datetime import make_timestamp, TIMESTAMP_FILE
 
 logger = logging.getLogger(__name__)

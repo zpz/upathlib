@@ -1,14 +1,54 @@
 from abc import ABC, abstractmethod
-from typing import List
+from pathlib import PurePosixPath
+from typing import List, Union
 
 
-class FileStore(ABC):
-    @abstractmethod
-    def is_file(self, remote_path: str) -> bool:
+class Upath(PurePosixPath, ABC):
+    def home(self) -> 'Upath':
+        raise NotImplementedError
+
+    def stat(self):
+        raise NotImplementedError
+
+    def exists(self) -> bool:
+        raise NotImplementedError
+
+    def glob(self, pattern: str) -> List['Upath']:
         raise NotImplementedError
 
     @abstractmethod
-    def is_dir(self, remote_path: str) -> bool:
+    def is_dir(self) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def is_file(self) -> bool:
+        raise NotImplementedError
+
+    def iterdir(self):
+        raise NotImplementedError
+
+    def mkdir(parents: bool = False, exist_ok: bool = False):
+        raise NotImplementedError
+
+    def open(self):
+        raise NotImplementedError
+
+    def read_bytes(self) -> bytes:
+        raise NotImplementedError
+
+    def read_text(self):
+        raise NotImplementedError
+
+    def rename(self, target: str):
+        raise NotImplementedError
+
+    def resolve(self) -> 'Upath':
+        raise NotImplementedError
+
+    def rglob(self, pattern):
+        raise NotImplementedError
+
+    def rmdir(self):
         raise NotImplementedError
 
     @abstractmethod

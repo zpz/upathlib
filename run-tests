@@ -2,7 +2,7 @@
 
 set -e
 
-PROJ=blobstore
+PROJ=upathlib
 
 docker build \
     -f Dockerfile-dev \

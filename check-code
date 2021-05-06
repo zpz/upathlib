@@ -2,7 +2,7 @@
 
 set -e
 
-PROJ=blobstore
+PROJ=upathlib
 SRC=$(pwd)/src/${PROJ}
 TESTS=$(pwd)/tests
 

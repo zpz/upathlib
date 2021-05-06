@@ -2,7 +2,7 @@ import os
 import shutil
 from pathlib import Path
 
-from zpz.dropbox import LocalFileStore
+from upathlib._local import LocalFileStore
 
 
 def test_local_file_store():
