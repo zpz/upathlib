@@ -1,9 +1,114 @@
-from abc import ABC, abstractmethod
 from pathlib import PurePosixPath
-from typing import List, Union
+from typing import List, Union, Tuple
 
 
-class Upath(PurePosixPath, ABC):
+class PureUpath:
+    # The path is always relative to `/`.
+    def __init__(self, part: str, *parts: str):
+        path = PurePosixPath(part, *parts)
+        path_s = str(path)
+        assert not path_s.startswith('.')
+        if path_s.startswith('/'):
+            assert not path_s.startswith('//')
+        else:
+            path_s = '/' + path_s
+            path = PurePosixPath(path_s)
+        self._path = path
+        self._str = path_s
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({self._str})'
+
+    def __str__(self) -> str:
+        return self._str
+
+    def _compare_(self, op, other):
+        if not (other.__class__ is self.__class__):
+            return NotImplemented
+        return op(other._str)
+
+    def __eq__(self, other) -> bool:
+        return self._compare_(self._str.__eq__, other)
+
+    def __hash__(self) -> int:
+        try:
+            return self.__hash__
+        except AttributeError:
+            self._hash = hash(self._str)
+            return self._hash
+
+    def __lt__(self, other) -> bool:
+        return self._compare_(self._str.__lt__, other)
+
+    def __le__(self, other) -> bool:
+        return self._compare_(self._str.__le__, other)
+
+    def __gt__(self, other) -> bool:
+        return self._compare_(self._str.__gt__, other)
+
+    def __ge__(self, other) -> bool:
+        return self._compare_(self._str.__ge__, other)
+
+    def __truediv__(self, key: str) -> 'PureUpath':
+        return self.__class__(self._str, key)
+
+    @property
+    def root(self) -> str:
+        return '/'
+
+    @property
+    def name(self) -> str:
+        return self._path.name
+
+    @property
+    def suffix(self) -> str:
+        return self._path.suffix
+
+    @property
+    def suffixes(self) -> List[str]:
+        return self._path.suffixes
+
+    @property
+    def stem(self) -> str:
+        return self._path.stem
+
+    def with_name(self, name: str) -> 'PureUpath':
+        return self.__class__(str(self._path.with_name(name)))
+
+    def with_stem(self, stem: str) -> 'PureUpath':
+        return self.__class__(str(self._path.with_stem(stem)))
+
+    def with_suffix(self, suffix: str) -> 'PureUpath':
+        return self.__class__(str(self._path.with_suffix(suffix)))
+
+    def relative_to(self, other: Union[str, 'PureUpath']) -> str:
+        if isinstance(other, str):
+            other = self.__class__(other)
+        return self._path.relative_to(other._path)
+
+    def is_relative_to(self, other: Union[str, 'PureUpath']) -> bool:
+        try:
+            self.relative_to(other)
+            return True
+        except ValueError:
+            return False
+
+    @property
+    def parts(self) -> Tuple[str, ...]:
+        return self._path.parts
+
+    def joinpath(self, *parts: str) -> 'PureUpath':
+        return self.__class__(self._path.joinpath(*parts))
+
+    @property
+    def parent(self) -> 'PureUpath':
+        return self.__class__(str(self._path.parent))
+
+    def match(self, path_pattern: str) -> bool:
+        return self._path.match(path_pattern)
+
+
+class Upath(PurePosixPath):
     def home(self) -> 'Upath':
         raise NotImplementedError
 
@@ -16,11 +121,9 @@ class Upath(PurePosixPath, ABC):
     def glob(self, pattern: str) -> List['Upath']:
         raise NotImplementedError
 
-    @abstractmethod
     def is_dir(self) -> bool:
         raise NotImplementedError
 
-    @abstractmethod
     def is_file(self) -> bool:
         raise NotImplementedError
 
@@ -51,46 +154,30 @@ class Upath(PurePosixPath, ABC):
     def rmdir(self):
         raise NotImplementedError
 
-    @abstractmethod
     def ls(self, remote_path: str, recursive: bool = False) -> List[str]:
         # `remote_path` is either a file or a directory.
         # If `recursive` is `True`, the order of the returned elements
         # does not matter.
         raise NotImplementedError
 
-    @abstractmethod
-    def read_bytes(self, remote_file: str) -> bytes:
-        raise NotImplementedError
-
-    @abstractmethod
     def write_bytes(self, data: bytes, remote_file: str, overwrite: bool = False) -> None:
         raise NotImplementedError
 
-    @abstractmethod
-    def read_text(self, remote_file: str) -> str:
-        raise NotImplementedError
-
-    @abstractmethod
     def write_text(self, data: str, remote_file: str, overwrite: bool = False) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def download(self, remote_file: str, local_file: str, overwrite: bool = False) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def upload(self, local_file: str, remote_file: str, overwrite: bool = False) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def download_dir(self, remote_dir: str, local_dir: str, overwrite: bool = False, verbose: bool = True) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def upload_dir(self, local_dir: str, remote_dir: str, overwrite: bool = False, verbose: bool = True) -> None:
         raise NotImplementedError
 
-    @abstractmethod
     def rm(self, remote_file: str, missing_ok: bool = False) -> None:
         raise NotImplementedError
 

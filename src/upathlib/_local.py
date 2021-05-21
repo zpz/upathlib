@@ -1,12 +1,12 @@
 import logging
 from pathlib import Path
 import shutil
-from ._upath import FileStore
+from ._upath import Upath
 
 logger = logging.getLogger(__name__)
 
 
-class LocalFileStore(FileStore):
+class LocalUPath(Upath):
     def is_file(self, remote_path):
         return Path(remote_path).is_file()
 
