@@ -1,12 +1,28 @@
 import logging
-from pathlib import Path
+import os
+import pathlib
 import shutil
+
 from ._upath import Upath
 
 logger = logging.getLogger(__name__)
 
 
 class LocalUPath(Upath):
+    def __init__(self, *args, **kwargs):
+        assert os.name == 'posix'
+        super().__init__(*args, **kwargs)
+        self._localpath = pathlib.Path(self._home, self._str.lstrip('/'))
+
+    def stat(self):
+        return self._localpath.stat()
+
+    def exists(self):
+        return self._localpath.exists()
+
+    def glob(self, pattern):
+        raise NotImplementedError
+
     def is_file(self, remote_path):
         return Path(remote_path).is_file()
 
