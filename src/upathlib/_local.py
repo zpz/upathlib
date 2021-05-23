@@ -14,6 +14,39 @@ class LocalUPath(Upath):
         super().__init__(*args, **kwargs)
         self._localpath = pathlib.Path(self._home, self._str.lstrip('/'))
 
+    def exists(self):
+        return self._localpath.exists()
+
+    def glob(self, pattern):
+        raise NotADirectoryError
+
+    def rglob(self, pattern):
+        raise NotImplementedError
+
+    def is_dir(self):
+        return self._localpath.is_dir()
+
+    def is_file(self):
+        return self._localpath.is_file()
+
+    def iterdir(self):
+        raise NotImplementedError
+
+    def mkdir(self, parents=False, exist_ok=False):
+        self._localpath.mkdir(parents=parents, exist_ok=exist_ok)
+        return self
+
+    def open(self, mode='r'):
+        return self._localpath.open(mode=mode)
+
+    def read_bytes(self):
+        return self._localpath.read_bytes()
+
+    def read_text(self, encoding=None, errors=None):
+        return self._localpath.read_text(encoding=encoding, errors=errors)
+
+    def rename(self, target):
+        
     def stat(self):
         return self._localpath.stat()
 

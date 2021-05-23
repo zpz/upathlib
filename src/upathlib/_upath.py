@@ -1,38 +1,49 @@
 import os
 import os.path
 from pathlib import PurePosixPath
-from typing import List, Union, Tuple, Generator
+from typing import List, Union, Tuple, Generator, TypeVar
 
 
-class PureUpath(os.PathLike):
-    def __init__(self, *parts: Union[str, os.PathLike]):
+assert os.name == 'posix'
+
+T = TypeVar('T')
+
+
+class Upath:
+    '''
+    Unlike `pathlib.Path`, which has the concept of
+    "current working directory" implicitly determined by the
+    execution environment, `Upath` does not have an implicit "cwd".
+    Rather, it is explicitly specified by the argument `home`.
+    '''
+
+    def __init__(self, home: str, *parts: Union[str, os.PathLike]):
+        self._home = os.path.normpath(home or '/')
         if parts:
             path_s = os.path.normpath(os.path.join(*parts))
+            assert not path_s.startswith('.')
+            if not path_s.startswith('/'):
+                path_s = '/' + path_s
         else:
             path_s = '/'
-        assert not path_s.startswith('.')
-        if not path_s.startswith('/'):
-            path_s = '/' + path_s
+
         self._path = PurePosixPath(path_s)
         # The path is always "absolute" starting with '/'.
 
-    def __fspath__(self) -> str:
-        return self.__str__()
-
     def __hash__(self) -> int:
         try:
-            return self.__hash__
+            return self._hash
         except AttributeError:
             self._hash = hash(self.__str__())
             return self._hash
 
     def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({str(self._path)})'
+        return f"{self.__class__.__name__}({self._home}, {str(self.path).lstrip('/')})"
 
     def __str__(self) -> str:
-        return str(self._path)
+        return str(self.fullpath)
 
-    def __truediv__(self, key: str) -> 'PureUpath':
+    def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
     def _compare_(self, op, other):
@@ -55,105 +66,35 @@ class PureUpath(os.PathLike):
     def __ge__(self, other) -> bool:
         return self._compare_(self.__str__().__ge__, other)
 
-    def joinpath(self, *parts: str) -> 'PureUpath':
-        return self.__class__(self._path.joinpath(*parts))
-
-    def match(self, path_pattern: str) -> bool:
-        return self._path.match(path_pattern)
-
-    @property
-    def name(self) -> str:
-        return self._path.name
-
-    @property
-    def parent(self) -> 'PureUpath':
-        return self.__class__(str(self._path.parent))
-
-    @property
-    def parts(self) -> Tuple[str, ...]:
-        return self._path.parts
-
-    def relative_to(self, other: Union[str, 'PureUpath']) -> str:
-        if isinstance(other, str):
-            other = self.__class__(other)
-        return self._path.relative_to(other._path)
-
-    def is_relative_to(self, other: Union[str, 'PureUpath']) -> bool:
-        try:
-            self.relative_to(other)
-            return True
-        except ValueError:
-            return False
-
-    @property
-    def root(self) -> str:
-        return '/'
-
-    @property
-    def stem(self) -> str:
-        return self._path.stem
-
-    @property
-    def suffix(self) -> str:
-        return self._path.suffix
-
-    @property
-    def suffixes(self) -> List[str]:
-        return self._path.suffixes
-
-    def with_name(self, name: str) -> 'PureUpath':
-        return self.__class__(str(self._path.with_name(name)))
-
-    def with_stem(self, stem: str) -> 'PureUpath':
-        # Available in Python 3.9+.
-        return self.__class__(str(self._path.with_stem(stem)))
-
-    def with_suffix(self, suffix: str) -> 'PureUpath':
-        return self.__class__(str(self._path.with_suffix(suffix)))
-
-
-class Upath(PureUpath):
-    homesep = '//'
-
-    def __init__(self, home: str, *parts: str):
-        # TODO: `parts` can contain `PureUpath` objects.
-        self._home = home or ''
-        super().__init__(*parts)
-
-    def __repr__(self) -> str:
-        return f'{self.__class__.__name__}({self._home}, {super().__repr__()})'
-
-    def __str__(self) -> str:
-        return self._home + self.homesep + super().__str__()
-
-    def __truediv__(self, key: str) -> 'Upath':
-        return self.__class__(self._home, self._path // key)
-
-    def _compare_(self, op, other):
-        if not (other.__class__ is self.__class__):
-            return NotImplemented
-        if self._home != other._home:
-            return NotImplemented
-        return op(str(other))
-
-    def cd(self, relpath: str) -> 'self':
-        assert self.is_dir()
-        p = os.path.normpath(str(self._path.joinpath(relpath)))
-        self._path = self._path.__class__(p)
+    def cd(self: T, relpath: str) -> T:
+        '''Change home path; return self.'''
+        assert str(self.path) == '/'
+        self._home = os.path.normpath(self._home, relpath)
         return self
+
+    def clear(self):
+        assert not self.is_file()
+        self.rmrf()
+
+    def cwd(self: T) -> T:
+        return self.home()
 
     def exists(self) -> bool:
         raise NotImplementedError
 
-    def glob(self, pattern: str) -> Generator['Upath']:
+    @property
+    def fullpath(self) -> PurePosixPath:
+        return PurePosixPath(os.path.normpath(os.path.join(
+            self._home, str(self.path).lstrip('/'))))
+
+    def glob(self: T, pattern: str) -> Generator[T]:
         # Implemented when `is_dir()` returns `True.
         raise NotImplementedError
 
-    def rglob(self, pattern: str) -> Generator['Upath']:
+    def rglob(self: T, pattern: str) -> Generator[T]:
         raise NotImplementedError
 
-    @property
-    def home(self) -> 'Upath':
+    def home(self: T) -> T:
         return self.__class__(self._home)
 
     def is_dir(self) -> bool:
@@ -162,22 +103,38 @@ class Upath(PureUpath):
     def is_file(self) -> bool:
         raise NotImplementedError
 
-    def iterdir(self) -> Generator['Upath']:
+    def iterdir(self: T) -> Generator[T]:
         # Implemented when `is_dir()` returns `True.
         raise NotImplementedError
 
-    def joinpath(self, *parts: str) -> 'Upath':
-        return self.__class__(self._home, self._path.joinpath(*parts))
+    def joinpath(self: T, *parts: str) -> T:
+        return self.__class__(self._home, self.path.joinpath(*parts))
 
-    def mkdir(parents: bool = False, exist_ok: bool = False):
+    def match(self, path_pattern: str) -> bool:
+        return self.path.match(path_pattern)
+
+    def mkdir(self: T, parents: bool = False, exist_ok: bool = False) -> T:
+        '''Mutate self, and return self to facilitate chaining.'''
         raise NotImplementedError
+
+    @property
+    def name(self) -> str:
+        return self.path.name
 
     def open(self, mode: str = 'r'):
         raise NotImplementedError
 
     @property
-    def parent(self) -> 'Upath':
-        return self.__class__(self._home, self._path.parent)
+    def parent(self: T) -> T:
+        return self.__class__(self._home, self.path.parent)
+
+    @property
+    def parts(self) -> Tuple[str, ...]:
+        return self._path.parts
+
+    @property
+    def path(self) -> PurePosixPath:
+        return self._path
 
     def read_bytes(self) -> bytes:
         raise NotImplementedError
@@ -186,44 +143,67 @@ class Upath(PureUpath):
         # Refer to https://docs.python.org/3/library/functions.html#open
         raise NotImplementedError
 
-    def relative_to(self, other: Union[str, 'Upath']) -> str:
+    def relative_to(self: T, other: Union[str, T] = None) -> str:
+        if not other or other == '/':
+            return str(self.path).lstrip('/')
+
         if isinstance(other, str):
-            other = self.__class__(self._home, other)
+            other = self / other
         else:
             if not (other.__class__ is self.__class__):
                 raise ValueError('`other` must be either a string or an object of class {}'.format(
                     self.__class__.__name__
                 ))
-            if other._home != self._home:
-                return False
-        return self._path.relative_to(other._path)
+        return str(self.fullpath.relative_to(other.fullpath))
 
-    def rename(self, target: Union[str, 'Upath']) -> 'Upath':
+    def is_relative_to(self: T, other: Union[str, T] = None) -> bool:
+        try:
+            self.relative_to(other)
+            return True
+        except ValueError:
+            return False
+
+    def rename(self: T, target: Union[str, T]) -> T:
         raise NotImplementedError
 
-    def replace(self, target: Union[str, 'Upath']) -> 'Upath':
+    def replace(self: T, target: Union[str, T]) -> T:
         raise NotImplementedError
 
     def rm(self, missing_ok: bool = False) -> None:
         raise NotImplementedError
 
     def rmdir(self) -> None:
+        '''The directory must be empty.'''
         raise NotImplementedError
 
-    def samefile(self, other_path: Union[str, 'Upath']) -> bool:
+    def rmrf(self) -> None:
+        '''A nice way to get your computer in a disk recovery shop.'''
         raise NotImplementedError
 
     def stat(self):
         raise NotImplementedError
 
-    def with_name(self, name: str) -> 'Upath':
-        return self.__class__(self._home, super().with_name(name))
+    @property
+    def stem(self) -> str:
+        return self.path.stem
 
-    def with_stem(self, stem: str) -> 'Upath':
-        return self.__class__(self._home, super().with_stem(stem))
+    @property
+    def suffix(self) -> str:
+        return self.path.suffix
 
-    def with_suffix(self, suffix: str) -> 'Upath':
-        return self.__class__(self._home, super().with_suffix(suffix))
+    @property
+    def suffixes(self) -> List[str]:
+        return self.path.suffixes
+
+    def with_name(self: T, name: str) -> T:
+        return self.__class__(self._home, self.path.with_name(name))
+
+    def with_stem(self: T, stem: str) -> T:
+        # Available in Python 3.9+.
+        return self.__class__(self._home, self.path.with_stem(stem))
+
+    def with_suffix(self: T, suffix: str) -> T:
+        return self.__class__(self._home, self.path.with_suffix(suffix))
 
     def write_bytes(self, data: bytes) -> int:
         raise NotImplementedError
