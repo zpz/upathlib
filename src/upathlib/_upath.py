@@ -1,11 +1,15 @@
 from pathlib import PurePosixPath
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Generator
 
 
 class PureUpath:
     # The path is always relative to `/`.
-    def __init__(self, part: str, *parts: str):
-        path = PurePosixPath(part, *parts)
+    def __init__(self, *parts: str):
+        # TODO: `parts` can contain `PureUpath` objects.
+        if parts:
+            path = PurePosixPath(*parts)
+        else:
+            path = PurePosixPath('/')
         path_s = str(path)
         assert not path_s.startswith('.')
         if path_s.startswith('/'):
@@ -34,7 +38,7 @@ class PureUpath:
         try:
             return self.__hash__
         except AttributeError:
-            self._hash = hash(self._str)
+            self._hash = hash(self.__str__())
             return self._hash
 
     def __lt__(self, other) -> bool:
@@ -76,6 +80,7 @@ class PureUpath:
         return self.__class__(str(self._path.with_name(name)))
 
     def with_stem(self, stem: str) -> 'PureUpath':
+        # Available in Python 3.9+.
         return self.__class__(str(self._path.with_stem(stem)))
 
     def with_suffix(self, suffix: str) -> 'PureUpath':
@@ -108,9 +113,61 @@ class PureUpath:
         return self._path.match(path_pattern)
 
 
-class Upath(PurePosixPath):
+class Upath(PureUpath):
+    homesep = '//'
+
+    def __init__(self, home: str, *parts: str):
+        # TODO: `parts` can contain `PureUpath` objects.
+        self._home = home
+        super().__init__(*parts)
+
+    @property
     def home(self) -> 'Upath':
-        raise NotImplementedError
+        return self.__class__(self._home)
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}({self._home}, {super().__repr__()})'
+
+    def __str__(self) -> str:
+        return self._home + self.homesep + super().__str__()
+
+    def _compare_(self, op, other):
+        if not (other.__class__ is self.__class__):
+            return NotImplemented
+        if self._home != other._home:
+            return NotImplemented
+        return op(other._str)
+
+    def __truediv__(self, key: str) -> 'Upath':
+        return self.__class__(self._home, self._path // key)
+
+    def with_name(self, name: str) -> 'Upath':
+        return self.__class__(self._home, super().with_name(name))
+
+    def with_stem(self, stem: str) -> 'Upath':
+        return self.__class__(self._home, super().with_stem(stem))
+
+    def with_suffix(self, suffix: str) -> 'Upath':
+        return self.__class__(self._home, super().with_suffix(suffix))
+
+    def relative_to(self, other: Union[str, 'Upath']) -> str:
+        if isinstance(other, str):
+            other = self.__class__(self._home, other)
+        else:
+            if not (other.__class__ is self.__class__):
+                raise ValueError('`other` must be either a string or an object of class {}'.format(
+                    self.__class__.__name__
+                ))
+            if other._home != self._home:
+                return False
+        return self._path.relative_to(other._path)
+
+    def joinpath(self, *parts: str) -> 'Upath':
+        return self.__class__(self._home, self._path.joinpath(*parts))
+
+    @property
+    def parent(self) -> 'Upath':
+        return self.__class__(self._home, self._path.parent)
 
     def stat(self):
         raise NotImplementedError
@@ -118,7 +175,8 @@ class Upath(PurePosixPath):
     def exists(self) -> bool:
         raise NotImplementedError
 
-    def glob(self, pattern: str) -> List['Upath']:
+    def glob(self, pattern: str) -> Generator['Upath']:
+        # Implemented when `is_dir()` returns `True.
         raise NotImplementedError
 
     def is_dir(self) -> bool:
@@ -127,44 +185,51 @@ class Upath(PurePosixPath):
     def is_file(self) -> bool:
         raise NotImplementedError
 
-    def iterdir(self):
+    def iterdir(self) -> Generator['Upath']:
+        # Implemented when `is_dir()` returns `True.
         raise NotImplementedError
 
     def mkdir(parents: bool = False, exist_ok: bool = False):
         raise NotImplementedError
 
-    def open(self):
+    def open(self, mode: str = 'r'):
         raise NotImplementedError
 
     def read_bytes(self) -> bytes:
         raise NotImplementedError
 
-    def read_text(self):
+    def read_text(self, encoding: str = None, errors: str = None):
+        # Refer to https://docs.python.org/3/library/functions.html#open
         raise NotImplementedError
 
-    def rename(self, target: str):
+    def rename(self, target: Union[str, 'Upath']) -> 'Upath':
         raise NotImplementedError
 
-    def resolve(self) -> 'Upath':
+    def replace(self, target: Union[str, 'Upath']) -> 'Upath':
         raise NotImplementedError
 
-    def rglob(self, pattern):
+    def rglob(self, pattern: str) -> Generator['Upath']:
         raise NotImplementedError
 
-    def rmdir(self):
+    def rmdir(self) -> None:
         raise NotImplementedError
 
-    def ls(self, remote_path: str, recursive: bool = False) -> List[str]:
-        # `remote_path` is either a file or a directory.
-        # If `recursive` is `True`, the order of the returned elements
-        # does not matter.
+    def samefile(self, other_path: Union[str, 'Upath']) -> bool:
         raise NotImplementedError
 
-    def write_bytes(self, data: bytes, remote_file: str, overwrite: bool = False) -> None:
+    def rm(self, missing_ok: bool = False) -> None:
         raise NotImplementedError
 
-    def write_text(self, data: str, remote_file: str, overwrite: bool = False) -> None:
+    def write_bytes(self, data: bytes) -> int:
         raise NotImplementedError
+
+    def write_text(self, data: str, encoding=None, errors=None) -> int:
+        raise NotImplementedError
+
+
+class Dropbox:
+    def __init__(self, remote: Upath, local: Upath = None):
+        pass
 
     def download(self, remote_file: str, local_file: str, overwrite: bool = False) -> None:
         raise NotImplementedError
@@ -178,12 +243,6 @@ class Upath(PurePosixPath):
     def upload_dir(self, local_dir: str, remote_dir: str, overwrite: bool = False, verbose: bool = True) -> None:
         raise NotImplementedError
 
-    def rm(self, remote_file: str, missing_ok: bool = False) -> None:
-        raise NotImplementedError
-
-    @abstractmethod
-    def rm_dir(self, remote_dir: str, missing_ok: bool = False, verbose: bool = True) -> None:
-        raise NotImplementedError
 
 # def _get_cp_dest(abs_source_file: str, abs_dest_path: str) -> str:
 #     # Get the destination file path as if we do
@@ -519,3 +578,101 @@ class Upath(PurePosixPath):
 
 #     def get_text(self, file_path: str) -> str:
 #         return self.open(file_path).read()
+
+
+# class LocalUPath(Upath):
+#     def is_file(self, remote_path):
+#         return Path(remote_path).is_file()
+
+#     def is_dir(self, remote_path):
+#         return Path(remote_path).is_dir()
+
+#     def ls(self, remote_path, recursive=False):
+#         path = Path(remote_path)
+#         if path.is_file():
+#             return [remote_path]
+#         if path.is_dir():
+#             if recursive:
+#                 z = path.glob('**/*')
+#             else:
+#                 z = path.glob('*')
+#             return [str(v) if v.is_file() else str(v) + '/' for v in z]
+#         return []
+
+#     def read_bytes(self, remote_file):
+#         return Path(remote_file).read_bytes()
+
+#     def write_bytes(self, data, remote_file, overwrite=False):
+#         f = Path(remote_file)
+#         if not overwrite and f.is_file():
+#             raise FileExistsError(remote_file)
+#         Path(f.parent).mkdir(exist_ok=True)
+#         f.write_bytes(data)
+
+#     def read_text(self, remote_file):
+#         return Path(remote_file).read_text()
+
+#     def write_text(self, data, remote_file, overwrite=False):
+#         f = Path(remote_file)
+#         if not overwrite and f.is_file():
+#             raise FileExistsError(remote_file)
+#         Path(f.parent).mkdir(exist_ok=True)
+#         f.write_text(data)
+
+#     def download(self, remote_file, local_file, overwrite=False):
+#         if remote_file == local_file:
+#             raise shutil.SameFileError(local_file)
+#         f = Path(local_file)
+#         if f.is_file():
+#             if overwrite:
+#                 f.unlink()
+#             else:
+#                 raise FileExistsError(local_file)
+#         shutil.copyfile(remote_file, local_file)
+
+#     def upload(self, local_file, remote_file, overwrite=False):
+#         self.download(local_file, remote_file, overwrite=overwrite)
+
+#     def download_dir(self, remote_dir, local_dir, overwrite=False, verbose=True):
+#         if local_dir == remote_dir:
+#             raise shutil.SameFileError(local_dir)
+#         if Path(local_dir).is_dir():
+#             if overwrite:
+#                 # TODO: overwrite file-wise or clear the whole directory?
+#                 shutil.rmtree(local_dir)
+#             else:
+#                 raise FileExistsError(local_dir)
+#         if verbose:
+#             logger.info("copying content of directory '%s' into '%s'",
+#                         remote_dir, local_dir)
+#         shutil.copytree(remote_dir, local_dir)
+
+#     def upload_dir(self, local_dir, remote_dir, overwrite=False, verbose=True):
+#         self.download_dir(local_dir, remote_dir,
+#                           overwrite=overwrite, verbose=verbose)
+
+#     def rm(self, remote_file, missing_ok=False):
+#         f = Path(remote_file)
+#         if f.is_file():
+#             f.unlink()
+#         elif f.is_dir():
+#             raise Exception(
+#                 f"'{remote_file}' is a directory; please use `rm_dir` to remove")
+#         elif missing_ok:
+#             return
+#         else:
+#             raise FileNotFoundError(remote_file)
+
+#     def rm_dir(self, remote_dir, missing_ok=False, verbose=True):
+#         f = Path(remote_dir)
+#         if f.is_dir():
+#             if verbose:
+#                 logger.info('deleting directory %s', remote_dir)
+#             shutil.rmtree(remote_dir)
+#         elif f.is_file():
+#             raise Exception(
+#                 f"'{remote_dir}' is a file; please use `rm` to remove")
+#         elif missing_ok:
+#             return
+#         else:
+#             raise FileNotFoundError(remote_dir)
