@@ -4,8 +4,6 @@ from pathlib import PurePosixPath
 from typing import List, Union, Tuple, Generator, TypeVar
 
 
-assert os.name == 'posix'
-
 T = TypeVar('T')
 
 
@@ -117,6 +115,10 @@ class Upath:
         '''Mutate self, and return self to facilitate chaining.'''
         raise NotImplementedError
 
+    def mv(self: T, target: Union[str, T], overwrite: bool = False) -> T:
+        '''Mutate and return self.'''
+        raise NotImplementedError
+
     @property
     def name(self) -> str:
         return self.path.name
@@ -163,12 +165,6 @@ class Upath:
         except ValueError:
             return False
 
-    def rename(self: T, target: Union[str, T]) -> T:
-        raise NotImplementedError
-
-    def replace(self: T, target: Union[str, T]) -> T:
-        raise NotImplementedError
-
     def rm(self, missing_ok: bool = False) -> None:
         raise NotImplementedError
 
@@ -176,7 +172,7 @@ class Upath:
         '''The directory must be empty.'''
         raise NotImplementedError
 
-    def rmrf(self) -> None:
+    def rm_rf(self) -> None:
         '''A nice way to get your computer in a disk recovery shop.'''
         raise NotImplementedError
 
