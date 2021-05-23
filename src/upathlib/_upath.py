@@ -137,7 +137,10 @@ class Upath(PureUpath):
         return op(str(other))
 
     def cd(self, relpath: str) -> 'self':
-        raise NotImplementedError
+        assert self.is_dir()
+        p = os.path.normpath(str(self._path.joinpath(relpath)))
+        self._path = self._path.__class__(p)
+        return self
 
     def exists(self) -> bool:
         raise NotImplementedError
