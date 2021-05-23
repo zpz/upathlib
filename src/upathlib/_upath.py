@@ -33,7 +33,7 @@ class PureUpath(os.PathLike):
         return str(self._path)
 
     def __truediv__(self, key: str) -> 'PureUpath':
-        return self.__class__(self.__str__(), key)
+        return self.joinpath(key)
 
     def _compare_(self, op, other):
         if not (other.__class__ is self.__class__):
