@@ -265,3 +265,145 @@ class Dropbox:
 
     def local_clear(self, verbose: bool = True):
         self.local_rm_dir('./', verbose=verbose)
+
+
+# def _get_cp_dest(abs_source_file: str, abs_dest_path: str) -> str:
+#     # Get the destination file path as if we do
+#     #    cp abs_source_file abs_dest_path
+#     if abs_dest_path.endswith('/'):
+#         assert not abs_source_file.endswith('/')
+#         return os.path.join(abs_dest_path, os.path.basename(abs_source_file))
+#     return abs_dest_path
+
+
+# class Store(ABC):
+#     '''
+#     This class creates/operates a space in a file storage system for
+#     file upload, download, deletion, duplication, movement, renaming,
+#     reading, etc.
+
+#     For convenience, this space will be referred to as a 'store' in this class.
+#     Think of it as a 'directory', or 'box', or 'container'.
+#     The basic unit of storage in a store is a 'file', or 'blob'.
+
+#     Within the store, we use POSIX style of path representations to locate blobs.
+#     In particular,
+
+#     - root is '/'
+#     - segment separator is '/'
+
+#     Note 'root' is the root **inside** the store.
+#     It does not have to be located at the root of the file system;
+#     rather, it can be a 'directory', then '/' within this class refers to
+#     this directory.
+
+#     The location of this root in the file system (outside of the store)
+#     is specified by the `home` parameter of `__init__`, and can be queried
+#     by the property `home`.
+
+#     Operations within the store can not go beyond this store root.
+#     For example, if `home` is '/home/user/writings/`, then we ar free
+#     to navigate through the subdirectories of `/home/user/writtings/`,
+#     but can not access `/home/user/`.
+
+#     In the store, 'directories' are *virtual*, meaning we do not need to think about
+#     directories as concrete things and 'create' or 'delete' them.
+#     They are transparent to the user.
+#     If there is a blob with path `/ab/cd/ef.txt`, then we say 'directory'
+#     `/ab/cd/` exists. If there is no blob with path like `/ab/cd/*`, then
+#     directory `/ab/cd/` does not exist.
+
+#     We use this naming convention:
+
+#         *file or *file_path:  a file (i.e. blob)
+#         *dir or *dir_path: a (virtual) directory
+#         *path:  either file or directory
+
+#     Any in-store path ending with '/' is considered a *directory*,
+#     and otherwise a *file*.
+
+#     In-store paths can always be written as either relative or absolute.
+#     A relative path is relative to the 'current working directory', which is
+#     returned by `self.pwd` (which is always absolute).
+#     '''
+
+
+#     def abspath(self, path: str) -> str:
+#         '''
+#         This gives the 'absolute' path within the store,
+#         in other words, the return value starts with '/'
+#         and that refers to the root within the store,
+#         i.e. `self.home`.
+
+#         `path` may be given as relative to `self.pwd`,
+#         or as an absolute path within the store (which would be returned
+#         w/o change).
+#         '''
+#         return join_path(self.pwd, path)
+
+#     def _cp(self, abs_source_file: str, abs_dest_file: str) -> None:
+#         '''
+#         Duplicate `abs_source_file` as `abs_dest_file`, which is known to be non-existent.
+
+#         This is not a `abstractmethod`. It's not needed by other methods of this class.
+#         If a subclass does not find this functionality needed, it does not need to implement it.
+#         '''
+#         raise NotImplementedError
+
+#     def cp(self, source_file: str, dest_path: str, forced: bool=False) -> None:
+#         '''
+#         Copy within the store.
+#         '''
+#         abs_source_file = self.abspath(source_file)
+#         _assert_is_file(abs_source_file)
+#         abs_dest_file = _get_cp_dest(abs_source_file, self.abspath(dest_path))
+#         if self._exists_file(abs_dest_file):
+#             if forced:
+#                 self._rm(abs_dest_file)
+#             else:
+#                 raise RuntimeError(f"file '{self.realpath(abs_dest_file)}' already exists")
+#         self._cp(abs_source_file, abs_dest_file)
+
+#     def put_dir(self, local_abs_dir: str, dir_path: str='.', clear_dir_first: bool=False, forced: bool=False, include_hidden: bool=False) -> None:
+#         _assert_is_abs(local_abs_dir)
+#         _assert_is_dir(local_abs_dir)
+#         dir_path = self.abspath(dir_path)
+#         _assert_is_dir(dir_path)
+#         if self.exists(dir_path):
+#             if clear_dir_first:
+#                 for z in self._ls_dir(dir_path):
+#                     self.rm(z)
+
+#         def listit(dir_path):
+#             for z in os.listdir(dir_path):
+#                 if (not include_hidden) and z.startswith('.'):
+#                     continue
+#                 zz = os.path.join(dir_path, z)
+#                 if os.path.isdir(zz):
+#                     return listit(zz)
+#                 if os.path.isfile(zz):
+#                     yield zz
+
+#         len_prefix = len(local_abs_dir)
+#         pwd = self.pwd
+#         self.cd(dir_path)
+#         for z in listit(local_abs_dir):
+#             zz = z[len_prefix: ]
+#             self.put(z, z[len_prefix : ], forced=forced)
+#         self.cd(pwd)
+
+#     def get_dir(self, dir_path: str, local_abs_dir: str, clear_dir_first: bool=False, forced: bool=False) -> None:
+#         dir_path = self.abspath(dir_path)
+#         _assert_is_dir(dir_path)
+#         _assert_is_abs(local_abs_dir)
+#         _assert_is_dir(local_abs_dir)
+#         if os.path.isdir(local_abs_dir):
+#             if clear_dir_first:
+#                 shutil.rmtree(local_abs_dir)
+#         else:
+#             os.makedirs(local_abs_dir, exist_ok=True)
+
+#         len_prefix = len(dir_path)
+#         for z in self._ls_dir(dir_path):
+#             zz = os.path.join(local_abs_dir, z)
+#             self.get(z, zz, forced=forced)

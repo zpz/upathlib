@@ -1,1 +1,11 @@
-__version__ = '0.2.0'
+__version__ = '0.1.0'
+
+
+from ._local import LocalUPath
+from ._upath import Upath
+
+
+__all__ = [
+    'LocalUpath',
+    'Upath',
+]
