@@ -1,9 +1,9 @@
 import pytest
-from upathlib import LocalUPath
+from upathlib import LocalUpath
 
 
 def test_localupath():
-    p = LocalUPath('/tmp/upathlib_local')
+    p = LocalUpath('/tmp/upathlib_local')
     p.clear()
 
     assert not p.ls_r()

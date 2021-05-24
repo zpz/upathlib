@@ -1,7 +1,7 @@
 __version__ = '0.1.0'
 
 
-from ._local import LocalUPath
+from ._local import LocalUpath
 from ._upath import Upath
 
 

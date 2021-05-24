@@ -6,7 +6,7 @@ from ._upath import Upath
 logger = logging.getLogger(__name__)
 
 
-class LocalUPath(Upath):
+class LocalUpath(Upath):
     def __init__(self, *args, **kwargs):
         assert os.name == 'posix'
         super().__init__(*args, **kwargs)
