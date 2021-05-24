@@ -193,7 +193,7 @@ class Upath:
     def rm_rf(self) -> int:
         '''Analogous to `rm -rf`.
 
-        Remove number of files removed.
+        Return number of files removed.
         '''
         if not self.exists():
             return 0
