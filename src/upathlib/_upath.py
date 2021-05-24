@@ -1,13 +1,19 @@
+from __future__ import annotations
+# https://stackoverflow.com/a/49872353
+# Will no longer be needed in Python 3.10.
+
+import logging
 import os
 import os.path
-from pathlib import PurePosixPath
+import pathlib
 from typing import List, Union, Tuple, Iterator, TypeVar
 
 
-T = TypeVar('T')
+logger = logging.getLogger(__name__)
+T = TypeVar('T', bound='Upath')
 
 
-class Upath:
+class Upath:  # pylint: disable=too-many-public-methods
     '''
     Unlike `pathlib.Path`, which has the concept of
     "current working directory" implicitly determined by the
@@ -18,14 +24,15 @@ class Upath:
     def __init__(self, home: str, *parts: Union[str, os.PathLike]):
         self._home = os.path.normpath(home or '/')
         if parts:
-            path_s = os.path.normpath(os.path.join(*parts))
+            path_s = os.path.normpath(os.path.join(  # pylint: disable=E1120
+                *parts))  # pylint: disable=no-value-for-parameter
             assert not path_s.startswith('.')
             if not path_s.startswith('/'):
                 path_s = '/' + path_s
         else:
             path_s = '/'
 
-        self._path = PurePosixPath(path_s)
+        self._path = pathlib.PurePosixPath(path_s)
         # The path is always "absolute" starting with '/'.
 
     def __repr__(self) -> str:
@@ -35,7 +42,7 @@ class Upath:
         return str(self.fullpath)
 
     def _compare_(self, op, other):
-        if not (other.__class__ is self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
         return op(str(other))
 
@@ -55,17 +62,10 @@ class Upath:
         return self._compare_(self.__str__().__ge__, other)
 
     def __hash__(self) -> int:
-        try:
-            return self._hash
-        except AttributeError:
-            self._hash = hash(self.__str__())
-            return self._hash
+        return hash(self.__str__())
 
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
-
-    def __call__(self: T, *parts: str) -> T:
-        return self.joinpath(*parts)
 
     def cd(self: T, relpath: str) -> T:
         '''Change home path; return self.'''
@@ -77,12 +77,70 @@ class Upath:
         assert not self.is_file()
         self.rm_rf()
 
+    def download(self,
+                 target: Union[str, pathlib.Path, 'Upath'],
+                 overwrite: bool = False) -> int:
+        '''This provides a fallback implementation.
+
+        Subclasses should provide more efficient implementations
+        if possible.
+        '''
+        assert self.is_file()
+        if isinstance(target, str):
+            target = pathlib.Path(target)
+
+        # `target` is either a dir, in which case
+        # file will be copied into it, or a file (existent or not),
+        # in which case file will be copied to it.
+        if target.is_dir():
+            target = target / self.name
+        if target.is_file():
+            if not overwrite:
+                raise FileExistsError(str(target))
+            target.unlink()
+            target.write_bytes(self.read_bytes())
+            return 1
+        if target.is_dir():
+            raise FileExistsError(f"directory '{target}'")
+        assert not target.exists()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(self.read_bytes())
+        return 1
+
+    def download_dir(self,
+                     target: Union[str, pathlib.Path, 'Upath'],
+                     overwrite: bool = False):
+        '''This provides a fallback implementation.
+
+        Subclasses should provide more efficient implementations
+        if possible.
+        '''
+        assert self.is_dir()
+        if isinstance(target, str):
+            target = pathlib.Path(target)
+        if isinstance(target, pathlib.Path):
+            target = LocalUpath('/', target.absolute())
+        else:
+            assert isinstance(target, Upath)
+        if target.is_file():
+            raise FileExistsError(f"file '{target}'")
+        target.mkdir(parents=True, exist_ok=True)
+
+        n = 0
+        for s in self.iterdir():
+            ss = s.relative_to(self)
+            if s.is_file():
+                n += s.download(target / ss, overwrite=overwrite)
+            else:
+                n += s.download_dir(target / ss, overwrite=overwrite)
+        return n
+
     def exists(self) -> bool:
         raise NotImplementedError
 
     @property
-    def fullpath(self) -> PurePosixPath:
-        return PurePosixPath(os.path.normpath(os.path.join(
+    def fullpath(self) -> pathlib.PurePosixPath:
+        return pathlib.PurePosixPath(os.path.normpath(os.path.join(
             self._home, str(self.path).lstrip('/'))))
 
     def glob(self: T, pattern: str) -> Iterator[T]:
@@ -153,7 +211,7 @@ class Upath:
         return self._path.parts
 
     @property
-    def path(self) -> PurePosixPath:
+    def path(self) -> pathlib.PurePosixPath:
         return self._path
 
     def read_bytes(self) -> bytes:
@@ -170,7 +228,7 @@ class Upath:
         if isinstance(other, str):
             other = self / other
         else:
-            if not (other.__class__ is self.__class__):
+            if other.__class__ is not self.__class__:
                 raise ValueError('`other` must be either a string or an object of class {}'.format(
                     self.__class__.__name__
                 ))
@@ -226,12 +284,51 @@ class Upath:
     def suffixes(self) -> List[str]:
         return self.path.suffixes
 
+    def unlink(self, missing_ok: bool = False) -> int:
+        '''Provided as a synonym to `rm`.
+
+        Subclass should implement `rm`.
+        '''
+        return self.rm(missing_ok=missing_ok)
+
+    def upload(self,
+               source: Union[str, pathlib.Path, 'Upath'],
+               overwrite: bool = False) -> int:
+        '''This provides a fallback implementation.
+
+        Subclasses should provide more efficient implementations
+        if possible.
+        '''
+        if isinstance(source, str):
+            source = pathlib.Path(source)
+        if isinstance(source, pathlib.Path):
+            source = LocalUpath('/', str(source.absolute()))
+        else:
+            assert isinstance(source, Upath)
+        return source.download(self, overwrite=overwrite)
+
+    def upload_dir(self,
+                   source: Union[str, pathlib.Path, 'Upath'],
+                   overwrite: bool = False):
+        '''This provides a fallback implementation.
+
+        Subclasses should provide more efficient implementations
+        if possible.
+        '''
+        if isinstance(source, str):
+            source = pathlib.Path(source)
+        if isinstance(source, pathlib.Path):
+            source = LocalUpath('/', str(source.absolute()))
+        else:
+            assert isinstance(source, Upath)
+        return source.download_dir(self, overwrite=overwrite)
+
     def with_name(self: T, name: str) -> T:
         return self.__class__(self._home, self.path.with_name(name))
 
-    def with_stem(self: T, stem: str) -> T:
-        # Available in Python 3.9+.
-        return self.__class__(self._home, self.path.with_stem(stem))
+    # def with_stem(self: T, stem: str) -> T:
+    #     # Available in Python 3.9+.
+    #     return self.__class__(self._home, self.path.with_stem(stem))
 
     def with_suffix(self: T, suffix: str) -> T:
         return self.__class__(self._home, self.path.with_suffix(suffix))
@@ -245,18 +342,84 @@ class Upath:
         raise NotImplementedError
 
 
-class Dropbox:
-    def __init__(self, remote: Upath, local: Upath = None):
-        pass
+class LocalUpath(Upath):  # pylint: disable=abstract-method
+    def __init__(self, *args, **kwargs):
+        assert os.name == 'posix'
+        super().__init__(*args, **kwargs)
 
-    def download(self, remote_file: str, local_file: str, overwrite: bool = False) -> None:
-        raise NotImplementedError
+    def _from_abs(self, abspath: pathlib.PosixPath):
+        return self.__class__(
+            self._home, str(abspath.absolute().relative_to(self._home)))
 
-    def upload(self, local_file: str, remote_file: str, overwrite: bool = False) -> None:
-        raise NotImplementedError
+    def exists(self):
+        return self.localpath.exists()
 
-    def download_dir(self, remote_dir: str, local_dir: str, overwrite: bool = False, verbose: bool = True) -> None:
-        raise NotImplementedError
+    def glob(self, pattern):
+        for v in self.localpath.glob(pattern):
+            yield self._from_abs(v)
 
-    def upload_dir(self, local_dir: str, remote_dir: str, overwrite: bool = False, verbose: bool = True) -> None:
-        raise NotImplementedError
+    def is_dir(self):
+        return self.localpath.is_dir()
+
+    def is_file(self):
+        return self.localpath.is_file()
+
+    @property
+    def localpath(self) -> pathlib.Path:
+        return pathlib.Path(str(self.fullpath))
+
+    def mkdir(self, parents=False, exist_ok=False):
+        self.localpath.mkdir(parents=parents, exist_ok=exist_ok)
+        return self
+
+    def mv(self, target, overwrite=False):
+        if isinstance(target):
+            target = self / target
+        else:
+            assert target.__class__ is self.__class__
+            assert target.root == self.root
+        target = target.fullpath
+        if target.exists() and not overwrite:
+            raise FileExistsError
+        self.localpath.rename(target)
+        return self
+
+    def open(self, mode='r'):
+        return self.localpath.open(mode=mode)
+
+    def read_bytes(self):
+        return self.localpath.read_bytes()
+
+    def read_text(self, encoding=None, errors=None):
+        return self.localpath.read_text(encoding=encoding, errors=errors)
+
+    def rglob(self, pattern):
+        for v in self.localpath.rglob(pattern):
+            yield self._from_abs(v)
+
+    def rm(self, missing_ok=False) -> int:
+        if not self.exists():
+            if missing_ok:
+                return 0
+            raise FileNotFoundError(str(self.fullpath))
+        logger.debug('deleting %s', self.localpath)
+        self.localpath.unlink()
+        return 1
+
+    def rmdir(self):
+        logger.debug('deleting %s/', self.localpath)
+        self.localpath.rmdir()
+
+    def stat(self):
+        return self.localpath.stat()
+
+    def write_bytes(self, data: bytes, parents=False):
+        if parents:
+            self.parent.mkdir(parents=True, exist_ok=True)
+        return self.localpath.write_bytes(data)
+
+    def write_text(self, data: str, encoding=None, errors=None, parents=False):
+        if parents:
+            self.parent.mkdir(parents=True, exist_ok=True)
+        return self.localpath.write_text(
+            data, encoding=encoding, errors=errors)
