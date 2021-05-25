@@ -6,6 +6,7 @@ import logging
 import os
 import os.path
 import pathlib
+from io import UnsupportedOperation
 from typing import List, Union, Tuple, Iterator, TypeVar
 
 
@@ -19,24 +20,44 @@ class Upath:  # pylint: disable=too-many-public-methods
     "current working directory" implicitly determined by the
     execution environment, `Upath` does not have an implicit "cwd".
     Rather, it is explicitly specified by the argument `home`.
+
+    A `Upath` consists of two parts: `home`, and `path` in `home`.
+    The `path` treats `home` as the "root".
+
+    There's only one way to change `Upath.home`, and that is via `Upath.cd`.
+    This can both expand (entering a subdirectory) and contract
+    (backing up to parent) the home path.
+
+    There are multiple ways to change `Upath.path`. They fall under
+    two categories: change directory, or change name only.
+
+    `Upath.joinpath` will change directory. The `/` operator is
+    equivalent. This can not go beyond the "root". For example,
+    `Upath('my/home', 'ab/cd/ef').joinpath('..', '..', '..', '..)`
+    will be `Upath('my/home', '/')`, not `Upath('my', '/')`.
+
+    There are several methods to change the name alone, including
+    `Upath.with_name`, `Upath.with_stem`, `Upath.with_suffix`.
     '''
 
     def __init__(self, home: str, *parts: Union[str, os.PathLike]):
-        self._home = os.path.normpath(home or '/')
+        assert home
+        assert not home.startswith('.')
+        home = os.path.normpath(home)
+        self._home = '/' + home.lstrip('/')
+
         if parts:
-            path_s = os.path.normpath(os.path.join(  # pylint: disable=E1120
-                *parts))  # pylint: disable=no-value-for-parameter
+            path_s = os.path.normpath(
+                os.path.join(*parts))  # pylint: disable=no-value-for-parameter
             assert not path_s.startswith('.')
-            if not path_s.startswith('/'):
-                path_s = '/' + path_s
+            path_s = '/' + path_s.lstrip('/')
         else:
             path_s = '/'
-
-        self._path = pathlib.PurePosixPath(path_s)
+        self._path = path_s
         # The path is always "absolute" starting with '/'.
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self._home}, {str(self.path).lstrip('/')})"
+        return f"{self.__class__.__name__}('{self._home}', '{str(self.path).lstrip('/')}')"
 
     def __str__(self) -> str:
         return str(self.fullpath)
@@ -69,7 +90,8 @@ class Upath:  # pylint: disable=too-many-public-methods
 
     def cd(self: T, relpath: str) -> T:
         '''Change home path; return self.'''
-        assert str(self.path) == '/'
+        if self._path != '/':
+            raise UnsupportedOperation('`cd` can not be used on non-home path')
         self._home = os.path.normpath(os.path.join(self._home, relpath))
         return self
 
@@ -97,7 +119,10 @@ class Upath:  # pylint: disable=too-many-public-methods
         if target.is_file():
             if not overwrite:
                 raise FileExistsError(str(target))
-            target.unlink()
+            if isinstance(target, pathlib.Path):
+                target.unlink()
+            else:
+                target.rm()
             target.write_bytes(self.read_bytes())
             return 1
         if target.is_dir():
@@ -140,8 +165,15 @@ class Upath:  # pylint: disable=too-many-public-methods
 
     @property
     def fullpath(self) -> pathlib.PurePosixPath:
-        return pathlib.PurePosixPath(os.path.normpath(os.path.join(
-            self._home, str(self.path).lstrip('/'))))
+        '''Return the "full path" starting with `self.home`.'''
+        return pathlib.PurePosixPath(
+            os.path.normpath(
+                os.path.join(
+                    self._home,
+                    self._path.lstrip('/'),
+                )
+            )
+        )
 
     def glob(self: T, pattern: str) -> Iterator[T]:
         # Implemented when `is_dir()` returns `True.
@@ -208,11 +240,12 @@ class Upath:  # pylint: disable=too-many-public-methods
 
     @property
     def parts(self) -> Tuple[str, ...]:
-        return self._path.parts
+        return self.path.parts
 
     @property
     def path(self) -> pathlib.PurePosixPath:
-        return self._path
+        '''Return the path treating `self.home` as the root.'''
+        return pathlib.PurePosixPath(self._path)
 
     def read_bytes(self) -> bytes:
         raise NotImplementedError
@@ -284,13 +317,6 @@ class Upath:  # pylint: disable=too-many-public-methods
     def suffixes(self) -> List[str]:
         return self.path.suffixes
 
-    def unlink(self, missing_ok: bool = False) -> int:
-        '''Provided as a synonym to `rm`.
-
-        Subclass should implement `rm`.
-        '''
-        return self.rm(missing_ok=missing_ok)
-
     def upload(self,
                source: Union[str, pathlib.Path, 'Upath'],
                overwrite: bool = False) -> int:
@@ -343,9 +369,12 @@ class Upath:  # pylint: disable=too-many-public-methods
 
 
 class LocalUpath(Upath):  # pylint: disable=abstract-method
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args):
         assert os.name == 'posix'
-        super().__init__(*args, **kwargs)
+        if not args:
+            super().__init__(str(pathlib.Path.home()))
+        else:
+            super().__init__(*args)
 
     def _from_abs(self, abspath: pathlib.PosixPath):
         return self.__class__(
