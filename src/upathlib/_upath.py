@@ -96,8 +96,9 @@ class Upath:  # pylint: disable=too-many-public-methods
         return self
 
     def clear(self):
-        assert not self.is_file()
-        self.rm_rf()
+        '''Clears all content of the directory, but keep the directory.'''
+        for p in self.iterdir():
+            p.rm_rf()
 
     def download(self,
                  target: Union[str, pathlib.Path, 'Upath'],
@@ -201,20 +202,14 @@ class Upath:  # pylint: disable=too-many-public-methods
     def joinpath(self: T, *parts: str) -> T:
         return self.__class__(self._home, self.path.joinpath(*parts))
 
-    def ls(self: T) -> List[T]:
+    def ls(self: T, recursive: bool = False) -> List[T]:
         if not self.exists():
             return []
         if self.is_file():
             return [self]
+        if recursive:
+            return sorted(self.rglob('*'))
         return sorted(self.iterdir())
-
-    def ls_r(self: T) -> List[T]:
-        '''Same as `ls`, but recursively.'''
-        if not self.exists():
-            return []
-        if self.is_file():
-            return [self]
-        return sorted(self.rglob('*'))
 
     def match(self, path_pattern: str) -> bool:
         return self.path.match(path_pattern)
@@ -223,7 +218,7 @@ class Upath:  # pylint: disable=too-many-public-methods
         '''Mutate self, and return self to facilitate chaining.'''
         raise NotImplementedError
 
-    def mv(self: T, target: Union[str, T], overwrite: bool = False) -> T:
+    def rename(self: T, target: Union[str, T], overwrite: bool = False) -> T:
         '''Mutate and return self.'''
         raise NotImplementedError
 
