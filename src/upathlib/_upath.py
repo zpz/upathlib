@@ -2,12 +2,15 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
+import asyncio
 import logging
 import os
 import os.path
 import pathlib
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from io import UnsupportedOperation
-from typing import List, Union, Tuple, Iterator, TypeVar
+from typing import List, Union, Tuple, Iterator, TypeVar, AsyncIterator
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,8 @@ class Upath:  # pylint: disable=too-many-public-methods
     `Upath.with_name`, `Upath.with_stem`, `Upath.with_suffix`.
     '''
 
+    _executor: ThreadPoolExecutor = None
+
     def __init__(self, home: str, *parts: Union[str, os.PathLike]):
         assert home
         assert not home.startswith('.')
@@ -55,6 +60,9 @@ class Upath:  # pylint: disable=too-many-public-methods
             path_s = '/'
         self._path = path_s
         # The path is always "absolute" starting with '/'.
+
+    def __copy__(self: T) -> T:
+        return self.__class__(self._home, self._path)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self._home}', '{str(self.path).lstrip('/')}')"
@@ -88,6 +96,80 @@ class Upath:  # pylint: disable=too-many-public-methods
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
+    async def _a_do(self, func, *args, **kwargs):
+        func = partial(func, *args, **kwargs)
+        return await asyncio.get_running_loop().run_in_executor(
+            self._executor, func)
+
+    async def a_clear(self):
+        return await self._a_do(self.clear)
+
+    async def a_download(self, *args, **kwargs):
+        return await self._a_do(self.download, *args, **kwargs)
+
+    async def a_download_dir(self, *args, **kwargs):
+        return await self._a_do(self.download_dir, *args, **kwargs)
+
+    async def a_exists(self):
+        return await self._a_do(self.exists)
+
+    async def a_glob(self, pattern):
+        raise NotImplementedError
+
+    async def a_is_dir(self):
+        return await self._a_do(self.is_dir)
+
+    async def a_is_file(self):
+        return await self._a_do(self.is_file)
+
+    def a_iterdir(self):
+        return self.a_glob('*')
+
+    async def a_ls(self, *args, **kwargs):
+        return await self._a_do(self.ls, *args, **kwargs)
+
+    async def a_mkdir(self, *args, **kwargs):
+        return await self._a_do(self.mkdir, *args, **kwargs)
+
+    async def a_open(self, *args, **kwargs):
+        return await self._a_do(self.open, *args, **kwargs)
+
+    async def a_read_bytes(self):
+        return await self._a_do(self.read_bytes)
+
+    async def a_read_text(self, *args, **kwargs):
+        return await self._a_do(self.read_text, *args, **kwargs)
+
+    async def a_rename(self, *args, **kwargs):
+        return await self._a_do(self.rename, *args, **kwargs)
+
+    async def a_rglob(self, pattern):
+        raise NotImplementedError
+
+    async def a_rm(self, missing_ok=False):
+        return await self._a_do(self.rm, missing_ok=missing_ok)
+
+    async def a_rmdir(self):
+        return await self._a_do(self.rmdir)
+
+    async def a_rm_rf(self):
+        return await self._a_do(self.rm_rf)
+
+    async def a_stat(self):
+        return await self._a_do(self.stat)
+
+    async def a_upload(self, *args, **kwargs):
+        return await self._a_do(self.upload, *args, **kwargs)
+
+    async def a_upload_dir(self, *args, **kwargs):
+        return await self._a_do(self.upload_dir, *args, **kwargs)
+
+    async def a_write_bytes(self, *args, **kwargs):
+        return await self._a_do(self.write_bytes, *args, **kwargs)
+
+    async def a_write_text(self, *args, **kwargs):
+        return await self._a_do(self.write_text, *args, **kwargs)
+
     def cd(self: T, relpath: str) -> T:
         '''Change home path; return self.'''
         if self._path != '/':
@@ -101,7 +183,7 @@ class Upath:  # pylint: disable=too-many-public-methods
             p.rm_rf()
 
     def download(self,
-                 target: Union[str, pathlib.Path, 'Upath'],
+                 target: Union[str, pathlib.Path, Upath],
                  overwrite: bool = False) -> int:
         '''This provides a fallback implementation.
 
@@ -134,7 +216,7 @@ class Upath:  # pylint: disable=too-many-public-methods
         return 1
 
     def download_dir(self,
-                     target: Union[str, pathlib.Path, 'Upath'],
+                     target: Union[str, pathlib.Path, Upath],
                      overwrite: bool = False):
         '''This provides a fallback implementation.
 
@@ -218,10 +300,6 @@ class Upath:  # pylint: disable=too-many-public-methods
         '''Mutate self, and return self to facilitate chaining.'''
         raise NotImplementedError
 
-    def rename(self: T, target: Union[str, T], overwrite: bool = False) -> T:
-        '''Mutate and return self.'''
-        raise NotImplementedError
-
     @property
     def name(self) -> str:
         return self.path.name
@@ -261,6 +339,10 @@ class Upath:  # pylint: disable=too-many-public-methods
                     self.__class__.__name__
                 ))
         return str(self.fullpath.relative_to(other.fullpath))
+
+    def rename(self: T, target: Union[str, T], overwrite: bool = False) -> T:
+        '''Mutate and return self.'''
+        raise NotImplementedError
 
     def rglob(self: T, pattern: str) -> Iterator[T]:
         raise NotImplementedError
@@ -313,7 +395,7 @@ class Upath:  # pylint: disable=too-many-public-methods
         return self.path.suffixes
 
     def upload(self,
-               source: Union[str, pathlib.Path, 'Upath'],
+               source: Union[str, pathlib.Path, Upath],
                overwrite: bool = False) -> int:
         '''This provides a fallback implementation.
 
@@ -329,7 +411,7 @@ class Upath:  # pylint: disable=too-many-public-methods
         return source.download(self, overwrite=overwrite)
 
     def upload_dir(self,
-                   source: Union[str, pathlib.Path, 'Upath'],
+                   source: Union[str, pathlib.Path, Upath],
                    overwrite: bool = False):
         '''This provides a fallback implementation.
 
@@ -388,7 +470,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def is_file(self):
         return self.localpath.is_file()
 
-    @property
+    @ property
     def localpath(self) -> pathlib.Path:
         return pathlib.Path(str(self.fullpath))
 
