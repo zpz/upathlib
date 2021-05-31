@@ -74,26 +74,46 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def __str__(self) -> str:
         return str(self.fullpath)
 
-    def _compare_(self, op, other):
-        if (other.__class__ is not self.__class__
-                or self._home != other._home):
-            return NotImplemented
-        return op(other.path)
-
     def __eq__(self, other) -> bool:
-        return self._compare_(self.path.__eq__, other)
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        return self._home == other._home and self._path == other._path
 
     def __lt__(self, other) -> bool:
-        return self._compare_(self.path.__lt__, other)
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if self._home < other._home:
+            return True
+        if self._home > other._home:
+            return False
+        return self._path < other._path
 
     def __le__(self, other) -> bool:
-        return self._compare_(self.path.__le__, other)
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if self._home < other._home:
+            return True
+        if self._home > other._home:
+            return False
+        return self._path <= other._path
 
     def __gt__(self, other) -> bool:
-        return self._compare_(self.path.__gt__, other)
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if self._home > other._home:
+            return True
+        if self._home < other._home:
+            return False
+        return self._path > other._path
 
     def __ge__(self, other) -> bool:
-        return self._compare_(self.path.__ge__, other)
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if self._home > other._home:
+            return True
+        if self._home < other._home:
+            return False
+        return self._path >= other._path
 
     def __hash__(self) -> int:
         return hash((self._home, self._path))
@@ -109,11 +129,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_clear(self, *args, **kwargs):
         return await self._a_do(self.clear, *args, **kwargs)
 
-    async def a_download(self, *args, **kwargs):
-        return await self._a_do(self.download, *args, **kwargs)
+    async def a_cp(self, *args, **kwargs):
+        return await self._a_do(self.cp, *args, **kwargs)
 
-    async def a_download_dir(self, *args, **kwargs):
-        return await self._a_do(self.download_dir, *args, **kwargs)
+    async def a_cp_from(self, *args, **kwargs):
+        return await self._a_do(self.cp_from, *args, **kwargs)
 
     async def a_exists(self):
         return await self._a_do(self.exists)
@@ -153,12 +173,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_stat(self):
         return await self._a_do(self.stat)
 
-    async def a_upload(self, *args, **kwargs):
-        return await self._a_do(self.upload, *args, **kwargs)
-
-    async def a_upload_dir(self, *args, **kwargs):
-        return await self._a_do(self.upload_dir, *args, **kwargs)
-
     async def a_write_bytes(self, *args, **kwargs):
         return await self._a_do(self.write_bytes, *args, **kwargs)
 
@@ -183,10 +197,13 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         for p in self.iterdir(missing_ok=missing_ok):
             p.rmrf()
 
-    def download(self,
-                 target: Union[str, pathlib.Path, Upath],
-                 overwrite: bool = False):
-        '''Download the file as the specified `target`.
+    def cp(self,
+           target: Union[str, pathlib.Path, Upath],
+           overwrite: bool = False) -> int:
+        '''Copy the file or directory as or into the specified `target`.
+        Return number of files copied.
+
+        This is like "export".
 
         This provides a fallback implementation.
         Subclasses should provide more efficient implementations
@@ -196,80 +213,60 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if not self.exists():
             raise FileNotFoundError(str(self))
 
-        if not self.is_file():
-            raise UnsupportedOperation(
-                f"'download' is for file only, while '{self}' is not a file"
-            )
-
         if isinstance(target, str):
             target = pathlib.Path(target)
         if isinstance(target, pathlib.Path):
             target = LocalUpath('/', target.absolute())
         else:
             assert isinstance(target, Upath)
+
+        if target == self:
+            return 0
 
         if target.is_dir():
             target = target / self.name
         elif target.is_file():
             if not overwrite:
+                # TODO:
+                # In cloud blobstores, this may not be a problem.
                 raise FileExistsError(str(target))
             target.rm()
         else:
             assert not target.exists()
-            target.parent.mkdir(exist_ok=True)
-        target.write_bytes(self.read_bytes())
 
-    def download_dir(self,
-                     target: Union[str, pathlib.Path, Upath],
-                     overwrite: bool = False) -> int:
-        '''Download a directory recursively. Return number
-        of files downloaded.
-
-        This provides a fallback implementation.
-        Subclasses should provide more efficient implementations
-        if possible, while maintainer the behavior defined in
-        this implementation.
-        '''
-        if not self.exists():
-            raise FileNotFoundError(str(self))
-
-        if not self.is_dir():
-            raise UnsupportedOperation(
-                f"'download_dir' is for directory only, while '{self}' is not a directory"
-            )
-
-        if isinstance(target, str):
-            target = pathlib.Path(target)
-        if isinstance(target, pathlib.Path):
-            target = LocalUpath('/', target.absolute())
-        else:
-            assert isinstance(target, Upath)
-        if target.is_dir():
-            target = target / self.name
-        elif target.is_file():
-            raise FileExistsError(f"directory '{target}'")
-            # TODO:
-            # In cloud blobstores, this may not be a problem.
-        else:
-            assert not target.exists()
-            target.parent.mkdir(exist_ok=True)
+        if self.is_file():
+            target.write_bytes(self.read_bytes())
+            return 1
 
         n = 0
         for s in self.iterdir():
+            name = s.name
             if s.is_file():
                 # If `overwrite` is True, existing target files
                 # are overwritten. Otherwise, they are skipped.
                 # If `overwrite` is False, existing target files
                 # will cause exceptions.
-                if not overwrite and (target / s.name).is_file():
+                if not overwrite and (target / name).is_file():
                     k = 0
                 else:
-                    s.download(target / s.name, overwrite=overwrite)
-                k = 1
+                    s.cp(target / name, overwrite=overwrite)
+                    k = 1
             else:
-                k = s.download_dir(target / s.name, overwrite=overwrite)
+                k = s.cp(target / name, overwrite=overwrite)
             n += k
         return n
+
+    def cp_from(self,
+                source: Union[str, pathlib.Path, Upath],
+                overwrite: bool = False) -> int:
+        '''Opposite of `cp`. This is like "import".'''
+        if isinstance(source, str):
+            source = pathlib.Path(source)
+        if isinstance(source, pathlib.Path):
+            source = LocalUpath('/', str(source.absolute()))
+        else:
+            assert isinstance(source, Upath)
+        return source.cp(self, overwrite=overwrite)
 
     @abc.abstractmethod
     def exists(self) -> bool:
@@ -463,38 +460,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def suffixes(self) -> List[str]:
         return self.path.suffixes
 
-    def upload(self,
-               source: Union[str, pathlib.Path, Upath],
-               overwrite: bool = False):
-        '''This provides a fallback implementation.
-
-        Subclasses should provide more efficient implementations
-        if possible.
-        '''
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath('/', str(source.absolute()))
-        else:
-            assert isinstance(source, Upath)
-        source.download(self, overwrite=overwrite)
-
-    def upload_dir(self,
-                   source: Union[str, pathlib.Path, Upath],
-                   overwrite: bool = False) -> int:
-        '''This provides a fallback implementation.
-
-        Subclasses should provide more efficient implementations
-        if possible.
-        '''
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath('/', str(source.absolute()))
-        else:
-            assert isinstance(source, Upath)
-        return source.download_dir(self, overwrite=overwrite)
-
     def with_name(self: T, name: str) -> T:
         return self.__class__(self._home, self.path.with_name(name))
 
@@ -508,7 +473,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def write_bytes(self,
                     data: bytes,
                     *,
-                    overwrite: bool = True) -> int:
+                    overwrite: bool = False) -> int:
         '''
         Write bytes to file. Parent directories are created as needed.
 
@@ -530,7 +495,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    *,
                    encoding='utf-8',
                    errors='strict',
-                   overwrite: bool = True) -> int:
+                   overwrite: bool = False) -> int:
         '''
         Return number of characters written.
         '''
@@ -567,7 +532,8 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def iterdir(self, missing_ok=False):
         if not self.exists() and missing_ok:
-            yield
+            for _ in []:
+                yield
         else:
             for p in self.localpath.iterdir():
                 yield self / p.name
@@ -607,9 +573,10 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def stat(self):
         return self.localpath.stat()
 
-    def write_bytes(self, data: bytes, *, overwrite=True):
-        if not overwrite:
-            if self.is_file():
+    def write_bytes(self, data: bytes, *, overwrite=False):
+        if self.is_file():
+            if not overwrite:
                 raise FileExistsError(str(self))
-        self.parent.mkdir(parents=True)
+        else:
+            self.parent.mkdir(parents=True, exist_ok=True)
         return self.localpath.write_bytes(data)

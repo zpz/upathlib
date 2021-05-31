@@ -94,15 +94,18 @@ def test_localupath_init():
 
 def test_localupath():
     p = LocalUpath('/tmp/upathlib_local')
-    p.clear()
+    p.clear(missing_ok=True)
 
-    assert not p.ls_r()
+    assert not list(p.iterdir(missing_ok=True))
 
-    with pytest.raises(FileNotFoundError):
-        p.joinpath('abc.txt').write_text('abc')
-
-    p.joinpath('abc.txt').write_text('abc', parents=True)
+    p.joinpath('abc.txt').write_text('abc')
     assert (p / 'abc.txt').read_text() == 'abc'
+
+    with pytest.raises(FileExistsError):
+        p.joinpath('abc.txt').write_text('abcd')
+
+    p.joinpath('abc.txt').write_text('abcd', overwrite=True)
+    assert (p / 'abc.txt').read_text() == 'abcd'
 
     assert p.root == '/tmp/upathlib_local'
     p.cd('a')
