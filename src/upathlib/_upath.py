@@ -356,11 +356,21 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''Rename this file or directory to the given `target`, and
         return a new Upath instance pointing to `target`.
 
-        If `target` exists and is a file, then if `overwrite` is True, it is
-        replaced, else FileExistsError is raised.
+        If `target` exists and is a directory, then current path is
+        moved into it.
 
-        If `target` exists and is a directory, then FileExistsError is raised.
-        (In this case, `overwrite` is ignored.)'''
+        If `target` exists and is a file, then
+
+            If `self` is a file, then `target`
+            is overwritten if `overwrite` is True, otherwise
+            FileExistsError is raised.
+
+            If `self` is a directory, then FileExistsError
+            is raised.
+
+        If `target` does not exist, then it will be the name
+        of the new path.'''
+
         raise NotImplementedError
 
     @property
@@ -573,14 +583,25 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         return self.localpath.exists()
 
     def is_dir(self):
+        if not self.exists():
+            return None
         return self.localpath.is_dir()
 
     def is_file(self):
+        if not self.exists():
+            return None
         return self.localpath.is_file()
 
     @ property
     def localpath(self) -> pathlib.Path:
         return pathlib.Path(str(self.fullpath))
+
+    def iterdir(self, missing_ok=False):
+        if not self.exists() and missing_ok:
+            yield
+        else:
+            for p in self.localpath.iterdir():
+                yield self / p.name
 
     def mkdir(self, parents=False, exist_ok=False):
         self.localpath.mkdir(parents=parents, exist_ok=exist_ok)
