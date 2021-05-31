@@ -358,7 +358,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         If `target` does not exist, then it will be the name
         of the new path.'''
-
         raise NotImplementedError
 
     @property
