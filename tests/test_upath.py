@@ -4,34 +4,60 @@ import pytest
 from upathlib import Upath, LocalUpath
 
 
+class MyUpath(Upath):
+    def exists(self):
+        raise NotImplementedError
+
+    def is_dir(self):
+        raise NotImplementedError
+
+    def is_file(self):
+        raise NotImplementedError
+
+    def mkdir(self):
+        raise NotImplementedError
+
+    def read_bytes(self):
+        raise NotImplementedError
+
+    def rm(self):
+        raise NotImplementedError
+
+    def rmdir(self):
+        raise NotImplementedError
+
+    def stat(self):
+        raise NotImplementedError
+
+
 def test_upath():
-    p = Upath('abc/def/')
+    p = MyUpath('abc/def/')
     assert p.root == '/abc/def'
     assert p._home == '/abc/def'
     assert p.home() == p
     assert p.path == pathlib.PurePosixPath('/')
     assert p.fullpath == pathlib.PurePosixPath('/abc/def/')
-    assert repr(p) == "Upath('/abc/def', '')"
+    assert repr(p) == "MyUpath('/abc/def', '')"
     assert str(p) == '/abc/def'
     print('hash:', hash(p))
 
-    p = Upath('/abc/def', 'x/y/z')
+    p = MyUpath('/abc/def', 'x/y/z')
     assert p.root == '/abc/def'
     assert p.path == pathlib.PurePosixPath('/x/y/z')
     assert p.fullpath == pathlib.PurePosixPath('/abc/def/x/y/z')
-    assert p.home() == Upath('/abc/def')
-    assert repr(p) == "Upath('/abc/def', 'x/y/z')"
+    assert p.home() == MyUpath('/abc/def')
+    assert repr(p) == "MyUpath('/abc/def', 'x/y/z')"
     assert str(p) == '/abc/def/x/y/z'
     print('hash:', hash(p))
 
 
 def test_upath_joinpath():
-    p = Upath('abc/def/', 'x/y')
+    p = MyUpath('abc/def/', 'x/y')
     pp = p / 'ab.txt'
     assert str(pp.path) == '/x/y/ab.txt'
 
     pp = p.joinpath('../a/b.txt')
-    assert pp == Upath('abc/def', '/x/a/b.txt')
+    assert pp == MyUpath('abc/def', '/x/a/b.txt')
 
     pp = p / '../../../../'
     assert str(pp.path) == '/'
@@ -41,7 +67,7 @@ def test_upath_joinpath():
 
 
 def test_upath_cd():
-    p = Upath('abc/def')
+    p = MyUpath('abc/def')
     assert p.root == '/abc/def'
     p.cd('xy/z')
     assert p.root == '/abc/def/xy/z'
@@ -53,14 +79,14 @@ def test_upath_cd():
 
 
 def test_upath_compare():
-    assert Upath('abc/def') / 'x/y/z' == Upath('/abc/def/x/y', 'z')
-    assert Upath('abc/def') < Upath('abc/def', 'x')
-    assert Upath('abc/def/x', 'y/z') > Upath('abc/def', 'x/y')
+    assert MyUpath('abc/def') / 'x/y/z' != MyUpath('/abc/def/x/y', 'z')
+    assert MyUpath('abc/def') < MyUpath('abc/def', 'x')
+    assert MyUpath('abc/def/x', 'y/z') > MyUpath('abc/def', 'x/y')
 
 
 def test_localupath_init():
     p = LocalUpath()
-    assert p.root == os.path.expanduser('~')
+    assert p.root == str(pathlib.Path.cwd())
     p = LocalUpath('a', 'b', 'c', 'd')
     assert p.root == '/a'
     assert str(p.path) == '/b/c/d'

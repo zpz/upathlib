@@ -106,8 +106,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await asyncio.get_running_loop().run_in_executor(
             self._executor, func)
 
-    async def a_clear(self):
-        return await self._a_do(self.clear)
+    async def a_clear(self, *args, **kwargs):
+        return await self._a_do(self.clear, *args, **kwargs)
 
     async def a_download(self, *args, **kwargs):
         return await self._a_do(self.download, *args, **kwargs)
@@ -132,20 +132,20 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_mkdir(self, *args, **kwargs):
         return await self._a_do(self.mkdir, *args, **kwargs)
 
+    async def a_mv(self, *args, **kwargs):
+        return await self._a_do(self.mv, *args, **kwargs)
+
     async def a_read_bytes(self):
         return await self._a_do(self.read_bytes)
 
     async def a_read_text(self, *args, **kwargs):
         return await self._a_do(self.read_text, *args, **kwargs)
 
-    async def a_rename(self, *args, **kwargs):
-        return await self._a_do(self.rename, *args, **kwargs)
+    async def a_rm(self, *args, **kwargs):
+        return await self._a_do(self.rm, *args, **kwargs)
 
-    async def a_rm(self, missing_ok=False):
-        return await self._a_do(self.rm, missing_ok=missing_ok)
-
-    async def a_rmdir(self):
-        return await self._a_do(self.rmdir)
+    async def a_rmdir(self, *args, **kwargs):
+        return await self._a_do(self.rmdir, *args, **kwargs)
 
     async def a_rmrf(self):
         return await self._a_do(self.rmrf)
