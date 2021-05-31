@@ -445,7 +445,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self._home
 
     @abc.abstractmethod
-    def stat(self):
+    def stat(self) -> os.stat_result:
         raise NotImplementedError
 
     @property
