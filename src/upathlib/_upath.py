@@ -11,7 +11,7 @@ import pathlib
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Union, Tuple, Iterator, TypeVar, AsyncIterator
+from typing import List, Union, Iterator, TypeVar
 
 
 logger = logging.getLogger(__name__)
@@ -42,6 +42,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     There are several methods to change the name alone, including
     `Upath.with_name`, `Upath.with_stem`, `Upath.with_suffix`.
+
+    Primary methods/attributes for getting the components of the object
+    include `home`, `path`, `fullpath`, `root`.
     '''
 
     _executor: ThreadPoolExecutor = None
@@ -66,33 +69,34 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self.__class__(self._home, self._path)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self._home}', '{str(self.path).lstrip('/')}')"
+        return f"{self.__class__.__name__}('{self._home}', '{self._path.lstrip('/')}')"
 
     def __str__(self) -> str:
         return str(self.fullpath)
 
     def _compare_(self, op, other):
-        if other.__class__ is not self.__class__:
+        if (other.__class__ is not self.__class__
+                or self._home != other._home):
             return NotImplemented
-        return op(str(other))
+        return op(other.path)
 
     def __eq__(self, other) -> bool:
-        return self._compare_(self.__str__().__eq__, other)
+        return self._compare_(self.path.__eq__, other)
 
     def __lt__(self, other) -> bool:
-        return self._compare_(self.__str__().__lt__, other)
+        return self._compare_(self.path.__lt__, other)
 
     def __le__(self, other) -> bool:
-        return self._compare_(self.__str__().__le__, other)
+        return self._compare_(self.path.__le__, other)
 
     def __gt__(self, other) -> bool:
-        return self._compare_(self.__str__().__gt__, other)
+        return self._compare_(self.path.__gt__, other)
 
     def __ge__(self, other) -> bool:
-        return self._compare_(self.__str__().__ge__, other)
+        return self._compare_(self.path.__ge__, other)
 
     def __hash__(self) -> int:
-        return hash(self.__str__())
+        return hash((self._home, self._path))
 
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
@@ -143,8 +147,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_rmdir(self):
         return await self._a_do(self.rmdir)
 
-    async def a_rm_rf(self):
-        return await self._a_do(self.rm_rf)
+    async def a_rmrf(self):
+        return await self._a_do(self.rmrf)
 
     async def a_stat(self):
         return await self._a_do(self.stat)
@@ -169,7 +173,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self
 
     def clear(self, missing_ok: bool = False):
-        '''Clear all content of the directory, but keep the directory.
+        '''Clear all contents of the directory, but keep the directory.
 
         If the path does not exist, and `missing_ok` is False,
         raise FileNotFoundError.
@@ -177,7 +181,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         If the path is a file, raise NotADirectoryError.
         '''
         for p in self.iterdir(missing_ok=missing_ok):
-            p.rm_rf()
+            p.rmrf()
 
     def download(self,
                  target: Union[str, pathlib.Path, Upath],
@@ -217,7 +221,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     def download_dir(self,
                      target: Union[str, pathlib.Path, Upath],
-                     overwrite: bool = False):
+                     overwrite: bool = False) -> int:
         '''Download a directory recursively. Return number
         of files downloaded.
 
@@ -312,14 +316,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Return `None` if the path does not exist.'''
         raise NotImplementedError
 
-    def is_relative_to(self: T, other: Union[str, T] = None) -> bool:
-        '''Return whether or not this path is relative to the `other` path.'''
-        try:
-            self.relative_to(other)
-            return True
-        except ValueError:
-            return False
-
     def iterdir(self: T, missing_ok: bool = False) -> Iterator[T]:
         '''When the path points to a directory, yield path objects of the
         directory contents. Only one level down; not recursively.
@@ -334,11 +330,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def joinpath(self: T, *other: str) -> T:
         '''Join this path with more segments, return the new path object.'''
         return self.__class__(self._home, self.path.joinpath(*other))
-
-    def match(self, path_pattern: str) -> bool:
-        '''Match this path against the provided glob-style pattern.
-        Return `True` if matching is successful, `False` otherwise.'''
-        return self.path.match(path_pattern)
 
     @abc.abstractmethod
     def mkdir(self: T, parents: bool = False, exist_ok: bool = False) -> T:
@@ -383,10 +374,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @property
     def path(self) -> pathlib.PurePosixPath:
-        '''Return the path, treating `self.home` as the root.
+        '''Return the path under `self.home`, treating
+        the latter as the root.
 
         Methods of the returned object could be useful,
-        such as `parts`.
+        such as `parts`, `match`.
         '''
         return pathlib.PurePosixPath(self._path)
 
@@ -403,23 +395,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def read_text(self, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
-
-    def relative_to(self: T, other: Union[str, T] = None) -> str:
-        '''Compute this path relative to `other`.
-
-        Essentially, `other` is a direct or distant parent of `self`.
-        Return the path difference.
-        '''
-        if not other:
-            other = '/'
-        if isinstance(other, str):
-            other = self / other
-        else:
-            if other.__class__ is not self.__class__:
-                raise ValueError('`other` must be either a string or an object of class {}'.format(
-                    self.__class__.__name__
-                ))
-        return str(self.fullpath.relative_to(other.fullpath))
 
     @abc.abstractmethod
     def rm(self, missing_ok: bool = False) -> int:
@@ -445,18 +420,16 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         If the object is not a directory, raise NotADirectoryError.'''
         raise NotImplementedError
 
-    def rm_rf(self) -> int:
-        '''Analogous to `rm -rf`.
+    def rmrf(self) -> int:
+        '''Analogous to `rm -rf`. Return number of files removed.
 
         The object pointed to by `self` may be either a file
         or a directory. If file, remove it. If directory,
         remove its contents recursively, and the directory itself.
 
-        Compare with `clear`, which removes content in the directory
+        Compare `rmrf` with `clear`, which removes content in the directory
         but keeps the directory itself. Also, `clear` does not work
         on a file.
-
-        Return number of files removed.
         '''
         if not self.exists():
             return 0
@@ -465,7 +438,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             return 1
         k = 0
         for v in self.iterdir():
-            n = v.rm_rf()
+            n = v.rmrf()
             k += n
         self.rmdir()
         return k
@@ -508,7 +481,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     def upload_dir(self,
                    source: Union[str, pathlib.Path, Upath],
-                   overwrite: bool = False):
+                   overwrite: bool = False) -> int:
         '''This provides a fallback implementation.
 
         Subclasses should provide more efficient implementations
@@ -574,10 +547,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             super().__init__(str(pathlib.Path.cwd().absolute()))
         else:
             super().__init__(*args)
-
-    def _from_abs(self, abspath: pathlib.PosixPath):
-        return self.__class__(
-            self._home, str(abspath.absolute().relative_to(self._home)))
 
     def exists(self):
         return self.localpath.exists()
