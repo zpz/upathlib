@@ -2,6 +2,7 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
+import abc
 import asyncio
 import logging
 import os
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='Upath')
 
 
-class Upath:  # pylint: disable=too-many-public-methods
+class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     '''
     Unlike `pathlib.Path`, which has the concept of
     "current working directory" implicitly determined by the
@@ -113,26 +114,19 @@ class Upath:  # pylint: disable=too-many-public-methods
     async def a_exists(self):
         return await self._a_do(self.exists)
 
-    async def a_glob(self, pattern):
-        raise NotImplementedError
-
     async def a_is_dir(self):
         return await self._a_do(self.is_dir)
 
     async def a_is_file(self):
         return await self._a_do(self.is_file)
 
-    def a_iterdir(self):
-        return self.a_glob('*')
-
-    async def a_ls(self, *args, **kwargs):
-        return await self._a_do(self.ls, *args, **kwargs)
+    async def a_iterdir(self, missing_ok=False):
+        # This is a suboptimal reference implementation.
+        for p in self.iterdir(missing_ok=missing_ok):
+            yield p
 
     async def a_mkdir(self, *args, **kwargs):
         return await self._a_do(self.mkdir, *args, **kwargs)
-
-    async def a_open(self, *args, **kwargs):
-        return await self._a_do(self.open, *args, **kwargs)
 
     async def a_read_bytes(self):
         return await self._a_do(self.read_bytes)
@@ -142,9 +136,6 @@ class Upath:  # pylint: disable=too-many-public-methods
 
     async def a_rename(self, *args, **kwargs):
         return await self._a_do(self.rename, *args, **kwargs)
-
-    async def a_rglob(self, pattern):
-        raise NotImplementedError
 
     async def a_rm(self, missing_ok=False):
         return await self._a_do(self.rm, missing_ok=missing_ok)
@@ -177,73 +168,117 @@ class Upath:  # pylint: disable=too-many-public-methods
         self._home = os.path.normpath(os.path.join(self._home, relpath))
         return self
 
-    def clear(self):
-        '''Clears all content of the directory, but keep the directory.'''
-        for p in self.iterdir():
+    def clear(self, missing_ok: bool = False):
+        '''Clear all content of the directory, but keep the directory.
+
+        If the path does not exist, and `missing_ok` is False,
+        raise FileNotFoundError.
+
+        If the path is a file, raise NotADirectoryError.
+        '''
+        for p in self.iterdir(missing_ok=missing_ok):
             p.rm_rf()
 
     def download(self,
                  target: Union[str, pathlib.Path, Upath],
-                 overwrite: bool = False) -> int:
-        '''This provides a fallback implementation.
+                 overwrite: bool = False):
+        '''Download the file as the specified `target`.
 
+        This provides a fallback implementation.
         Subclasses should provide more efficient implementations
-        if possible.
+        if possible, while maintainer the behavior defined in
+        this implementation.
         '''
-        assert self.is_file()
-        if isinstance(target, str):
-            target = pathlib.Path(target)
+        if not self.exists():
+            raise FileNotFoundError(str(self))
 
-        # `target` is either a dir, in which case
-        # file will be copied into it, or a file (existent or not),
-        # in which case file will be copied to it.
-        if target.is_dir():
-            target = target / self.name
-        if target.is_file():
-            if not overwrite:
-                raise FileExistsError(str(target))
-            if isinstance(target, pathlib.Path):
-                target.unlink()
-            else:
-                target.rm()
-            target.write_bytes(self.read_bytes())
-            return 1
-        if target.is_dir():
-            raise FileExistsError(f"directory '{target}'")
-        assert not target.exists()
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(self.read_bytes())
-        return 1
+        if not self.is_file():
+            raise UnsupportedOperation(
+                f"'download' is for file only, while '{self}' is not a file"
+            )
 
-    def download_dir(self,
-                     target: Union[str, pathlib.Path, Upath],
-                     overwrite: bool = False):
-        '''This provides a fallback implementation.
-
-        Subclasses should provide more efficient implementations
-        if possible.
-        '''
-        assert self.is_dir()
         if isinstance(target, str):
             target = pathlib.Path(target)
         if isinstance(target, pathlib.Path):
             target = LocalUpath('/', target.absolute())
         else:
             assert isinstance(target, Upath)
-        if target.is_file():
-            raise FileExistsError(f"file '{target}'")
-        target.mkdir(parents=True, exist_ok=True)
+
+        if target.is_dir():
+            target = target / self.name
+        elif target.is_file():
+            if not overwrite:
+                raise FileExistsError(str(target))
+            target.rm()
+        else:
+            assert not target.exists()
+            target.parent.mkdir(exist_ok=True)
+        target.write_bytes(self.read_bytes())
+
+    def download_dir(self,
+                     target: Union[str, pathlib.Path, Upath],
+                     overwrite: bool = False):
+        '''Download a directory recursively. Return number
+        of files downloaded.
+
+        This provides a fallback implementation.
+        Subclasses should provide more efficient implementations
+        if possible, while maintainer the behavior defined in
+        this implementation.
+        '''
+        if not self.exists():
+            raise FileNotFoundError(str(self))
+
+        if not self.is_dir():
+            raise UnsupportedOperation(
+                f"'download_dir' is for directory only, while '{self}' is not a directory"
+            )
+
+        if isinstance(target, str):
+            target = pathlib.Path(target)
+        if isinstance(target, pathlib.Path):
+            target = LocalUpath('/', target.absolute())
+        else:
+            assert isinstance(target, Upath)
+        if target.is_dir():
+            target = target / self.name
+        elif target.is_file():
+            raise FileExistsError(f"directory '{target}'")
+            # TODO:
+            # In cloud blobstores, this may not be a problem.
+        else:
+            assert not target.exists()
+            target.parent.mkdir(exist_ok=True)
 
         n = 0
         for s in self.iterdir():
-            ss = s.relative_to(self)
             if s.is_file():
-                n += s.download(target / ss, overwrite=overwrite)
+                # If `overwrite` is True, existing target files
+                # are overwritten. Otherwise, they are skipped.
+                # If `overwrite` is False, existing target files
+                # will cause exceptions.
+                if not overwrite and (target / s.name).is_file():
+                    k = 0
+                else:
+                    s.download(target / s.name, overwrite=overwrite)
+                k = 1
             else:
-                n += s.download_dir(target / ss, overwrite=overwrite)
+                k = s.download_dir(target / s.name, overwrite=overwrite)
+            n += k
         return n
 
+    @abc.abstractmethod
     def exists(self) -> bool:
+        '''In a blobstore with blobs
+
+            /a/b/cd
+            /a/b/cd/e.txt
+
+        '/a/b/cd' exists, and is both a file and a dir;
+        '/a/b/cd/e.txt' exists, and is a file;
+        '/a/b' exists, and is a dir;
+        '/a/b/c' does not exist.
+        '''
         raise NotImplementedError
 
     @property
@@ -258,79 +293,115 @@ class Upath:  # pylint: disable=too-many-public-methods
             )
         )
 
-    def glob(self: T, pattern: str) -> Iterator[T]:
-        # Implemented when `is_dir()` returns `True.
-        raise NotImplementedError
-
     def home(self: T) -> T:
         return self.__class__(self._home)
 
+    @abc.abstractmethod
     def is_dir(self) -> bool:
+        '''Return `True` if the path is an existing directory,
+        `False` if an existing non-directory.
+
+        Return `None` if the path does not exist.'''
         raise NotImplementedError
 
+    @abc.abstractmethod
     def is_file(self) -> bool:
+        '''Return `True` if the path is an existing file,
+        `False` if an existing non-file.
+
+        Return `None` if the path does not exist.'''
         raise NotImplementedError
 
     def is_relative_to(self: T, other: Union[str, T] = None) -> bool:
+        '''Return whether or not this path is relative to the `other` path.'''
         try:
             self.relative_to(other)
             return True
         except ValueError:
             return False
 
-    def iterdir(self: T) -> Iterator[T]:
-        return self.glob('*')
+    def iterdir(self: T, missing_ok: bool = False) -> Iterator[T]:
+        '''When the path points to a directory, yield path objects of the
+        directory contents. Only one level down; not recursively.
 
-    def joinpath(self: T, *parts: str) -> T:
-        return self.__class__(self._home, self.path.joinpath(*parts))
+        If the path does not exist, and `missing_ok` is False,
+        raise FileNotFoundError. If `missing_ok` is True, return an empty
+        iterator.
 
-    def ls(self: T, recursive: bool = False) -> List[T]:
-        if not self.exists():
-            return []
-        if self.is_file():
-            return [self]
-        if recursive:
-            return sorted(self.rglob('*'))
-        return sorted(self.iterdir())
+        If the path is a file, raise NotADirectoryError.'''
+        raise NotImplementedError
+
+    def joinpath(self: T, *other: str) -> T:
+        '''Join this path with more segments, return the new path object.'''
+        return self.__class__(self._home, self.path.joinpath(*other))
 
     def match(self, path_pattern: str) -> bool:
+        '''Match this path against the provided glob-style pattern.
+        Return `True` if matching is successful, `False` otherwise.'''
         return self.path.match(path_pattern)
 
+    @abc.abstractmethod
     def mkdir(self: T, parents: bool = False, exist_ok: bool = False) -> T:
-        '''Mutate self, and return self to facilitate chaining.'''
+        '''Create a new directory at this given path. Return `self`.
+
+        If the directory already exists, and `exist_ok` is False,
+        raise FileExistsError.
+
+        If the path exists but is a file, raise FileExistsError.
+
+        If `parents` is False, a missing parent raises FileNotFoundError.'''
+        raise NotImplementedError
+
+    def mv(self: T, target: Union[str, T], overwrite: bool = False) -> T:
+        '''Rename this file or directory to the given `target`, and
+        return a new Upath instance pointing to `target`.
+
+        If `target` exists and is a file, then if `overwrite` is True, it is
+        replaced, else FileExistsError is raised.
+
+        If `target` exists and is a directory, then FileExistsError is raised.
+        (In this case, `overwrite` is ignored.)'''
         raise NotImplementedError
 
     @property
     def name(self) -> str:
         return self.path.name
 
-    def open(self, mode: str = 'r'):
-        raise NotImplementedError
-
     @property
     def parent(self: T) -> T:
         return self.__class__(self._home, self.path.parent)
 
     @property
-    def parts(self) -> Tuple[str, ...]:
-        return self.path.parts
-
-    @property
     def path(self) -> pathlib.PurePosixPath:
-        '''Return the path treating `self.home` as the root.'''
+        '''Return the path, treating `self.home` as the root.
+
+        Methods of the returned object could be useful,
+        such as `parts`.
+        '''
         return pathlib.PurePosixPath(self._path)
 
+    @abc.abstractmethod
     def read_bytes(self) -> bytes:
+        '''Return the binary contents of the pointed-to file.
+
+        If `self` is a directory, raise IsADirectoryError.
+
+        If `self` does not exist, raise FileNotFoundError.
+        '''
         raise NotImplementedError
 
-    def read_text(self, encoding: str = None, errors: str = None):
+    def read_text(self, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
-        raise NotImplementedError
+        return self.read_bytes().decode(encoding=encoding, errors=errors)
 
     def relative_to(self: T, other: Union[str, T] = None) -> str:
-        if not other or other == '/':
-            return str(self.path).lstrip('/')
+        '''Compute this path relative to `other`.
 
+        Essentially, `other` is a direct or distant parent of `self`.
+        Return the path difference.
+        '''
+        if not other:
+            other = '/'
         if isinstance(other, str):
             other = self / other
         else:
@@ -340,26 +411,40 @@ class Upath:  # pylint: disable=too-many-public-methods
                 ))
         return str(self.fullpath.relative_to(other.fullpath))
 
-    def rename(self: T, target: Union[str, T], overwrite: bool = False) -> T:
-        '''Mutate and return self.'''
-        raise NotImplementedError
-
-    def rglob(self: T, pattern: str) -> Iterator[T]:
-        raise NotImplementedError
-
+    @abc.abstractmethod
     def rm(self, missing_ok: bool = False) -> int:
-        '''Removes this file. Return number of files removed.
+        '''Removes the file pointed to by `self`. Return number of files removed.
 
-        If the path points to a directory, use `rmdir` instead.
+        If the file does not exist, and `missing_ok` is False,
+        raise FileNotFoundError.
+
+        If `self` is a directory, raise IsADirectoryError.
+        In this case, use `rmdir` instead.
         '''
         raise NotImplementedError
 
-    def rmdir(self) -> None:
-        '''The directory must be empty.'''
+    @abc.abstractmethod
+    def rmdir(self, missing_ok: bool = False) -> None:
+        '''Remove the empty directory pointed to by `self`.
+
+        If the directory is not empty, raise OSError.
+
+        If the directory does not exist and `missing_ok` is False,
+        raise FileNotFoundError.
+
+        If the object is not a directory, raise NotADirectoryError.'''
         raise NotImplementedError
 
     def rm_rf(self) -> int:
         '''Analogous to `rm -rf`.
+
+        The object pointed to by `self` may be either a file
+        or a directory. If file, remove it. If directory,
+        remove its contents recursively, and the directory itself.
+
+        Compare with `clear`, which removes content in the directory
+        but keeps the directory itself. Also, `clear` does not work
+        on a file.
 
         Return number of files removed.
         '''
@@ -379,6 +464,7 @@ class Upath:  # pylint: disable=too-many-public-methods
     def root(self) -> str:
         return self._home
 
+    @abc.abstractmethod
     def stat(self):
         raise NotImplementedError
 
@@ -396,7 +482,7 @@ class Upath:  # pylint: disable=too-many-public-methods
 
     def upload(self,
                source: Union[str, pathlib.Path, Upath],
-               overwrite: bool = False) -> int:
+               overwrite: bool = False):
         '''This provides a fallback implementation.
 
         Subclasses should provide more efficient implementations
@@ -408,7 +494,7 @@ class Upath:  # pylint: disable=too-many-public-methods
             source = LocalUpath('/', str(source.absolute()))
         else:
             assert isinstance(source, Upath)
-        return source.download(self, overwrite=overwrite)
+        source.download(self, overwrite=overwrite)
 
     def upload_dir(self,
                    source: Union[str, pathlib.Path, Upath],
@@ -436,20 +522,46 @@ class Upath:  # pylint: disable=too-many-public-methods
     def with_suffix(self: T, suffix: str) -> T:
         return self.__class__(self._home, self.path.with_suffix(suffix))
 
-    def write_bytes(self, data: bytes, parents: bool = False) -> int:
-        '''Write bytes to the file, overwriting existing content if any.'''
+    def write_bytes(self,
+                    data: bytes,
+                    *,
+                    overwrite: bool = True) -> int:
+        '''
+        Write bytes to file. Parent directories are created as needed.
+
+        `overwrite`: overwrite existing file?
+            If False, and file exists, raises FileExistsError.
+
+        If the object pointed to is a directory, then it may or
+        may not be a problem depending on the file system.
+        For example, with a cloud blobstore, this may not be a problem.
+        With a local file system, this will raise IsADirectoryError.
+        Note, `overwrite` has no effect on existing directory.
+
+        Return number of bytes written.
+        '''
         raise NotImplementedError
 
-    def write_text(self, data: str, encoding=None, errors=None, parents: bool = False) -> int:
-        '''Write text to the file, overwriting existing content if any.'''
-        raise NotImplementedError
+    def write_text(self,
+                   data: str,
+                   *,
+                   encoding='utf-8',
+                   errors='strict',
+                   overwrite: bool = True) -> int:
+        '''
+        Return number of characters written.
+        '''
+        n = len(data)
+        z = data.encode(encoding=encoding, errors=errors)
+        self.write_bytes(z, overwrite=overwrite)
+        return n
 
 
 class LocalUpath(Upath):  # pylint: disable=abstract-method
     def __init__(self, *args):
         assert os.name == 'posix'
         if not args:
-            super().__init__(str(pathlib.Path.home()))
+            super().__init__(str(pathlib.Path.cwd().absolute()))
         else:
             super().__init__(*args)
 
@@ -459,10 +571,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def exists(self):
         return self.localpath.exists()
-
-    def glob(self, pattern):
-        for v in self.localpath.glob(pattern):
-            yield self._from_abs(v)
 
     def is_dir(self):
         return self.localpath.is_dir()
@@ -479,7 +587,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         return self
 
     def mv(self, target, overwrite=False):
-        if isinstance(target):
+        if isinstance(target, str):
             target = self / target
         else:
             assert target.__class__ is self.__class__
@@ -490,18 +598,8 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         self.localpath.rename(target)
         return self
 
-    def open(self, mode='r'):
-        return self.localpath.open(mode=mode)
-
     def read_bytes(self):
         return self.localpath.read_bytes()
-
-    def read_text(self, encoding=None, errors=None):
-        return self.localpath.read_text(encoding=encoding, errors=errors)
-
-    def rglob(self, pattern):
-        for v in self.localpath.rglob(pattern):
-            yield self._from_abs(v)
 
     def rm(self, missing_ok=False) -> int:
         if not self.exists():
@@ -519,13 +617,9 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def stat(self):
         return self.localpath.stat()
 
-    def write_bytes(self, data: bytes, parents=False):
-        if parents:
-            self.parent.mkdir(parents=True, exist_ok=True)
+    def write_bytes(self, data: bytes, *, overwrite=True):
+        if not overwrite:
+            if self.is_file():
+                raise FileExistsError(str(self))
+        self.parent.mkdir(parents=True)
         return self.localpath.write_bytes(data)
-
-    def write_text(self, data: str, encoding=None, errors=None, parents=False):
-        if parents:
-            self.parent.mkdir(parents=True, exist_ok=True)
-        return self.localpath.write_text(
-            data, encoding=encoding, errors=errors)
