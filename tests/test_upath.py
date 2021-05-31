@@ -14,6 +14,9 @@ class MyUpath(Upath):
     def is_file(self):
         raise NotImplementedError
 
+    def iterdir(self):
+        raise NotImplementedError
+
     def mkdir(self):
         raise NotImplementedError
 
@@ -27,6 +30,9 @@ class MyUpath(Upath):
         raise NotImplementedError
 
     def stat(self):
+        raise NotImplementedError
+
+    def write_bytes(self, data, overwrite=False):
         raise NotImplementedError
 
 

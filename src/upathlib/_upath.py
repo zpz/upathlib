@@ -313,6 +313,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Return `None` if the path does not exist.'''
         raise NotImplementedError
 
+    @abc.abstractmethod
     def iterdir(self: T, missing_ok: bool = False) -> Iterator[T]:
         '''When the path points to a directory, yield path objects of the
         directory contents. Only one level down; not recursively.
@@ -359,6 +360,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         If `target` does not exist, then it will be the name
         of the new path.'''
         raise NotImplementedError
+        # TODO: an inefficient fallback implementation
+        # could be provided.
 
     @property
     def name(self) -> str:
@@ -469,6 +472,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def with_suffix(self: T, suffix: str) -> T:
         return self.__class__(self._home, self.path.with_suffix(suffix))
 
+    @abc.abstractmethod
     def write_bytes(self,
                     data: bytes,
                     *,
@@ -531,8 +535,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def iterdir(self, missing_ok=False):
         if not self.exists() and missing_ok:
-            for _ in []:
-                yield
+            return
         else:
             for p in self.localpath.iterdir():
                 yield self / p.name
