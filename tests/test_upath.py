@@ -1,4 +1,4 @@
-import os.path
+import contextlib
 import pathlib
 import pytest
 from upathlib import Upath, LocalUpath
@@ -16,6 +16,10 @@ class MyUpath(Upath):
 
     def iterdir(self):
         raise NotImplementedError
+
+    @contextlib.contextmanager
+    def lock(self, wait=100):
+        yield self
 
     def mkdir(self):
         raise NotImplementedError
@@ -112,6 +116,9 @@ def test_localupath():
 
     p.joinpath('abc.txt').write_text('abcd', overwrite=True)
     assert (p / 'abc.txt').read_text() == 'abcd'
+
+    with p.joinpath('abc.txt').lock() as f:
+        assert f.read_text() == 'abcd'
 
     assert p.root == '/tmp/upathlib_local'
     p.cd('a')
