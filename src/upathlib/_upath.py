@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import abc
 import asyncio
+import contextlib
 import logging
 import os
 import os.path
@@ -12,6 +13,14 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from io import UnsupportedOperation
 from typing import List, Union, Iterator, TypeVar
+
+import filelock
+# `filelock` is also called `py-filelock`.
+# Tried `fasteners` also. In one use case,
+# `filelock` worked whereas `fasteners.InterprocessLock` failed.
+#
+# Other options to lock into include
+# `oslo.concurrency`, `pylocker`, `portalocker`.
 
 
 logger = logging.getLogger(__name__)
@@ -329,6 +338,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''Join this path with more segments, return the new path object.'''
         return self.__class__(self._home, self.path.joinpath(*other))
 
+    @contextlib.contextmanager
+    @abc.abstractmethod
+    def lock(self: T, wait: float = 60) -> T:
+        '''Lock the file pointed to, in order to have exclusive access.
+        Return self.
+        '''
+        raise NotImplementedError
+
     @abc.abstractmethod
     def mkdir(self: T, parents: bool = False, exist_ok: bool = False) -> T:
         '''Create a new directory at this given path. Return `self`.
@@ -529,16 +546,25 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             return None
         return self.localpath.is_file()
 
-    @ property
-    def localpath(self) -> pathlib.Path:
-        return pathlib.Path(str(self.fullpath))
-
     def iterdir(self, missing_ok=False):
         if not self.exists() and missing_ok:
             return
         else:
             for p in self.localpath.iterdir():
                 yield self / p.name
+
+    @ property
+    def localpath(self) -> pathlib.Path:
+        return pathlib.Path(str(self.fullpath))
+
+    @contextlib.contextmanager
+    def lock(self, wait=60):
+        lock = filelock.FileLock(str(self) + '.__lock__')
+        try:
+            lock.acquire(timeout=wait)
+            yield self
+        finally:
+            lock.release()
 
     def mkdir(self, parents=False, exist_ok=False):
         self.localpath.mkdir(parents=parents, exist_ok=exist_ok)
