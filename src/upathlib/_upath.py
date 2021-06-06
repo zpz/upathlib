@@ -22,6 +22,7 @@ import filelock
 # Other options to lock into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
 
+logging.getLogger('filelock').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='Upath')
