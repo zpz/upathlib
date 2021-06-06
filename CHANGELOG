@@ -1,3 +1,9 @@
+Release 0.2.2
+=============
+
+- Include stub file `py.typed` in distribution.
+
+
 Release 0.2.1
 =============
 
