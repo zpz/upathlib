@@ -170,8 +170,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_read_bytes(self):
         return await self._a_do(self.read_bytes)
 
-    async def a_read_text(self, *args, **kwargs):
-        return await self._a_do(self.read_text, *args, **kwargs)
+    async def a_read_json(self, **kwargs):
+        return await self._a_do(self.read_json, **kwargs)
+
+    async def a_read_pickle(self):
+        return await self._a_do(self.read_pickle)
+
+    async def a_read_text(self, **kwargs):
+        return await self._a_do(self.read_text, **kwargs)
 
     async def a_rm(self, *args, **kwargs):
         return await self._a_do(self.rm, *args, **kwargs)
@@ -187,6 +193,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_write_bytes(self, *args, **kwargs):
         return await self._a_do(self.write_bytes, *args, **kwargs)
+
+    async def a_write_json(self, *args, **kwargs):
+        return await self._a_do(self.write_json, *args, **kwargs)
+
+    async def a_write_pickle(self, *args, **kwargs):
+        return await self._a_do(self.write_pickle, *args, **kwargs)
 
     async def a_write_text(self, *args, **kwargs):
         return await self._a_do(self.write_text, *args, **kwargs)
@@ -524,8 +536,10 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def write_json(self, data: str, *, overwrite=False, **kwargs) -> int:
-        return self.write_text(data, **kwargs)
+    def write_json(self, data: str, overwrite=False, **kwargs) -> int:
+        return self.write_text(json.dumps(data),
+                               overwrite=overwrite,
+                               **kwargs)
 
     def write_pickle(self, data, *, overwrite=False) -> int:
         return self.write_bytes(
@@ -536,9 +550,10 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def write_text(self,
                    data: str,
                    *,
+                   overwrite: bool = False,
                    encoding='utf-8',
                    errors='strict',
-                   overwrite: bool = False) -> int:
+                   ) -> int:
         '''
         Return number of characters written.
         '''
