@@ -5,10 +5,12 @@ from __future__ import annotations
 import abc
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import os.path
 import pathlib
+import pickle
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from io import UnsupportedOperation
@@ -154,7 +156,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_is_file(self):
         return await self._a_do(self.is_file)
 
-    async def a_iterdir(self, missing_ok=False):
+    async def a_iterdir(self, *, missing_ok=False):
         # This is a suboptimal reference implementation.
         for p in self.iterdir(missing_ok=missing_ok):
             yield p
@@ -196,7 +198,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         self._home = os.path.normpath(os.path.join(self._home, relpath))
         return self
 
-    def clear(self, missing_ok: bool = False):
+    def clear(self, *, missing_ok: bool = False):
         '''Clear all contents of the directory, but keep the directory.
 
         If the path does not exist, and `missing_ok` is False,
@@ -209,11 +211,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     def cp(self,
            target: Union[str, pathlib.Path, Upath],
+           *,
            overwrite: bool = False) -> int:
         '''Copy the file or directory as or into the specified `target`.
         Return number of files copied.
 
-        This is like "export".
+        This is like "export" or "download".
 
         This provides a fallback implementation.
         Subclasses should provide more efficient implementations
@@ -268,8 +271,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     def cp_from(self,
                 source: Union[str, pathlib.Path, Upath],
+                *,
                 overwrite: bool = False) -> int:
-        '''Opposite of `cp`. This is like "import".'''
+        '''Opposite of `cp`. This is like "import" or "upload".'''
         if isinstance(source, str):
             source = pathlib.Path(source)
         if isinstance(source, pathlib.Path):
@@ -324,7 +328,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @abc.abstractmethod
-    def iterdir(self: T, missing_ok: bool = False) -> Iterator[T]:
+    def iterdir(self: T, *, missing_ok: bool = False) -> Iterator[T]:
         '''When the path points to a directory, yield path objects of the
         directory contents. Only one level down; not recursively.
 
@@ -341,14 +345,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @contextlib.contextmanager
     @abc.abstractmethod
-    def lock(self: T, wait: float = 60) -> T:
+    def lock(self: T, *, wait: float = 60) -> T:
         '''Lock the file pointed to, in order to have exclusive access.
         Return self.
+
+        File locking is a tricky matter. The semantics of this method
+        will likely see some iterations.
         '''
         raise NotImplementedError
 
     @abc.abstractmethod
-    def mkdir(self: T, parents: bool = False, exist_ok: bool = False) -> T:
+    def mkdir(self: T, *, parents: bool = False, exist_ok: bool = False) -> T:
         '''Create a new directory at this given path. Return `self`.
 
         If the directory already exists, and `exist_ok` is False,
@@ -359,7 +366,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         If `parents` is False, a missing parent raises FileNotFoundError.'''
         raise NotImplementedError
 
-    def mv(self: T, target: Union[str, T], overwrite: bool = False) -> T:
+    def mv(self: T, target: Union[str, T], *, overwrite: bool = False) -> T:
         '''Rename this file or directory to the given `target`, and
         return a new Upath instance pointing to `target`.
 
@@ -409,12 +416,18 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def read_text(self, encoding: str = 'utf-8', errors: str = 'strict'):
+    def read_json(self, **kwargs):
+        return json.loads(self.read_text(**kwargs))
+
+    def read_pickle(self):
+        return pickle.loads(self.read_bytes())
+
+    def read_text(self, *, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
 
     @abc.abstractmethod
-    def rm(self, missing_ok: bool = False) -> int:
+    def rm(self, *, missing_ok: bool = False) -> int:
         '''Removes the file pointed to by `self`. Return number of files removed.
 
         If the file does not exist, and `missing_ok` is False,
@@ -426,7 +439,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @abc.abstractmethod
-    def rmdir(self, missing_ok: bool = False) -> None:
+    def rmdir(self, *, missing_ok: bool = False) -> None:
         '''Remove the empty directory pointed to by `self`.
 
         If the directory is not empty, raise OSError.
@@ -511,6 +524,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
+    def write_json(self, data: str, *, overwrite=False, **kwargs) -> int:
+        return self.write_text(data, **kwargs)
+
+    def write_pickle(self, data, *, overwrite=False) -> int:
+        return self.write_bytes(
+            pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
+            overwrite=overwrite,
+        )
+
     def write_text(self,
                    data: str,
                    *,
@@ -547,7 +569,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             return None
         return self.localpath.is_file()
 
-    def iterdir(self, missing_ok=False):
+    def iterdir(self, *, missing_ok=False):
         if not self.exists() and missing_ok:
             return
         else:
@@ -559,7 +581,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         return pathlib.Path(str(self.fullpath))
 
     @contextlib.contextmanager
-    def lock(self, wait=60):
+    def lock(self, *, wait=60):
         lock = filelock.FileLock(str(self) + '.__lock__')
         try:
             lock.acquire(timeout=wait)
@@ -567,11 +589,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         finally:
             lock.release()
 
-    def mkdir(self, parents=False, exist_ok=False):
+    def mkdir(self, *, parents=False, exist_ok=False):
         self.localpath.mkdir(parents=parents, exist_ok=exist_ok)
         return self
 
-    def mv(self, target, overwrite=False):
+    def mv(self, target, *, overwrite=False):
         if isinstance(target, str):
             target = self / target
         else:
@@ -586,7 +608,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def read_bytes(self):
         return self.localpath.read_bytes()
 
-    def rm(self, missing_ok=False) -> int:
+    def rm(self, *, missing_ok=False) -> int:
         if not self.exists():
             if missing_ok:
                 return 0
@@ -595,8 +617,12 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         self.localpath.unlink()
         return 1
 
-    def rmdir(self):
+    def rmdir(self, *, missing_ok=False):
         logger.debug('deleting %s/', self.localpath)
+        if not self.exists():
+            if missing_ok:
+                return
+            raise FileNotFoundError(str(self.fullpath))
         self.localpath.rmdir()
 
     def stat(self):
