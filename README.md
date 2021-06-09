@@ -9,7 +9,10 @@ Functionalities that are non-essential in these tasks are ignored,
 such as symbolic links, fine-grained permissions, and various access modes.
 (This API does not require or provide for these considerations, but a subclass may still add them if desired and feasible.)
 
-Local (POSIX) filesystem is treated as one particular case, and is implemented.
+Local (POSIX) filesystem is treated as one particular case,
+and is implemented by `LocalUpath`.
+This class showcases the most essential methods
+that a subclass needs to implement.
 
 ## Q & A
 
