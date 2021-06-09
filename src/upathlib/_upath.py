@@ -191,17 +191,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_stat(self):
         return await self._a_do(self.stat)
 
-    async def a_write_bytes(self, *args, **kwargs):
-        return await self._a_do(self.write_bytes, *args, **kwargs)
+    async def a_write_bytes(self, data, **kwargs):
+        return await self._a_do(self.write_bytes, data, **kwargs)
 
-    async def a_write_json(self, *args, **kwargs):
-        return await self._a_do(self.write_json, *args, **kwargs)
+    async def a_write_json(self, data, **kwargs):
+        return await self._a_do(self.write_json, data, **kwargs)
 
-    async def a_write_pickle(self, *args, **kwargs):
-        return await self._a_do(self.write_pickle, *args, **kwargs)
+    async def a_write_pickle(self, data, **kwargs):
+        return await self._a_do(self.write_pickle, data, **kwargs)
 
-    async def a_write_text(self, *args, **kwargs):
-        return await self._a_do(self.write_text, *args, **kwargs)
+    async def a_write_text(self, data, **kwargs):
+        return await self._a_do(self.write_text, data, **kwargs)
 
     def cd(self: T, relpath: str) -> T:
         '''Change home path; return self.'''

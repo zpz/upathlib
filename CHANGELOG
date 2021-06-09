@@ -1,7 +1,7 @@
 Release 0.2.2
 =============
 
-- Include stub file `py.typed` in distribution.
+- Add JSON and pickle convenience methods to API.
 
 
 Release 0.2.1
