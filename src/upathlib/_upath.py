@@ -250,7 +250,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         if target.is_dir():
             target = target / self.name
-        elif target.is_file():
+        if target.is_file():
             if not overwrite:
                 # TODO:
                 # In cloud blobstores, this may not be a problem.
@@ -350,6 +350,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         If the path is a file, raise NotADirectoryError.'''
         raise NotImplementedError
+
+    # def lsdir(self: T, *, missing_ok: bool = False) -> List[T]:
+    #     return list(self.iterdir(missing_ok=missing_ok))
 
     def joinpath(self: T, *other: str) -> T:
         '''Join this path with more segments, return the new path object.'''
@@ -614,11 +617,12 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         else:
             assert target.__class__ is self.__class__
             assert target.root == self.root
-        target = target.fullpath
+        if target == self:
+            return self
         if target.exists() and not overwrite:
-            raise FileExistsError
-        self.localpath.rename(target)
-        return self
+            raise FileExistsError(str(target))
+        self.localpath.rename(target.fullpath)
+        return target
 
     def read_bytes(self):
         return self.localpath.read_bytes()
