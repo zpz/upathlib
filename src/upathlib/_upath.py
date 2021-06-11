@@ -678,6 +678,18 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         '''
         raise NotImplementedError
 
+    async def a_download(self, *args, **kwargs):
+        return await self._a_do(self.download, *args, **kwargs)
+
+    async def a_upload(self, *args, **kwargs):
+        return await self._a_do(self.upload, *args, **kwargs)
+
+    def download(self,
+                 target: Union[str, pathlib.Path, LocalUpath],
+                 *,
+                 overwrite: bool = False) -> int:
+        return self.cp(target, overwrite=overwrite)
+
     def is_dir(self):
         '''In a typical blob store, there is no such concept as a
         "directory". Here we emulate the situation in a local file
@@ -769,3 +781,9 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def rmdir(self):
         if self.is_dir():
             raise FileExistsError(str(self.fullpath))
+
+    def upload(self,
+               source: Union[str, pathlib.Path, LocalUpath],
+               *,
+               overwrite: bool = False) -> int:
+        return self.cp_from(source, overwrite=overwrite)
