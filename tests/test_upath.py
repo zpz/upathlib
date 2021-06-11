@@ -104,9 +104,9 @@ def test_localupath_init():
 
 def test_localupath():
     p = LocalUpath('/tmp/upathlib_local')
-    p.clear(missing_ok=True)
-
-    assert not list(p.iterdir(missing_ok=True))
+    if p.is_dir():
+        p.clear()
+        assert not list(p.iterdir())
 
     p.joinpath('abc.txt').write_text('abc')
     assert (p / 'abc.txt').read_text() == 'abc'

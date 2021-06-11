@@ -1,10 +1,11 @@
 __version__ = '0.2.3'
 
 
-from ._upath import Upath, LocalUpath
+from ._upath import Upath, LocalUpath, BlobUpath
 
 
 __all__ = [
-    'LocalUpath',
     'Upath',
+    'LocalUpath',
+    'BlobUpath',
 ]

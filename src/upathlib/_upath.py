@@ -76,6 +76,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             path_s = '/'
         self._path = path_s
         # The path is always "absolute" starting with '/'.
+        # Unless it is `/`, it does not have a trailing `/`.
 
     def __copy__(self: T) -> T:
         return self.__class__(self._home, self._path)
@@ -156,9 +157,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_is_file(self):
         return await self._a_do(self.is_file)
 
-    async def a_iterdir(self, *, missing_ok=False):
+    async def a_iterdir(self):
         # This is a suboptimal reference implementation.
-        for p in self.iterdir(missing_ok=missing_ok):
+        for p in self.iterdir():
             yield p
 
     async def a_mkdir(self, *args, **kwargs):
@@ -210,7 +211,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         self._home = os.path.normpath(os.path.join(self._home, relpath))
         return self
 
-    def clear(self, *, missing_ok: bool = False):
+    def clear(self):
         '''Clear all contents of the directory, but keep the directory.
 
         If the path does not exist, and `missing_ok` is False,
@@ -218,7 +219,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         If the path is a file, raise NotADirectoryError.
         '''
-        for p in self.iterdir(missing_ok=missing_ok):
+        for p in self.iterdir():
             p.rmrf()
 
     def cp(self,
@@ -344,15 +345,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''When the path points to a directory, yield path objects of the
         directory contents. Only one level down; not recursively.
 
-        If the path does not exist, and `missing_ok` is False,
-        raise FileNotFoundError. If `missing_ok` is True, return an empty
-        iterator.
-
-        If the path is a file, raise NotADirectoryError.'''
+        If the directory does not exist, the behavior is different
+        between cloud blob stores and local file systems.'''
         raise NotImplementedError
-
-    # def lsdir(self: T, *, missing_ok: bool = False) -> List[T]:
-    #     return list(self.iterdir(missing_ok=missing_ok))
 
     def joinpath(self: T, *other: str) -> T:
         '''Join this path with more segments, return the new path object.'''
@@ -370,13 +365,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @abc.abstractmethod
-    def mkdir(self: T, *, parents: bool = False, exist_ok: bool = False) -> T:
-        '''Create a new directory at this given path. Return `self`.
+    def mkdir(self, *, parents: bool = False, exist_ok: bool = False) -> None:
+        '''Create a new directory at this given path.
 
         If the directory already exists, and `exist_ok` is False,
         raise FileExistsError.
-
-        If the path exists but is a file, raise FileExistsError.
 
         If `parents` is False, a missing parent raises FileNotFoundError.'''
         raise NotImplementedError
@@ -454,15 +447,13 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @abc.abstractmethod
-    def rmdir(self, *, missing_ok: bool = False) -> None:
+    def rmdir(self) -> None:
         '''Remove the empty directory pointed to by `self`.
 
         If the directory is not empty, raise OSError.
 
-        If the directory does not exist and `missing_ok` is False,
-        raise FileNotFoundError.
-
-        If the object is not a directory, raise NotADirectoryError.'''
+        In other cases, the behavior may differ between
+        cloud blob stores and local file systems.'''
         raise NotImplementedError
 
     def rmrf(self) -> int:
@@ -587,12 +578,9 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             return None
         return self.localpath.is_file()
 
-    def iterdir(self, *, missing_ok=False):
-        if not self.exists() and missing_ok:
-            return
-        else:
-            for p in self.localpath.iterdir():
-                yield self / p.name
+    def iterdir(self):
+        for p in self.localpath.iterdir():
+            yield self / p.name
 
     @ property
     def localpath(self) -> pathlib.Path:
@@ -609,7 +597,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def mkdir(self, *, parents=False, exist_ok=False):
         self.localpath.mkdir(parents=parents, exist_ok=exist_ok)
-        return self
 
     def mv(self, target, *, overwrite=False):
         if isinstance(target, str):
@@ -636,11 +623,8 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         self.localpath.unlink()
         return 1
 
-    def rmdir(self, *, missing_ok=False):
-        logger.debug('deleting %s/', self.localpath)
+    def rmdir(self):
         if not self.exists():
-            if missing_ok:
-                return
             raise FileNotFoundError(str(self.fullpath))
         self.localpath.rmdir()
 
@@ -654,3 +638,134 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         else:
             self.parent.mkdir(parents=True, exist_ok=True)
         return self.localpath.write_bytes(data)
+
+
+class BlobUpath(Upath):  # pylint: disable=abstract-method
+    @abc.abstractmethod
+    def _blob_exists(self) -> bool:
+        # Unless `self.fullpath` is '/', the path
+        # does not end with '/'. This function determines
+        # whether a blob with this name exists.
+        # If it does, it is equivalent to a *file*.
+        # Note the difference between `_blob_exists`
+        # and `exists`.
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def _recursive_iterdir(self: T) -> Iterator[T]:
+        '''Yield blobs under the current "directory".
+
+        For example, if `self.fullpath` is
+
+            /ab/cd/efgh
+
+        then yield blobs named like
+
+            /ab/cd/efgh/j
+            /ab/cd/efgh/k/p.txt
+            /ab/cd/efgh/o/p/q.data
+
+        However, do not yield blobs named like
+
+            /ab/cd/efghij
+            /ab/cd/efghx/y
+
+        S3, Azure, GCP all have API's to list blobs
+        whose name starts with a given prefix.
+        In this case, the prefix should be essentially
+
+            str(self.fullpath) + '/'
+        '''
+        raise NotImplementedError
+
+    def is_dir(self):
+        '''In a typical blob store, there is no such concept as a
+        "directory". Here we emulate the situation in a local file
+        system. If there are blobs named like
+
+            /ab/cd/ef/g.txt
+
+        we say there exists directory "/ab/cd/ef".
+        We should never have blobs named like
+
+            /ab/cd/ef/
+
+        (I don't know whether the blob store offerings allow
+        such blob names.) Consequently, `is_dir` is equivalent
+        to "have stuff in the dir". There is no such thing as
+        an "empty directory" in blob stores.
+        '''
+        try:
+            next(self._recursive_iterdir())
+            return True
+        except StopIteration:
+            return None
+
+    def is_file(self):
+        if self._blob_exists():
+            return True
+        return None
+
+    def iterdir(self):
+        p0 = self._path + '/'
+        np0 = len(p0)
+        for p in self._recursive_iterdir():
+            tail = p._path[np0:]
+            if '/' not in tail:
+                yield self / tail
+
+    def mkdir(self, *, parents=False, exist_ok=False):
+        if self.is_dir():
+            if exist_ok:
+                return
+            raise FileExistsError(str(self.fullpath))
+        else:
+            if not parents:
+                if not self.parent.is_dir():
+                    raise FileNotFoundError(str(self.parent.fullpath))
+            # There is no need to "create a directory"
+            # in a blob store. Just go ahead creating
+            # blobs under the "directory".
+
+    def mv(self, target, *, overwrite=False):
+        # This reference implementation uses copy/delete
+        # to achieve the effect of renaming.
+        # Concrete subclasses may have an efficient way
+        # to conduct renaming.
+        if isinstance(target, str):
+            target = self / target
+        else:
+            assert target.__class__ is self.__class__
+            assert target.root == self.root
+        if target == self:
+            return self
+
+        if self.is_file():
+            if target.is_file():
+                if overwrite:
+                    raise FileExistsError(str(target.fullpath))
+                target.write_bytes(self.read_bytes())
+            elif target.is_dir():
+                target = target / self.name
+                if target.is_file():
+                    if overwrite:
+                        raise FileExistsError(str(target.fullpath))
+                target.write_bytes(self.read_bytes())
+            else:
+                target.write_bytes(self.read_bytes())
+            self.rm()
+            return target
+
+        if self.is_dir():
+            if target.is_dir():
+                target = target / self.name
+            for p in self.iterdir():
+                p.mv(target / p.name)
+            self.rmdir()
+            return target
+
+        raise FileNotFoundError(str(self.fullpath))
+
+    def rmdir(self):
+        if self.is_dir():
+            raise FileExistsError(str(self.fullpath))
