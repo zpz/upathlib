@@ -142,11 +142,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_clear(self, *args, **kwargs):
         return await self._a_do(self.clear, *args, **kwargs)
 
+    async def a_copy_in(self, *args, **kwargs):
+        return await self._a_do(self.copy_in, *args, **kwargs)
+
+    async def a_copy_out(self, *args, **kwargs):
+        return await self._a_do(self.copy_out, *args, **kwargs)
+
     async def a_cp(self, *args, **kwargs):
         return await self._a_do(self.cp, *args, **kwargs)
-
-    async def a_cp_from(self, *args, **kwargs):
-        return await self._a_do(self.cp_from, *args, **kwargs)
 
     async def a_exists(self):
         return await self._a_do(self.exists)
@@ -222,14 +225,25 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         for p in self.iterdir():
             p.rmrf()
 
-    def cp(self,
-           target: Union[str, pathlib.Path, Upath],
-           *,
-           overwrite: bool = False) -> int:
+    def copy_in(self,
+                source: Union[str, pathlib.Path, Upath],
+                *,
+                overwrite: bool = False) -> int:
+        '''Opposite of `cp`. This is like "import" or "upload".'''
+        if isinstance(source, str):
+            source = pathlib.Path(source)
+        if isinstance(source, pathlib.Path):
+            source = LocalUpath('/', str(source.absolute()))
+        else:
+            assert isinstance(source, Upath)
+        return source.copy_out(self, overwrite=overwrite)
+
+    def copy_out(self,
+                 target: Union[str, pathlib.Path, Upath],
+                 *,
+                 overwrite: bool = False) -> int:
         '''Copy the file or directory as or into the specified `target`.
         Return number of files copied.
-
-        This is like "export" or "download".
 
         This provides a fallback implementation.
         Subclasses should provide more efficient implementations
@@ -282,18 +296,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             n += k
         return n
 
-    def cp_from(self,
-                source: Union[str, pathlib.Path, Upath],
-                *,
-                overwrite: bool = False) -> int:
-        '''Opposite of `cp`. This is like "import" or "upload".'''
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath('/', str(source.absolute()))
-        else:
-            assert isinstance(source, Upath)
-        return source.cp(self, overwrite=overwrite)
+    def cp(self: T, target: str) -> T:
+        raise NotImplementedError
 
     @abc.abstractmethod
     def exists(self) -> bool:
@@ -467,16 +471,16 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         but keeps the directory itself. Also, `clear` does not work
         on a file.
         '''
-        if not self.exists():
-            return 0
+        k = 0
         if self.is_file():
             self.rm()
-            return 1
-        k = 0
-        for v in self.iterdir():
-            n = v.rmrf()
-            k += n
-        self.rmdir()
+            k += 1
+
+        if self.is_dir():
+            for v in self.iterdir():
+                n = v.rmrf()
+                k += n
+            self.rmdir()
         return k
 
     @property
@@ -652,7 +656,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         raise NotImplementedError
 
     @abc.abstractmethod
-    def _recursive_iterdir(self: T) -> Iterator[T]:
+    def recursive_iterdir(self: T) -> Iterator[T]:
         '''Yield blobs under the current "directory".
 
         For example, if `self.fullpath` is
@@ -688,7 +692,14 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                  target: Union[str, pathlib.Path, LocalUpath],
                  *,
                  overwrite: bool = False) -> int:
-        return self.cp(target, overwrite=overwrite)
+        return self.copy_out(target, overwrite=overwrite)
+
+    def exists(self):
+        if self._blob_exists():
+            return True
+        if self.is_dir():
+            return True
+        return False
 
     def is_dir(self):
         '''In a typical blob store, there is no such concept as a
@@ -719,11 +730,19 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         return None
 
     def iterdir(self):
-        p0 = self._path + '/'
+        p0 = self._path
+        if not p0.endswith('/'):
+            p0 += '/'
         np0 = len(p0)
-        for p in self._recursive_iterdir():
+        subdirs = set()
+        for p in self.recursive_iterdir():
             tail = p._path[np0:]
-            if '/' not in tail:
+            if '/' in tail:
+                sub = tail[: tail.find('/')]
+                if sub not in subdirs:
+                    yield self / sub
+                    subdirs.add(sub)
+            else:
                 yield self / tail
 
     def mkdir(self, *, parents=False, exist_ok=False):
@@ -786,4 +805,4 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                source: Union[str, pathlib.Path, LocalUpath],
                *,
                overwrite: bool = False) -> int:
-        return self.cp_from(source, overwrite=overwrite)
+        return self.copy_in(source, overwrite=overwrite)
