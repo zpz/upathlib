@@ -289,10 +289,10 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 if not overwrite and (target / name).is_file():
                     k = 0
                 else:
-                    s.cp(target / name, overwrite=overwrite)
+                    s.copy_out(target / name, overwrite=overwrite)
                     k = 1
             else:
-                k = s.cp(target / name, overwrite=overwrite)
+                k = s.copy_out(target / name, overwrite=overwrite)
             n += k
         return n
 
@@ -719,7 +719,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         an "empty directory" in blob stores.
         '''
         try:
-            next(self._recursive_iterdir())
+            next(self.recursive_iterdir())
             return True
         except StopIteration:
             return None
