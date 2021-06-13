@@ -32,106 +32,101 @@ T = TypeVar('T', bound='Upath')
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     '''
-    Unlike `pathlib.Path`, which has the concept of
-    "current working directory" implicitly determined by the
-    execution environment, `Upath` does not have an implicit "cwd".
-    Rather, it is explicitly specified by the argument `home`.
+    A `Upath` consists of two parts: `root`, and `path` under `root`.
 
-    A `Upath` consists of two parts: `home`, and `path` in `home`.
-    The `path` treats `home` as the "root".
+    The `root` defines a boundary that navigation on the object
+    can not transcend. Some natural values for `root` are
 
-    There's only one way to change `Upath.home`, and that is via `Upath.cd`.
-    This can both expand (entering a subdirectory) and contract
-    (backing up to parent) the home path.
+        Windows: a drive, such as 'c:'
+        Linux: '/' or `$HOME`
+        AWS S3: a "bucket"
+        Azure blob storage: a "container"
+        GCP cloud storage: a "bucket"
 
-    There are multiple ways to change `Upath.path`. They fall under
-    two categories: change directory, or change name only.
+    A subclass will decide on the format of the `root` string.
+    The value does not have to be the very root; for example,
+    it could be some levels of directories down. The subclass
+    will define the interpretation of the value.
 
-    `Upath.joinpath` will change directory. The `/` operator is
-    equivalent. This can not go beyond the "root". For example,
+    The `root` value will not change in navigations on the object.
+
+    There are two ways to change `Upath.path`. The first is
+    `Upath.joinpath` (and the equivalent `/` operator),
+    which changes both directory and name.
+    This can not go beyond the "root". For example,
     `Upath('my/home', 'ab/cd/ef').joinpath('..', '..', '..', '..)`
     will be `Upath('my/home', '/')`, not `Upath('my', '/')`.
 
-    There are several methods to change the name alone, including
-    `Upath.with_name`, `Upath.with_stem`, `Upath.with_suffix`.
-
-    Primary methods/attributes for getting the components of the object
-    include `home`, `path`, `fullpath`, `root`.
+    The second includes a few functions including `Upath.with_name`,
+    `Upath.with_stem`, `Upath.with_suffix` that change the name alone.
     '''
 
     _executor: ThreadPoolExecutor = None
 
-    def __init__(self, home: str, *parts: Union[str, os.PathLike]):
-        assert home
-        assert not home.startswith('.')
-        home = os.path.normpath(home)
-        self._home = '/' + home.lstrip('/')
-
-        if parts:
-            path_s = os.path.normpath(
-                os.path.join(*parts))  # pylint: disable=no-value-for-parameter
-            assert not path_s.startswith('.')
-            path_s = '/' + path_s.lstrip('/')
-        else:
-            path_s = '/'
-        self._path = path_s
+    def __init__(self, *parts: Union[str, os.PathLike], root: str):
+        self._root = root
+        self._path = os.path.normpath(os.path.join(
+            '/', *parts))  # pylint: disable=no-value-for-parameter
         # The path is always "absolute" starting with '/'.
         # Unless it is `/`, it does not have a trailing `/`.
 
     def __copy__(self: T) -> T:
-        return self.__class__(self._home, self._path)
+        return self.__class__(self._path, root=self._root)
 
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self._home}', '{self._path.lstrip('/')}')"
+        return f"{self.__class__.__name__}('{self._path.lstrip('/')}', root='{self._root}')"
 
     def __str__(self) -> str:
-        return str(self.fullpath)
+        return self.__repr__()
 
     def __eq__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
-        return self._home == other._home and self._path == other._path
+        return self._root == other._root and self._path == other._path
 
     def __lt__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
-        if self._home < other._home:
+        if self._root < other._root:
             return True
-        if self._home > other._home:
+        if self._root > other._root:
             return False
         return self._path < other._path
 
     def __le__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
-        if self._home < other._home:
+        if self._root < other._root:
             return True
-        if self._home > other._home:
+        if self._root > other._root:
             return False
         return self._path <= other._path
 
     def __gt__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
-        if self._home > other._home:
+        if self._root > other._root:
             return True
-        if self._home < other._home:
+        if self._root < other._root:
             return False
         return self._path > other._path
 
     def __ge__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
-        if self._home > other._home:
+        if self._root > other._root:
             return True
-        if self._home < other._home:
+        if self._root < other._root:
             return False
         return self._path >= other._path
 
     def __hash__(self) -> int:
-        return hash((self._home, self._path))
+        return hash((self._root, self._path))
 
     def __truediv__(self: T, key: str) -> T:
+        return self.joinpath(key)
+
+    def __rtruediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
     async def _a_do(self, func, *args, **kwargs):
@@ -207,17 +202,10 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_write_text(self, data, **kwargs):
         return await self._a_do(self.write_text, data, **kwargs)
 
-    def cd(self: T, relpath: str) -> T:
-        '''Change home path; return self.'''
-        if self._path != '/':
-            raise UnsupportedOperation('`cd` can not be used on non-home path')
-        self._home = os.path.normpath(os.path.join(self._home, relpath))
-        return self
-
     def clear(self):
         '''Clear all contents of the directory, but keep the directory.
 
-        If the path is a file, raise NotADirectoryError.
+        If the path is not a directory, raise NotADirectoryError.
         '''
         for p in self.iterdir():
             p.rmrf()
@@ -226,7 +214,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 source: Union[str, pathlib.Path, Upath],
                 *,
                 exist_action: str = None) -> int:
-        '''Opposite of `cp`. This is like "import" or "upload".'''
+        '''This is like "import" or "upload".'''
         if isinstance(source, str):
             source = pathlib.Path(source)
         if isinstance(source, pathlib.Path):
@@ -242,11 +230,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''Copy the file or directory as or into the specified `target`.
         Return number of files copied.
 
-        `exist_action`: main about file rather than directory.
+        `exist_action`: mainly about file rather than directory.
 
         This provides a fallback implementation.
         Subclasses should provide more efficient implementations
-        if possible, while maintainer the behavior defined in
+        if possible, while maintains the behavior defined in
         this implementation.
         '''
         if not self.exists():
@@ -301,7 +289,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         return n
 
-    def cp(self: T, target: str) -> T:
+    def cp(self: T, target: str, overwrite: bool = False) -> T:
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -317,21 +305,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '/a/b/c' does not exist.
         '''
         raise NotImplementedError
-
-    @property
-    def fullpath(self) -> pathlib.PurePosixPath:
-        '''Return the "full path" starting with `self.home`.'''
-        return pathlib.PurePosixPath(
-            os.path.normpath(
-                os.path.join(
-                    self._home,
-                    self._path.lstrip('/'),
-                )
-            )
-        )
-
-    def home(self: T) -> T:
-        return self.__class__(self._home)
 
     @abc.abstractmethod
     def is_dir(self) -> bool:
@@ -360,7 +333,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     def joinpath(self: T, *other: str) -> T:
         '''Join this path with more segments, return the new path object.'''
-        return self.__class__(self._home, self.path.joinpath(*other))
+        return self.__class__(
+            self.path.joinpath(*other),
+            root=self._root)
 
     @contextlib.contextmanager
     @abc.abstractmethod
@@ -407,11 +382,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @property
     def name(self) -> str:
+        # If `self.path` is '/', then `self.path.name` is ''.
         return self.path.name
 
     @property
     def parent(self: T) -> T:
-        return self.__class__(self._home, self.path.parent)
+        return self.__class__(self.path.parent, root=self._root)
 
     @property
     def path(self) -> pathlib.PurePosixPath:
@@ -482,7 +458,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             k += 1
 
         if self.is_dir():
-            if self._home == '/' and self._path == '/':
+            if self._root == '/' and self._path == '/':
+                # TODO: `self._root` is not a portable way
+                # to detec the current object is at the very root.
                 raise UnsupportedOperation(
                     "`rmrf` not allowed on root directory")
             for v in self.iterdir():
@@ -492,8 +470,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return k
 
     @property
-    def root(self) -> str:
-        return self._home
+    def root(self: T) -> T:
+        return self.__class__('/', root=self._root)
 
     @abc.abstractmethod
     def stat(self) -> os.stat_result:
@@ -512,14 +490,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self.path.suffixes
 
     def with_name(self: T, name: str) -> T:
-        return self.__class__(self._home, self.path.with_name(name))
+        return self.__class__(self.path.with_name(name), root=self._root)
 
     # def with_stem(self: T, stem: str) -> T:
     #     # Available in Python 3.9+.
     #     return self.__class__(self._home, self.path.with_stem(stem))
 
     def with_suffix(self: T, suffix: str) -> T:
-        return self.__class__(self._home, self.path.with_suffix(suffix))
+        return self.__class__(self.path.with_suffix(suffix), root=self._root)
 
     @abc.abstractmethod
     def write_bytes(self,
@@ -570,12 +548,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
 
 class LocalUpath(Upath):  # pylint: disable=abstract-method
-    def __init__(self, *args):
+    def __init__(self, *parts: str, root: str = None):
         assert os.name == 'posix'
-        if not args:
-            super().__init__(str(pathlib.Path.cwd().absolute()))
+        if root is None:
+            if parts:
+                parts = [str(pathlib.Path(*parts).absolute())]
+            else:
+                parts = [str(pathlib.Path.cwd().absolute())]
+            root = '/'
         else:
-            super().__init__(*args)
+            assert root.startswith('/')
+        super().__init__(*parts, root=root)
 
     def exists(self):
         return self.localpath.exists()
@@ -596,11 +579,18 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     @ property
     def localpath(self) -> pathlib.Path:
-        return pathlib.Path(str(self.fullpath))
+        return pathlib.Path(
+            os.path.normpath(
+                os.path.join(
+                    self._root,
+                    self._path.lstrip('/'),
+                )
+            )
+        )
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):
-        lock = filelock.FileLock(str(self) + '.__lock__')
+        lock = filelock.FileLock(str(self.localpath) + '.__lock__')
         try:
             lock.acquire(timeout=wait)
             yield self
@@ -620,7 +610,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             return self
         if target.exists() and not overwrite:
             raise FileExistsError(str(target))
-        self.localpath.rename(target.fullpath)
+        self.localpath.rename(target.localpath)
         return target
 
     def read_bytes(self):
@@ -630,14 +620,14 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         if not self.exists():
             if missing_ok:
                 return 0
-            raise FileNotFoundError(str(self.fullpath))
+            raise FileNotFoundError(str(self.localpath))
         logger.debug('deleting %s', self.localpath)
         self.localpath.unlink()
         return 1
 
     def rmdir(self):
         if not self.exists():
-            raise FileNotFoundError(str(self.fullpath))
+            raise FileNotFoundError(str(self.localpath))
         self.localpath.rmdir()
 
     def stat(self):
@@ -655,7 +645,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 class BlobUpath(Upath):  # pylint: disable=abstract-method
     @abc.abstractmethod
     def _blob_exists(self) -> bool:
-        # Unless `self.fullpath` is '/', the path
+        # Unless `self.path` is '/', the path
         # does not end with '/'. This function determines
         # whether a blob with this name exists.
         # If it does, it is equivalent to a *file*.
@@ -667,7 +657,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def recursive_iterdir(self: T) -> Iterator[T]:
         '''Yield blobs under the current "directory".
 
-        For example, if `self.fullpath` is
+        For example, if full path is
 
             /ab/cd/efgh
 
@@ -685,8 +675,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         S3, Azure, GCP all have API's to list blobs
         whose name starts with a given prefix.
         In this case, the prefix should be essentially
-
-            str(self.fullpath) + '/'
+        the fully qualitied name with '/' appended to the end.
         '''
         raise NotImplementedError
 
@@ -757,11 +746,11 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if self.is_dir():
             if exist_ok:
                 return
-            raise FileExistsError(str(self.fullpath))
+            raise FileExistsError(str(self))
         else:
             if not parents:
                 if not self.parent.is_dir():
-                    raise FileNotFoundError(str(self.parent.fullpath))
+                    raise FileNotFoundError(str(self.parent))
             # There is no need to "create a directory"
             # in a blob store. Just go ahead creating
             # blobs under the "directory".
@@ -782,13 +771,13 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if self.is_file():
             if target.is_file():
                 if overwrite:
-                    raise FileExistsError(str(target.fullpath))
+                    raise FileExistsError(str(target))
                 target.write_bytes(self.read_bytes())
             elif target.is_dir():
                 target = target / self.name
                 if target.is_file():
                     if overwrite:
-                        raise FileExistsError(str(target.fullpath))
+                        raise FileExistsError(str(target))
                 target.write_bytes(self.read_bytes())
             else:
                 target.write_bytes(self.read_bytes())
@@ -803,11 +792,11 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             self.rmdir()
             return target
 
-        raise FileNotFoundError(str(self.fullpath))
+        raise FileNotFoundError(str(self))
 
     def rmdir(self):
         if self.is_dir():
-            raise FileExistsError(str(self.fullpath))
+            raise FileExistsError(str(self))
 
     def upload(self,
                source: Union[str, pathlib.Path, LocalUpath],

@@ -5,10 +5,11 @@ from upathlib import LocalUpath
 
 def test_localupath_init():
     p = LocalUpath()
-    assert p.root == str(pathlib.Path.cwd())
+    assert p._path == str(pathlib.Path.cwd())
     p = LocalUpath('a', 'b', 'c', 'd')
-    assert p.root == '/a'
-    assert str(p.path) == '/b/c/d'
+    assert p.root == LocalUpath(root='/')
+    assert str(p.path) == str(pathlib.Path(
+        pathlib.Path.cwd(), 'a', 'b', 'c', 'd'))
 
 
 def test_localupath():
@@ -29,15 +30,15 @@ def test_localupath():
     with p.joinpath('abc.txt').lock() as f:
         assert f.read_text() == 'abcd'
 
-    assert p.root == '/tmp/upathlib_local'
-    p.cd('a')
-    assert p.root == '/tmp/upathlib_local/a'
+    assert p._path == '/tmp/upathlib_local'
+    p /= 'a'
+    assert p._path == '/tmp/upathlib_local/a'
     assert not p.exists()
     p.mkdir()
     assert p.exists()
     p.joinpath('x.data').write_bytes(b'x')
-    p.cd('..')
-    assert p.root == '/tmp/upathlib_local'
+    p /= '..'
+    assert p._path == '/tmp/upathlib_local'
     assert p.joinpath('a', 'x.data').read_bytes() == b'x'
 
 
@@ -49,12 +50,13 @@ def test_copy():
     target = LocalUpath('/tmp/upath-test-target')
     target.mkdir(parents=True, exist_ok=True)
     target.clear()
-    target.rmdir()
 
     local_file = source / 'testfile'
     local_file.write_text('abc', overwrite=True)
 
     target.copy_in(local_file)
+    assert (target / 'testfile').read_text() == 'abc'
+
     target.joinpath('samplefile').copy_in(local_file)
 
     assert sorted(target.iterdir()) == [
