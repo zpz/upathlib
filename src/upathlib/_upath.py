@@ -217,9 +217,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def clear(self):
         '''Clear all contents of the directory, but keep the directory.
 
-        If the path does not exist, and `missing_ok` is False,
-        raise FileNotFoundError.
-
         If the path is a file, raise NotADirectoryError.
         '''
         for p in self.iterdir():
@@ -228,7 +225,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def copy_in(self,
                 source: Union[str, pathlib.Path, Upath],
                 *,
-                overwrite: bool = False) -> int:
+                exist_action: str = None) -> int:
         '''Opposite of `cp`. This is like "import" or "upload".'''
         if isinstance(source, str):
             source = pathlib.Path(source)
@@ -236,14 +233,16 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             source = LocalUpath('/', str(source.absolute()))
         else:
             assert isinstance(source, Upath)
-        return source.copy_out(self, overwrite=overwrite)
+        return source.copy_out(self, exist_action=exist_action)
 
     def copy_out(self,
                  target: Union[str, pathlib.Path, Upath],
                  *,
-                 overwrite: bool = False) -> int:
+                 exist_action: str = None) -> int:
         '''Copy the file or directory as or into the specified `target`.
         Return number of files copied.
+
+        `exist_action`: main about file rather than directory.
 
         This provides a fallback implementation.
         Subclasses should provide more efficient implementations
@@ -263,37 +262,43 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if target == self:
             return 0
 
-        if target.is_dir():
-            target = target / self.name
-        if target.is_file():
-            if not overwrite:
-                # TODO:
-                # In cloud blobstores, this may not be a problem.
-                raise FileExistsError(str(target))
-            target.rm()
+        if exist_action is None:
+            exist_action = 'raise'
         else:
-            assert not target.exists()
+            assert exist_action in ('raise', 'skip', 'overwrite')
+
+        if target.is_dir() or str(target.path) == '/':
+            target = target / self.name
 
         if self.is_file():
-            target.write_bytes(self.read_bytes())
+            if target.is_file():
+                if exist_action == 'raise':
+                    raise FileExistsError(str(target))
+                if exist_action == 'skip':
+                    return 0
+                target.write_bytes(self.read_bytes(), overwrite=True)
+                return 1
+            if target.is_dir():
+                # Do not delete.
+                raise FileExistsError(str(target))
+            target.write_bytes(self.read_bytes(), overwrite=True)
             return 1
+
+        if not self.is_dir():
+            return 0
+
+        if target.is_file():
+            if exist_action == 'overwrite':
+                target.rm()
+            else:
+                # Either 'raise' or 'skip'.
+                raise FileExistsError(str(target))
 
         n = 0
         for s in self.iterdir():
-            name = s.name
-            if s.is_file():
-                # If `overwrite` is True, existing target files
-                # are overwritten. Otherwise, they are skipped.
-                # If `overwrite` is False, existing target files
-                # will cause exceptions.
-                if not overwrite and (target / name).is_file():
-                    k = 0
-                else:
-                    s.copy_out(target / name, overwrite=overwrite)
-                    k = 1
-            else:
-                k = s.copy_out(target / name, overwrite=overwrite)
+            k = s.copy_out(target / s.name, exist_action=exist_action)
             n += k
+
         return n
 
     def cp(self: T, target: str) -> T:
@@ -477,6 +482,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             k += 1
 
         if self.is_dir():
+            if self._home == '/' and self._path == '/':
+                raise UnsupportedOperation(
+                    "`rmrf` not allowed on root directory")
             for v in self.iterdir():
                 n = v.rmrf()
                 k += n
@@ -691,8 +699,8 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def download(self,
                  target: Union[str, pathlib.Path, LocalUpath],
                  *,
-                 overwrite: bool = False) -> int:
-        return self.copy_out(target, overwrite=overwrite)
+                 exist_action: str = None) -> int:
+        return self.copy_out(target, exist_action=exist_action)
 
     def exists(self):
         if self._blob_exists():
@@ -804,5 +812,5 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def upload(self,
                source: Union[str, pathlib.Path, LocalUpath],
                *,
-               overwrite: bool = False) -> int:
-        return self.copy_in(source, overwrite=overwrite)
+               exist_action: str = None) -> int:
+        return self.copy_in(source, exist_action=exist_action)

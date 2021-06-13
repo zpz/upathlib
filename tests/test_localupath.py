@@ -39,3 +39,24 @@ def test_localupath():
     p.cd('..')
     assert p.root == '/tmp/upathlib_local'
     assert p.joinpath('a', 'x.data').read_bytes() == b'x'
+
+
+def test_copy():
+    source = LocalUpath('/tmp/upath-test-source')
+    source.mkdir(parents=True, exist_ok=True)
+    source.clear()
+
+    target = LocalUpath('/tmp/upath-test-target')
+    target.mkdir(parents=True, exist_ok=True)
+    target.clear()
+    target.rmdir()
+
+    local_file = source / 'testfile'
+    local_file.write_text('abc', overwrite=True)
+
+    target.copy_in(local_file)
+    target.joinpath('samplefile').copy_in(local_file)
+
+    assert sorted(target.iterdir()) == [
+        target / 'samplefile', target / 'testfile'
+    ]
