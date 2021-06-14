@@ -7,7 +7,6 @@ def test_localupath_init():
     p = LocalUpath()
     assert p._path == str(pathlib.Path.cwd())
     p = LocalUpath('a', 'b', 'c', 'd')
-    assert p.root == LocalUpath(root='/')
     assert str(p.path) == str(pathlib.Path(
         pathlib.Path.cwd(), 'a', 'b', 'c', 'd'))
 

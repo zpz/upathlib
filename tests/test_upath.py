@@ -40,27 +40,24 @@ class MyUpath(Upath):
 
 
 def test_upath():
-    p = MyUpath('abc/def/', root='/')
-    assert p._root == '/'
-    assert p.root == MyUpath(root=p._root)
+    p = MyUpath('abc/def/')
     assert p.path == pathlib.PurePosixPath('/abc/def')
-    assert repr(p) == "MyUpath('abc/def', root='/')"
+    assert repr(p) == "MyUpath('/abc/def')"
     print('hash:', hash(p))
 
-    p = MyUpath('x/y/z', root='/abc/def')
+    p = MyUpath('x/y/z')
     assert p.path == pathlib.PurePosixPath('/x/y/z')
-    assert p.root == MyUpath(root='/abc/def')
-    assert repr(p) == "MyUpath('x/y/z', root='/abc/def')"
+    assert repr(p) == "MyUpath('/x/y/z')"
     print('hash:', hash(p))
 
 
 def test_upath_joinpath():
-    p = MyUpath('abc/def/', 'x/y', root='/')
+    p = MyUpath('abc/def/', 'x/y')
     pp = p / 'ab.txt'
     assert str(pp.path) == '/abc/def/x/y/ab.txt'
 
     pp = p.joinpath('../a/b.txt')
-    assert pp == MyUpath('abc/def', 'x/a/b.txt', root='/')
+    assert pp == MyUpath('abc/def', 'x/a/b.txt')
     assert pp.name == 'b.txt'
     assert pp.suffix == '.txt'
 
@@ -72,7 +69,7 @@ def test_upath_joinpath():
 
 
 def test_upath_cd():
-    p = MyUpath('abc/def', root='/')
+    p = MyUpath('abc/def')
     assert p.path == pathlib.PurePosixPath('/abc/def')
     p /= 'xy/z'
     assert str(p.path) == '/abc/def/xy/z'
@@ -84,8 +81,7 @@ def test_upath_cd():
 
 
 def test_upath_compare():
-    assert MyUpath('abc/def', root='/') / \
-        'x/y/z' == MyUpath('/abc/def/x/y', 'z', root='/')
-    assert MyUpath('abc/def', root='/') < MyUpath('abc/def', 'x', root='/')
-    assert MyUpath('abc/def/x', 'y/z',
-                   root='/') > MyUpath('abc/def', 'x/y', root='/')
+    assert MyUpath('abc/def') / \
+        'x/y/z' == MyUpath('/abc/def/x/y', 'z')
+    assert MyUpath('abc/def') < MyUpath('abc/def', 'x')
+    assert MyUpath('abc/def/x', 'y/z') > MyUpath('abc/def', 'x/y')
