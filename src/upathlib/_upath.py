@@ -434,8 +434,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         but keeps the directory itself. Also, `clear` does not work
         on a file.
         '''
-        # Subclass may enforce conditions e.g. this can not be
-        # conducted at the very root, for safty reasons.
+        if self._path == '/':
+            raise UnsupportedOperation("`rmrf` not allowed on root directory")
+
         k = 0
         if self.is_file():
             self.rm()
@@ -592,11 +593,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         if not self.exists():
             raise FileNotFoundError(str(self.localpath))
         self.localpath.rmdir()
-
-    def rmrf(self):
-        if self._path == '/':
-            raise UnsupportedOperation("`rmrf` not allowed on root directory")
-        return super().rmrf()
 
     def stat(self):
         return self.localpath.stat()
