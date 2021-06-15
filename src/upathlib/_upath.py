@@ -173,6 +173,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         return n
 
+    # TODO: use multiple threads.
     def copy_to(self,
                 target: Union[str, pathlib.Path, Upath],
                 *,
@@ -418,6 +419,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         k = 0
         if self.is_file():
+            logger.info(f'deleting {self}')
             self.rm()
             k += 1
 
@@ -694,9 +696,11 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def exists(self):
         if self._blob_exists():
             return True
-        if self.is_dir():
+        try:
+            next(self.recursive_iterdir())
             return True
-        return False
+        except StopIteration:
+            return False
 
     def is_dir(self):
         '''In a typical blob store, there is no such concept as a
