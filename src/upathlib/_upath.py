@@ -687,6 +687,14 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         # and `exists`.
         raise NotImplementedError
 
+    def clear(self):
+        n = 0
+        for p in self.recursive_iterdir():
+            p.rm()
+            n += 1
+        if n > 0:
+            self._as_dir = True
+
     def download(self,
                  target: Union[str, pathlib.Path, LocalUpath],
                  *,
@@ -738,7 +746,9 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             next(self.recursive_iterdir())
             return True
         except StopIteration:
-            return False
+            if self._blob_exists():
+                return False
+            return None
 
     def is_file(self):
         if self._blob_exists():
@@ -765,7 +775,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
 
     def mkdir(self, *, exist_ok=False):
         if self.is_dir():
-            if exist_ok:
+            if exist_ok or self.is_empty_dir():
                 return
             raise FileExistsError(self)
         else:
@@ -801,9 +811,11 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         raise NotImplementedError
 
     def rmdir(self):
-        if self.is_dir():
+        try:
+            next(self.recursive_iterdir())
             raise FileExistsError(self)
-        self._as_dir = False
+        except StopIteration:
+            self._as_dir = False
 
     def upload(self,
                source: Union[str, pathlib.Path, LocalUpath],
