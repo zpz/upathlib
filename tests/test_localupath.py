@@ -43,20 +43,20 @@ def test_localupath():
 
 def test_copy():
     source = LocalUpath('/tmp/upath-test-source')
-    source.mkdir(parents=True, exist_ok=True)
+    source.mkdir(exist_ok=True)
     source.clear()
 
     target = LocalUpath('/tmp/upath-test-target')
-    target.mkdir(parents=True, exist_ok=True)
+    target.mkdir(exist_ok=True)
     target.clear()
 
     local_file = source / 'testfile'
     local_file.write_text('abc', overwrite=True)
 
-    target.copy_in(local_file)
+    target.copy_from(local_file)
     assert (target / 'testfile').read_text() == 'abc'
 
-    target.joinpath('samplefile').copy_in(local_file)
+    target.joinpath('samplefile').copy_from(local_file)
 
     assert sorted(target.iterdir()) == [
         target / 'samplefile', target / 'testfile'
