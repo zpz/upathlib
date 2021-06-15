@@ -685,38 +685,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         # and `exists`.
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def recursive_iterdir(self: T) -> Iterator[T]:
-        '''Yield blobs under the current "directory".
-
-        For example, if self._path is
-
-            /ab/cd/efgh
-
-        then yield blobs named like
-
-            /ab/cd/efgh/j
-            /ab/cd/efgh/k/p.txt
-            /ab/cd/efgh/o/p/q.data
-
-        However, do not yield blobs named like
-
-            /ab/cd/efghij
-            /ab/cd/efghx/y
-
-        S3, Azure, GCP all have API's to list blobs
-        whose name starts with a given prefix.
-        In this case, the prefix should be essentially
-        `self._path` with '/' appended to the end.
-        '''
-        raise NotImplementedError
-
-    async def a_download(self, *args, **kwargs):
-        return await self._a_do(self.download, *args, **kwargs)
-
-    async def a_upload(self, *args, **kwargs):
-        return await self._a_do(self.upload, *args, **kwargs)
-
     def download(self,
                  target: Union[str, pathlib.Path, LocalUpath],
                  *,
@@ -802,6 +770,32 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             # in a blob store. Just go ahead creating
             # blobs under the "directory".
 
+    @abc.abstractmethod
+    def recursive_iterdir(self: T) -> Iterator[T]:
+        '''Yield blobs under the current "directory".
+
+        For example, if self._path is
+
+            /ab/cd/efgh
+
+        then yield blobs named like
+
+            /ab/cd/efgh/j
+            /ab/cd/efgh/k/p.txt
+            /ab/cd/efgh/o/p/q.data
+
+        However, do not yield blobs named like
+
+            /ab/cd/efghij
+            /ab/cd/efghx/y
+
+        S3, Azure, GCP all have API's to list blobs
+        whose name starts with a given prefix.
+        In this case, the prefix should be essentially
+        `self._path` with '/' appended to the end.
+        '''
+        raise NotImplementedError
+
     def rmdir(self):
         if self.is_dir():
             raise FileExistsError(self)
@@ -812,3 +806,9 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                *,
                exist_action: str = None) -> int:
         return self.copy_from(source, exist_action=exist_action)
+
+    async def a_download(self, *args, **kwargs):
+        return await self._a_do(self.download, *args, **kwargs)
+
+    async def a_upload(self, *args, **kwargs):
+        return await self._a_do(self.upload, *args, **kwargs)
