@@ -474,10 +474,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         `overwrite`: overwrite existing file?
             If False, and file exists, raises FileExistsError.
 
-        If the object pointed to is a directory, then it may or
-        may not be a problem depending on the file system.
-        For example, with a cloud blobstore, this may not be a problem.
-        With a local file system, this will raise IsADirectoryError.
+        If the object pointed to is a directory, raise IsADirectoryError.
         '''
         raise NotImplementedError
 
@@ -820,6 +817,12 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         '''
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def read_bytes(self):
+        if not self.is_file():
+            raise FileNotFoundError(self)
+        # subclass implementation should pick up here.
+
     def rmdir(self):
         try:
             next(self.recursive_iterdir())
@@ -836,10 +839,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def _validate_file_name(self):
         # Make sure that a path name can't be both a file
         # and a directory.
-        #
-        # Implementation of `write_bytes` in a subclass
-        # should call this function before performing
-        # the actural writing.
         if self.is_dir():
             raise IsADirectoryError(self)
         if self._path == '/':
@@ -849,6 +848,16 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             if p.is_file():
                 raise FileExistsError(p)
             p = p.parent
+
+    @abc.abstractmethod
+    def write_bytes(self, data, *, overwrite=False):
+        self._validate_file_name()
+        if self.is_file():
+            if overwrite:
+                self.rm()
+            else:
+                raise FileExistsError(self)
+        # subclass implementation should pick up here.
 
     async def a_download(self, *args, **kwargs):
         return await self._a_do(self.download, *args, **kwargs)
