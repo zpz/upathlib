@@ -792,6 +792,12 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             return self
 
     @abc.abstractmethod
+    def read_bytes(self):
+        if not self.is_file():
+            raise FileNotFoundError(self)
+        # subclass implementation should pick up here.
+
+    @abc.abstractmethod
     def recursive_iterdir(self: T) -> Iterator[T]:
         '''Yield blobs under the current "directory".
 
@@ -817,12 +823,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         '''
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def read_bytes(self):
-        if not self.is_file():
-            raise FileNotFoundError(self)
-        # subclass implementation should pick up here.
-
     def rmdir(self):
         try:
             next(self.recursive_iterdir())
@@ -836,7 +836,8 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                exist_action: str = None) -> int:
         return self.copy_from(source, exist_action=exist_action)
 
-    def _validate_file_name(self):
+    @abc.abstractmethod
+    def write_bytes(self, data, *, overwrite=False):
         # Make sure that a path name can't be both a file
         # and a directory.
         if self.is_dir():
@@ -849,9 +850,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                 raise FileExistsError(p)
             p = p.parent
 
-    @abc.abstractmethod
-    def write_bytes(self, data, *, overwrite=False):
-        self._validate_file_name()
         if self.is_file():
             if overwrite:
                 self.rm()
