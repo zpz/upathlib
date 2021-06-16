@@ -56,27 +56,27 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def __str__(self) -> str:
         return self._path
 
-    def __eq__(self, other) -> Union[NotImplemented, bool]:
+    def __eq__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
         return self._path == other._path
 
-    def __lt__(self, other) -> Union[NotImplemented, bool]:
+    def __lt__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
         return self._path < other._path
 
-    def __le__(self, other) -> Union[NotImplemented, bool]:
+    def __le__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
         return self._path <= other._path
 
-    def __gt__(self, other) -> Union[NotImplemented, bool]:
+    def __gt__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
         return self._path > other._path
 
-    def __ge__(self, other) -> Union[NotImplemented, bool]:
+    def __ge__(self, other) -> bool:
         if (other.__class__ is not self.__class__):
             return NotImplemented
         return self._path >= other._path
