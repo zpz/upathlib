@@ -292,8 +292,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @abc.abstractmethod
-    def mkdir(self, *, exist_ok: bool = False) -> None:
-        '''Create a new directory at this given path.
+    def mkdir(self: T, *, exist_ok: bool = False) -> T:
+        '''Create a new directory at this given path. Return self.
 
         If the directory already exists, and `exist_ok` is False,
         raise FileExistsError.'''
@@ -626,6 +626,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def mkdir(self, *, exist_ok=False):
         self.localpath.mkdir(parents=True, exist_ok=exist_ok)
+        return self
 
     def mv(self, target, *, overwrite=False):
         if isinstance(target, str):
@@ -776,13 +777,22 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def mkdir(self, *, exist_ok=False):
         if self.is_dir():
             if exist_ok or self.is_empty_dir():
-                return
+                return self
             raise FileExistsError(self)
         else:
+            # Make sure that a path name can't be both a file
+            # and a directory.
+            p = self
+            while p._path != '/':
+                if p.is_file():
+                    raise FileExistsError(p)
+                p = p.parent
+
             self._as_dir = True
             # There is no need to "create a directory"
             # in a blob store. Just go ahead creating
             # blobs under the "directory".
+            return self
 
     @abc.abstractmethod
     def recursive_iterdir(self: T) -> Iterator[T]:
@@ -822,6 +832,23 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                *,
                exist_action: str = None) -> int:
         return self.copy_from(source, exist_action=exist_action)
+
+    def _validate_file_name(self):
+        # Make sure that a path name can't be both a file
+        # and a directory.
+        #
+        # Implementation of `write_bytes` in a subclass
+        # should call this function before performing
+        # the actural writing.
+        if self.is_dir():
+            raise IsADirectoryError(self)
+        if self._path == '/':
+            raise IsADirectoryError(self)
+        p = self.parent
+        while p._path != '/':
+            if p.is_file():
+                raise FileExistsError(p)
+            p = p.parent
 
     async def a_download(self, *args, **kwargs):
         return await self._a_do(self.download, *args, **kwargs)
