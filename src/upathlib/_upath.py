@@ -823,6 +823,25 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         '''
         raise NotImplementedError
 
+    @abc.abstractmethod
+    def rm(self, *, missing_ok: bool = False) -> int:
+        '''Removes the file pointed to by `self`.
+        Return number of files removed.
+
+        If the file does not exist, and `missing_ok` is False,
+        raise FileNotFoundError.
+
+        If `self` is a directory, raise IsADirectoryError.
+        In this case, use `rmdir` instead.
+        '''
+        if not self.is_file():
+            if missing_ok:
+                return 0
+            if self.is_dir():
+                raise IsADirectoryError(self)
+            raise FileNotFoundError(self)
+        # subclass implementation continue from here.
+
     def rmdir(self):
         try:
             next(self.recursive_iterdir())
