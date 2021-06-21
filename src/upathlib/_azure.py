@@ -2,9 +2,9 @@ import time
 import threading
 from contextlib import contextmanager
 from datetime import datetime
+from dateutil.parser import parse
 from typing import Optional
 
-from dateutil.parser import parse
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
