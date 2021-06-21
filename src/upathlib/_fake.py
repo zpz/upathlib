@@ -7,6 +7,8 @@ class ResourceNotFoundError(Exception):
 
 
 class FakeBlobStore:
+    '''A in-memory blobstore for illustration purposes'''
+
     def __init__(self):
         self._data = {
             'bucket_a': {},
@@ -46,6 +48,12 @@ _store = FakeBlobStore()
 
 
 class FakeBlobUpath(BlobUpath):
+    '''This Upath implementation for the FakeBlobstore
+    can be used for testing basic functionalities.
+
+    This also showcases the essential methods that
+    a concrete subclass of BlobUpath needs to implement.'''
+
     def __init__(self, *parts: str, bucket: str):
         super().__init__(*parts, bucket=bucket)
         self._bucket = bucket

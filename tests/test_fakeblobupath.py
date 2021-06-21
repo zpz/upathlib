@@ -1,6 +1,6 @@
 import pytest
 from upathlib import LocalUpath
-from upathlib._fake_cloud import FakeBlobUpath
+from upathlib._fake import FakeBlobUpath
 
 
 def test_1():
