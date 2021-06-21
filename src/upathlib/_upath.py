@@ -687,7 +687,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
 
     def clear(self):
         n = 0
-        for p in self.recursive_iterdir():
+        for p in self._recursive_iterdir():
             p.rm()
             n += 1
         if n > 0:
@@ -703,7 +703,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if self._blob_exists():
             return True
         try:
-            next(self.recursive_iterdir())
+            next(self._recursive_iterdir())
             return True
         except StopIteration:
             return False
@@ -741,7 +741,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if self._as_dir:
             return True
         try:
-            next(self.recursive_iterdir())
+            next(self._recursive_iterdir())
             return True
         except StopIteration:
             if self._blob_exists():
@@ -763,7 +763,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             p0 += '/'
         np0 = len(p0)
         subdirs = set()
-        for p in self.recursive_iterdir():
+        for p in self._recursive_iterdir():
             tail = p._path[np0:]
             if '/' in tail:
                 tail = tail[: tail.find('/')]
@@ -798,7 +798,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         # subclass implementation should pick up here.
 
     @abc.abstractmethod
-    def recursive_iterdir(self: T) -> Iterator[T]:
+    def _recursive_iterdir(self: T) -> Iterator[T]:
         '''Yield blobs under the current "directory".
 
         For example, if self._path is
@@ -820,6 +820,14 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         whose name starts with a given prefix.
         In this case, the prefix should be essentially
         `self._path` with '/' appended to the end.
+
+        This classes lists `_recursive_iterdir` as abstract,
+        while `iterdir` is implemented using `_recursive_iterdir`.
+        A concrete subclass may choose to implement `_recursive_iterdir`
+        (leaving `iterdir` to the implementation provided in this class),
+        or `iterdir` (and `_recursive_iterdir` implemented using `iterdir`),
+        or both `iterdir` and `_recrusive_iterdir` separately, depending
+        on the capabilities of the API of the storage engine.
         '''
         raise NotImplementedError
 
@@ -844,7 +852,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
 
     def rmdir(self):
         try:
-            next(self.recursive_iterdir())
+            next(self._recursive_iterdir())
             raise FileExistsError(self)
         except StopIteration:
             self._as_dir = False
@@ -859,6 +867,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def write_bytes(self, data, *, overwrite=False):
         # Make sure that a path name can't be both a file
         # and a directory.
+        # TODO: this logic makes too many service calls.
         if self.is_dir():
             raise IsADirectoryError(self)
         if self._path == '/':

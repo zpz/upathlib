@@ -70,7 +70,7 @@ class FakeBlobUpath(BlobUpath):
         super().read_bytes()
         return _store.read_bytes(self._bucket, self._path)
 
-    def recursive_iterdir(self):
+    def _recursive_iterdir(self):
         p = self._path
         if not p.endswith('/'):
             p += '/'

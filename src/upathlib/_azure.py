@@ -1,5 +1,7 @@
 import time
+import threading
 from contextlib import contextmanager
+from datetime import datetime
 from typing import Optional
 
 from dateutil.parser import parse
@@ -8,6 +10,10 @@ from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
 
 from ._upath import BlobUpath
+
+
+class LockAcquisitionTimeoutError(TimeoutError):
+    pass
 
 
 class AzureBlobUpath(BlobUpath):
@@ -36,30 +42,64 @@ class AzureBlobUpath(BlobUpath):
         self._blob_client: Optional[BlobClient] = None
         self._lease_id = None
         self._lock_count = 0
+        self._t_renew_lease = None
+        self._t_renew_lease_stopped = False
 
     def _blob_exists(self):
         return self._blob_client.exists()
 
+    def iterdir(self):
+        with self._provide_container_client():
+            prefix = self._path.lstrip('/') + '/'
+            k = len(prefix)
+            for p in self._container_client.walk_blobs(
+                    name_starts_with=prefix):
+                yield self / p.name[k:]
+
     @contextmanager
     def lock(self, *, wait=60):
-        t0 = time.perf_counter()
         with self._provide_blob_client():
-            while True:
-                if self._lease_id is not None:
-                    self._lock_count += 1
-                else:
-                    pass
-                break
+            if self._lease_id is None:
+                t0 = time.perf_counter()
+                while True:
+                    try:
+                        t1 = time.perf_counter()
+                        if t1 - t0 > wait:
+                            raise LockAcquisitionTimeoutError(t1 - t0)
+                        self._lease_id = self._blob_client.acquire_lease(
+                            lease_duration=60,
+                            timeout=t1 - t0).id
+                        self._t_renew_lease = threading.Thread(
+                            target=self._renew_lease)
+                        self._t_renew_lease.start()
+                        break
+                    except ResourceNotFoundError:
+                        try:
+                            self.write_text(
+                                datetime.utcnow().isoformat(), overwrite=False)
+                        except ResourceExistsError:
+                            # Somehow another worker has just created this blob.
+                            # Continue to wait.
+                            continue
+            self._lock_count += 1
             try:
                 yield self
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
+                    self._t_renew_lease_stopped = True
+                    self._t_renew_lease.join()
+                    self._t_renew_lease_stopped = False
+                    self._t_renew_lease = None
                     self.rm()
                     BlobLeaseClient(self._blob_client,
                                     lease_id=self._lease_id).release()
+                    # TODO:
+                    # is the order of the two statements above correct?
+                    self._lease_id = None
+                    self._lock_count = 0
 
-    @contextmanager
+    @ contextmanager
     def _provide_blob_client(self):
         if self._blob_client is None:
             bc = BlobClient(
@@ -77,7 +117,7 @@ class AzureBlobUpath(BlobUpath):
         else:
             yield
 
-    @contextmanager
+    @ contextmanager
     def _provide_container_client(self):
         if self._container_client is None:
             cc = ContainerClient(
@@ -101,13 +141,25 @@ class AzureBlobUpath(BlobUpath):
             except ResourceNotFoundError as e:
                 raise FileNotFoundError(self) from e
 
-    def recursive_iterdir(self):
+    def _recursive_iterdir(self):
         with self._provide_container_client():
             prefix = self._path.lstrip('/') + '/'
             k = len(prefix)
             for p in self._container_client.list_blobs(
                     name_starts_with=prefix):
                 yield self / p.name[k:]
+
+    def _renew_lease(self):
+        t0 = time.perf_counter()
+        while True:
+            time.sleep(0.012)
+            if self._t_renew_lease_stopped:
+                return
+            if time.perf_counter() - t0 >= 57:
+                # Renew ahead of the lease duration 60 seconds.
+                BlobLeaseClient(self._blob_client,
+                                lease_id=self._lease_id).renew()
+                t0 = time.perf_counter()
 
     def rm(self, missing_ok=False):
         with self._provide_blob_client():
@@ -130,5 +182,11 @@ class AzureBlobUpath(BlobUpath):
         with self._provide_blob_client():
             super().write_bytes(data, overwrite=overwrite)
             nbytes = len(data)
-            self._blob_client.upload_blob(data, overwrite=overwrite)
+            try:
+                self._blob_client.upload_blob(
+                    data,
+                    overwrite=overwrite,
+                    lease=self._lease_id)
+            except ResourceExistsError as e:
+                raise FileExistsError(self) from e
             return nbytes
