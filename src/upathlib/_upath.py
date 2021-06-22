@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='Upath')
 
 
+class LockAcquisitionTimeoutError(TimeoutError):
+    pass
+
+
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     _executor: ThreadPoolExecutor = None
 
@@ -282,12 +286,36 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @contextlib.contextmanager
     @abc.abstractmethod
-    def lock(self: T, *, wait: float = 60) -> T:
+    def lock(self, *, wait: float = 60):
         '''Lock the file pointed to, in order to have exclusive access.
-        Return self.
 
-        File locking is a tricky matter. The semantics of this method
-        will likely see some iterations.
+        `wait`: if the lock can't be acquired within *wait* seconds,
+        raise `LockAcquisitionTimeoutError`.
+
+        This is a "mandatory lock", as opposed to an "advisory lock".
+        However, this API does not specify that the locked file
+        can be used for its content. (A subclass may provide that capability
+        if it so wishes.) The design use case is for this lock
+        to be used in implementing a (cooperative) "code lock".
+
+        The `yield` statement is not required to yield anything in particular,
+        that is, it may be simply
+
+            yield
+
+        rather than, say,
+
+            yield self
+
+        One way to achive cooperative locking on a file via this mandatory
+        lock is like this:
+
+            f = Upath('abc.txt')
+            with f.with_suffix('.txt.lock').lock():
+                ...  # use `f` with exclusive access
+
+        Some storage engines may not provide the capability to implement
+        this lock.
         '''
         raise NotImplementedError
 
@@ -538,6 +566,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         for p in self.iterdir():
             yield p
 
+    @contextlib.asynccontextmanager
+    async def a_lock(self, *, wait: float = 60):
+        # This implementation may be suboptimal.
+        # Subclass should provide a better implementation
+        # if available.
+        with self.lock(wait=wait) as obj:
+            yield obj
+
     async def a_mkdir(self, *args, **kwargs):
         return await self._a_do(self.mkdir, *args, **kwargs)
 
@@ -613,11 +649,12 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):
-        # TODO: this does not lock `self` itself. Need more thinking.
-        lock = filelock.FileLock(str(self.localpath) + '.__lock__')
+        lock = filelock.FileLock(str(self.localpath))
         try:
             lock.acquire(timeout=wait)
-            yield self
+            yield
+        except filelock.Timeout as e:
+            raise LockAcquisitionTimeoutError(str(self)) from e
         finally:
             lock.release()
 

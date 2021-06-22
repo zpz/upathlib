@@ -26,8 +26,8 @@ def test_localupath():
     p.joinpath('abc.txt').write_text('abcd', overwrite=True)
     assert (p / 'abc.txt').read_text() == 'abcd'
 
-    with p.joinpath('abc.txt').lock() as f:
-        assert f.read_text() == 'abcd'
+    with p.joinpath('abc.txt.lock').lock():
+        assert p.joinpath('abc.txt').read_text() == 'abcd'
 
     assert p._path == '/tmp/upathlib_local'
     p /= 'a'

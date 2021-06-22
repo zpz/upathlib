@@ -9,11 +9,7 @@ from typing import Optional
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
 
-from ._upath import BlobUpath
-
-
-class LockAcquisitionTimeoutError(TimeoutError):
-    pass
+from ._upath import BlobUpath, LockAcquisitionTimeoutError
 
 
 class AzureBlobUpath(BlobUpath):
@@ -65,7 +61,8 @@ class AzureBlobUpath(BlobUpath):
                     try:
                         t1 = time.perf_counter()
                         if t1 - t0 > wait:
-                            raise LockAcquisitionTimeoutError(t1 - t0)
+                            raise LockAcquisitionTimeoutError(
+                                str(self), t1 - t0)
                         self._lease_id = self._blob_client.acquire_lease(
                             lease_duration=60,
                             timeout=t1 - t0).id
@@ -83,7 +80,7 @@ class AzureBlobUpath(BlobUpath):
                             continue
             self._lock_count += 1
             try:
-                yield self
+                yield
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
