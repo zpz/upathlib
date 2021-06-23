@@ -41,6 +41,49 @@ class AzureBlobUpath(BlobUpath):
         self._t_renew_lease = None
         self._t_renew_lease_stopped = False
 
+    def __repr__(self) -> str:
+        return "{}('{}', container_name='{}'".format(
+            self.__class__.__name__, self._path, self._container_name
+        )
+
+    def __str__(self) -> str:
+        return f"{self._container_name}://{self._path}"
+
+    def __eq__(self, other) -> bool:
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if (other._container_name != self._container_name):
+            return NotImplemented
+        return self._path == other._path
+
+    def __lt__(self, other) -> bool:
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if (other._container_name != self._container_name):
+            return NotImplemented
+        return self._path < other._path
+
+    def __le__(self, other) -> bool:
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if (other._container_name != self._container_name):
+            return NotImplemented
+        return self._path <= other._path
+
+    def __gt__(self, other) -> bool:
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if (other._container_name != self._container_name):
+            return NotImplemented
+        return self._path > other._path
+
+    def __ge__(self, other) -> bool:
+        if (other.__class__ is not self.__class__):
+            return NotImplemented
+        if (other._container_name != self._container_name):
+            return NotImplemented
+        return self._path >= other._path
+
     def _blob_exists(self):
         return self._blob_client.exists()
 
