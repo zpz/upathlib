@@ -67,8 +67,10 @@ class FakeBlobUpath(BlobUpath):
         yield self
 
     def read_bytes(self):
-        super().read_bytes()
-        return _store.read_bytes(self._bucket, self._path)
+        try:
+            return _store.read_bytes(self._bucket, self._path)
+        except ResourceNotFoundError as e:
+            raise FileNotFoundError(self) from e
 
     def _recursive_iterdir(self):
         p = self._path
@@ -77,7 +79,13 @@ class FakeBlobUpath(BlobUpath):
         return _store.list_blobs(self._bucket, p)
 
     def rm(self, missing_ok=False):
-        super().rm(missing_ok=missing_ok)
+        if not self.is_file():
+            if missing_ok:
+                return 0
+            if self.is_dir():
+                raise IsADirectoryError(self)
+            raise FileNotFoundError(self)
+
         _store.delete_blob(self._bucket, self._path)
         return 1
 

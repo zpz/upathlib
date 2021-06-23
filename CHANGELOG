@@ -1,3 +1,9 @@
+Release 0.3.4
+=============
+
+- Add implementations for Azure and GCP blob stores.
+
+
 Release 0.2.2
 =============
 
