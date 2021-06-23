@@ -1,3 +1,4 @@
+import contextlib
 from io import BufferedReader
 from google.oauth2 import service_account
 from google.cloud import storage
@@ -7,7 +8,9 @@ from ._upath import BlobUpath
 
 class GcpBlobUpath(BlobUpath):
     def __init__(self, *parts: str, bucket_name: str, account_info: dict):
-        super().__init__(*parts, bucket_name=bucket_name, account_info=account_info)
+        super().__init__(*parts,
+                         bucket_name=bucket_name,
+                         account_info=account_info)
         gcp_cred = service_account.Credentials.from_service_account_info(
             account_info)
         self._client = storage.Client(
@@ -62,8 +65,11 @@ class GcpBlobUpath(BlobUpath):
     def _blob_exists(self) -> bool:
         return self._bucket.blob(self._path.lstrip('/')).exists()
 
+    @contextlib.contextmanager
+    def lock(self, *, wait=60):
+        raise NotImplementedError
+
     def read_bytes(self):
-        super().read_bytes()
         b = self._bucket.get_blob(self._path.lstrip('/'))
         if b is None:
             raise FileNotFoundError(self)
@@ -76,13 +82,16 @@ class GcpBlobUpath(BlobUpath):
             yield self / p.name[k:]
 
     def rm(self, missing_ok=False):
-        super().rm(missing_ok=missing_ok)
-        b = self._bucket.blob(self._path.lstrip('/'))
-        if not b.exists():
+        if not self.is_file():
             if missing_ok:
-                return
+                return 0
+            if self.is_dir():
+                raise IsADirectoryError(self)
             raise FileNotFoundError(self)
+
+        b = self._bucket.blob(self._path.lstrip('/'))
         b.delete()
+        return 1
 
     def stat(self):
         # place holder

@@ -85,7 +85,8 @@ class AzureBlobUpath(BlobUpath):
         return self._path >= other._path
 
     def _blob_exists(self):
-        return self._blob_client.exists()
+        with self._provide_blob_client():
+            return self._blob_client.exists()
 
     def iterdir(self):
         with self._provide_container_client():
@@ -94,6 +95,10 @@ class AzureBlobUpath(BlobUpath):
             for p in self._container_client.walk_blobs(
                     name_starts_with=prefix):
                 yield self / p.name[k:]
+
+    # TODO:
+    # `a_lock` needs reimplementation, as the raw thread
+    # will not work with async.
 
     @contextmanager
     def lock(self, *, wait=60):
@@ -203,7 +208,12 @@ class AzureBlobUpath(BlobUpath):
 
     def rm(self, missing_ok=False):
         with self._provide_blob_client():
-            super().rm(missing_ok=missing_ok)
+            if not self.is_file():
+                if missing_ok:
+                    return 0
+                if self.is_dir():
+                    raise IsADirectoryError(self)
+                raise FileNotFoundError(self)
             self._blob_client.delete_blob(delete_snapshots='include')
             return 1
 
