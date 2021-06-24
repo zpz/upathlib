@@ -108,12 +108,12 @@ class AzureBlobUpath(BlobUpath):
                 while True:
                     try:
                         t1 = time.perf_counter()
-                        if t1 - t0 > wait:
+                        if t1 - t0 > wait - 1:
                             raise LockAcquisitionTimeoutError(
                                 str(self), t1 - t0)
                         self._lease_id = self._blob_client.acquire_lease(
                             lease_duration=60,
-                            timeout=t1 - t0).id
+                            timeout=wait - (t1 - t0)).id
                         self._t_renew_lease = threading.Thread(
                             target=self._renew_lease)
                         self._t_renew_lease.start()
@@ -200,7 +200,7 @@ class AzureBlobUpath(BlobUpath):
             time.sleep(0.012)
             if self._t_renew_lease_stopped:
                 return
-            if time.perf_counter() - t0 >= 57:
+            if time.perf_counter() - t0 >= 13:
                 # Renew ahead of the lease duration 60 seconds.
                 BlobLeaseClient(self._blob_client,
                                 lease_id=self._lease_id).renew()
