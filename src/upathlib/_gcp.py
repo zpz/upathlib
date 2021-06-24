@@ -17,7 +17,8 @@ class GcpBlobUpath(BlobUpath):
             project=account_info['project_id'],
             credentials=gcp_cred,
         )
-        self._bucket_name = self._client.get_bucket(bucket_name)
+        self._bucket_name = bucket_name
+        self._bucket = self._client.get_bucket(bucket_name)
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}'".format(
