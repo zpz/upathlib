@@ -99,7 +99,18 @@ class GcpBlobUpath(BlobUpath):
         return {}
 
     def write_bytes(self, data, *, overwrite=False):
-        super().write_bytes(data, overwrite=overwrite)
+        # if self.is_dir():
+        #     raise IsADirectoryError(self)
+        if self._path == '/':
+            raise IsADirectoryError(self)
+        # p = self.parent
+        # while p._path != '/':
+        #     if p.is_file():
+        #         raise FileExistsError(p)
+        #     p = p.parent
+
+        nbytes = len(data)
+
         b = self._bucket.blob(self._path.lstrip('/'))
         if b.exists():
             if not overwrite:
@@ -108,3 +119,4 @@ class GcpBlobUpath(BlobUpath):
         if isinstance(data, BufferedReader):
             data = data.read()
         b.upload_from_string(data)
+        return nbytes

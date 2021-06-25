@@ -133,7 +133,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             assert isinstance(source, Upath)
         return source.copy_to(self, exist_action=exist_action)
 
-    def _copy_to_internal(self, target: Upath, *, exist_action: str) -> int:
+    def _copy_to_internal(self, target: Upath, *, exist_action: str, executor: ThreadPoolExecutor) -> int:
         if target == self:
             return 0
 
@@ -181,7 +181,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def copy_to(self,
                 target: Union[str, pathlib.Path, Upath],
                 *,
-                exist_action: str = None) -> int:
+                exist_action: str = None,
+                ) -> int:
         '''Copy the content of the `self` path to the specified `target`
         in another store. Return number of files copied.
 
@@ -227,7 +228,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if target.is_dir():
             target = target / self.name
 
-        return self._copy_to_internal(target, exist_action=exist_action)
+        executor = ThreadPoolExecutor(16)
+        return self._copy_to_internal(
+            target, exist_action=exist_action, executor=executor)
 
     def cp(self: T, target: str, exist_action: str = None) -> T:
         '''Copy the content of the current path to the location
@@ -874,28 +877,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                *,
                exist_action: str = None) -> int:
         return self.copy_from(source, exist_action=exist_action)
-
-    @abc.abstractmethod
-    def write_bytes(self, data, *, overwrite=False):
-        # Make sure that a path name can't be both a file
-        # and a directory.
-        # TODO: this logic makes too many service calls.
-        if self.is_dir():
-            raise IsADirectoryError(self)
-        if self._path == '/':
-            raise IsADirectoryError(self)
-        p = self.parent
-        while p._path != '/':
-            if p.is_file():
-                raise FileExistsError(p)
-            p = p.parent
-
-        if self.is_file():
-            if overwrite:
-                self.rm()
-            else:
-                raise FileExistsError(self)
-        # subclass implementation should pick up here.
 
     async def a_download(self, *args, **kwargs):
         return await self._a_do(self.download, *args, **kwargs)

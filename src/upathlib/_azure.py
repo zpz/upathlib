@@ -107,32 +107,44 @@ class AzureBlobUpath(BlobUpath):
                 t0 = time.perf_counter()
                 while True:
                     try:
+                        self.write_text(
+                            datetime.utcnow().isoformat(), overwrite=True)
+                    except HttpResponseError as e:
+                        if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
+                            # Blob exists and has a lease on it.
+                            # Proceed to next step---acquire a lease.
+                            time.sleep(0.03)
+                        else:
+                            raise
+
+                    lock_acquired = False
+                    while True:
+                        try:
+                            self._lease_id = self._blob_client.acquire_lease(
+                                lease_duration=60,
+                                timeout=1).id
+                            lock_acquired = True
+                            break
+                        except ResourceNotFoundError:
+                            break  # go to the outer looper to write the file.
+                        except HttpResponseError as e:
+                            if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':
+                                # Having a lease held by others. Continue to wait.
+                                pass
+                            else:
+                                raise
+
                         t1 = time.perf_counter()
-                        if t1 - t0 > wait - 1:
-                            raise LockAcquisitionTimeoutError(
-                                str(self), t1 - t0)
-                        self._lease_id = self._blob_client.acquire_lease(
-                            lease_duration=60,
-                            timeout=wait - (t1 - t0)).id
-                        self._t_renew_lease = threading.Thread(
-                            target=self._renew_lease)
-                        self._t_renew_lease.start()
+                        if t1 - t0 >= wait:
+                            raise LockAcquisitionTimeoutError(self, t1 - t0)
+                        time.sleep(0.03)
+
+                    if lock_acquired:
                         break
 
-                    except ResourceNotFoundError:
-                        try:
-                            self.write_text(
-                                datetime.utcnow().isoformat(), overwrite=False)
-                        except (ResourceExistsError, FileExistsError):
-                            # Somehow another worker has just created this blob.
-                            # Continue to wait.
-                            continue
-
-                    except HttpResponseError as e:
-                        if (e.status_code == 409 and e.error_code in
-                                ('lease_already_present', 'LeaseAlreadyPresent')):
-                            continue
-                        raise
+                self._t_renew_lease = threading.Thread(
+                    target=self._renew_lease)
+                self._t_renew_lease.start()
 
             self._lock_count += 1
             try:
@@ -238,7 +250,16 @@ class AzureBlobUpath(BlobUpath):
 
     def write_bytes(self, data, *, overwrite=False):
         with self._provide_blob_client():
-            super().write_bytes(data, overwrite=overwrite)
+            # if self.is_dir():
+            #     raise IsADirectoryError(self)
+            if self._path == '/':
+                raise IsADirectoryError(self)
+            # p = self.parent
+            # while p._path != '/':
+            #     if p.is_file():
+            #         raise FileExistsError(p)
+            #     p = p.parent
+
             nbytes = len(data)
             try:
                 self._blob_client.upload_blob(
