@@ -7,7 +7,7 @@ from typing import Optional
 
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
 
 from ._upath import BlobUpath, LockAcquisitionTimeoutError
 
@@ -118,14 +118,22 @@ class AzureBlobUpath(BlobUpath):
                             target=self._renew_lease)
                         self._t_renew_lease.start()
                         break
+
                     except ResourceNotFoundError:
                         try:
                             self.write_text(
                                 datetime.utcnow().isoformat(), overwrite=False)
-                        except ResourceExistsError:
+                        except (ResourceExistsError, FileExistsError):
                             # Somehow another worker has just created this blob.
                             # Continue to wait.
                             continue
+
+                    except HttpResponseError as e:
+                        if (e.status_code == 409 and e.error_code in
+                                ('lease_already_present', 'LeaseAlreadyPresent')):
+                            continue
+                        raise
+
             self._lock_count += 1
             try:
                 yield
