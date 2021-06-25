@@ -137,10 +137,8 @@ class AzureBlobUpath(BlobUpath):
                     self._t_renew_lease_stopped = False
                     self._t_renew_lease = None
                     self.rm()
-                    BlobLeaseClient(self._blob_client,
-                                    lease_id=self._lease_id).release()
-                    # TODO:
-                    # is the order of the two statements above correct?
+                    # BlobLeaseClient(self._blob_client,
+                    #                 lease_id=self._lease_id).release()
                     self._lease_id = None
                     self._lock_count = 0
 
@@ -214,7 +212,9 @@ class AzureBlobUpath(BlobUpath):
                 if self.is_dir():
                     raise IsADirectoryError(self)
                 raise FileNotFoundError(self)
-            self._blob_client.delete_blob(delete_snapshots='include')
+            self._blob_client.delete_blob(
+                delete_snapshots='include',
+                lease=self._lease_id)
             return 1
 
     def stat(self):
