@@ -6,6 +6,10 @@ class ResourceNotFoundError(Exception):
     pass
 
 
+class ResourceExistsError(Exception):
+    pass
+
+
 class FakeBlobStore:
     '''A in-memory blobstore for illustration purposes'''
 
@@ -15,10 +19,13 @@ class FakeBlobStore:
             'bucket_b': {},
         }
 
-    def write_bytes(self, bucket: str, name: str, data: bytes):
+    def write_bytes(self, bucket: str, name: str, data: bytes, overwrite: bool = False):
         print('write bytes', bucket, name, data)
+        if name in self._data[bucket] and not overwrite:
+            raise ResourceExistsError
         self._data[bucket][name] = data
         print('_data:', self._data)
+        return len(data)
 
     def read_bytes(self, bucket: str, name: str):
         z = self._data[bucket]
@@ -94,5 +101,8 @@ class FakeBlobUpath(BlobUpath):
         return {}
 
     def write_bytes(self, data, *, overwrite=False):
-        super().write_bytes(data, overwrite=overwrite)
-        _store.write_bytes(self._bucket, self._path, data)
+        try:
+            _store.write_bytes(self._bucket, self._path,
+                               data, overwrite=overwrite)
+        except ResourceExistsError:
+            raise FileExistsError(self)
