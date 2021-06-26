@@ -204,14 +204,6 @@ class AzureBlobUpath(BlobUpath):
             except ResourceNotFoundError as e:
                 raise FileNotFoundError(self) from e
 
-    def _recursive_iterdir(self):
-        with self._provide_container_client():
-            prefix = self._path.lstrip('/') + '/'
-            k = len(prefix)
-            for p in self._container_client.list_blobs(
-                    name_starts_with=prefix):
-                yield self / p.name[k:]
-
     def _renew_lease(self):
         t0 = time.perf_counter()
         while True:
@@ -223,6 +215,14 @@ class AzureBlobUpath(BlobUpath):
                 BlobLeaseClient(self._blob_client,
                                 lease_id=self._lease_id).renew()
                 t0 = time.perf_counter()
+
+    def riterdir(self):
+        with self._provide_container_client():
+            prefix = self._path.lstrip('/') + '/'
+            k = len(prefix)
+            for p in self._container_client.list_blobs(
+                    name_starts_with=prefix):
+                yield self / p.name[k:]
 
     def rm(self, missing_ok=False):
         with self._provide_blob_client():

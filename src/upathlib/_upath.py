@@ -11,7 +11,7 @@ import os
 import os.path
 import pathlib
 import pickle
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from functools import partial
 from io import UnsupportedOperation
 from typing import List, Union, Iterator, TypeVar, Optional
@@ -133,7 +133,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             assert isinstance(source, Upath)
         return source.copy_to(self, exist_action=exist_action)
 
-    def _copy_to_internal(self, target: Upath, *, exist_action: str, executor: ThreadPoolExecutor) -> int:
+    def _copy_to_internal(self, target: Upath, *, exist_action: str) -> int:
         if target == self:
             return 0
 
@@ -169,15 +169,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # into it. If `target` contains files that are not present
         # in the source, those files are untouched.
 
-        n = 0
+        nn = 0
         for s in self.iterdir():
-            k = s._copy_to_internal(target / s.name,
-                                    exist_action=exist_action)
-            n += k
+            k = s._copy_to_internal(target / s.name, exist_action=exist_action)
+            nn += k
+        return nn
 
-        return n
-
-    # TODO: use multiple threads.
     def copy_to(self,
                 target: Union[str, pathlib.Path, Upath],
                 *,
@@ -228,16 +225,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if target.is_dir():
             target = target / self.name
 
-        executor = ThreadPoolExecutor(16)
         return self._copy_to_internal(
-            target, exist_action=exist_action, executor=executor)
+            target, exist_action=exist_action)
 
     def cp(self: T, target: str, exist_action: str = None) -> T:
         '''Copy the content of the current path to the location
         `target` in the same store.'''
         raise NotImplementedError
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def exists(self) -> bool:
         '''In a blobstore with blobs
 
@@ -254,7 +250,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def is_dir(self) -> Optional[bool]:
         '''Return `True` if the path is an existing directory,
         `False` if an existing non-directory, `None` if non-existent.'''
@@ -271,24 +267,32 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         except StopIteration:
             return True
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def is_file(self) -> Optional[bool]:
         '''Return `True` if the path is an existing file,
         `False` if an existing non-file, `None` if non-existent.'''
         raise NotImplementedError
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def iterdir(self: T) -> Iterator[T]:
-        '''When the path points to a directory, yield path objects of the
-        directory contents. Only one level down; not recursively.'''
+        '''Yield the first-level children of the current dir.
+
+        Not recursive.
+
+        Each yielded element is either a file or a dir.
+
+        If `self` is not a dir, or does not exist at all,
+        yield nothing, but do not raise exception.
+
+        There is no guarantee on the order of the returned elements.'''
         raise NotImplementedError
 
     def joinpath(self: T, *other: str) -> T:
         '''Join this path with more segments, return the new path object.'''
         return self.__class__(self._path, *other, **self._kwargs)
 
-    @contextlib.contextmanager
-    @abc.abstractmethod
+    @ contextlib.contextmanager
+    @ abc.abstractmethod
     def lock(self, *, wait: float = 60):
         '''Lock the file pointed to, in order to have exclusive access.
 
@@ -322,7 +326,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def mkdir(self: T, *, exist_ok: bool = False) -> T:
         '''Create a new directory at this given path. Return self.
 
@@ -380,20 +384,20 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         return self._mv_internal(target, overwrite=overwrite)
 
-    @property
+    @ property
     def name(self) -> str:
         # If `self.path` is '/', then `self.path.name` is ''.
         return self.path.name
 
-    @property
+    @ property
     def parent(self: T) -> T:
         return self.__class__(str(self.path.parent), **self._kwargs)
 
-    @property
+    @ property
     def path(self) -> pathlib.PurePosixPath:
         return pathlib.PurePosixPath(self._path)
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def read_bytes(self) -> bytes:
         '''Return the binary contents of the file.
 
@@ -414,6 +418,20 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self.read_bytes().decode(encoding=encoding, errors=errors)
 
     @abc.abstractmethod
+    def riterdir(self: T) -> Iterator[T]:
+        '''Recursive `iterdir`.
+
+        Yield files under the current dir recursively.
+
+        Compared to `iterdir`, this is recursive, and yields
+        files only. Empty subdirectories will have no representation
+        in the return.
+
+        There is no guarantee on the order of the returned elements.'''
+
+        raise NotImplementedError
+
+    @ abc.abstractmethod
     def rm(self, *, missing_ok: bool = False) -> int:
         '''Removes the file pointed to by `self`.
         Return number of files removed.
@@ -426,7 +444,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def rmdir(self) -> None:
         '''Remove the directory pointed to by `self`.
         The directory must be empty.
@@ -462,20 +480,20 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         return k
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def stat(self) -> os.stat_result:
         # TODO: spec of the output content.
         raise NotImplementedError
 
-    @property
+    @ property
     def stem(self) -> str:
         return self.path.stem
 
-    @property
+    @ property
     def suffix(self) -> str:
         return self.path.suffix
 
-    @property
+    @ property
     def suffixes(self) -> List[str]:
         return self.path.suffixes
 
@@ -493,7 +511,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self.__class__(str(self.path.with_suffix(suffix)),
                               **self._kwargs)
 
-    @abc.abstractmethod
+    @ abc.abstractmethod
     def write_bytes(self,
                     data: bytes,
                     *,
@@ -595,6 +613,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_read_text(self, **kwargs):
         return await self._a_do(self.read_text, **kwargs)
 
+    async def a_riterdir(self):
+        # This is a suboptimal reference implementation.
+        for p in self.riterdir():
+            yield p
+
     async def a_rm(self, *args, **kwargs):
         return await self._a_do(self.rm, *args, **kwargs)
 
@@ -643,8 +666,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         return self.localpath.is_file()
 
     def iterdir(self):
-        for p in self.localpath.iterdir():
-            yield self / p.name
+        try:
+            for p in self.localpath.iterdir():
+                yield self / p.name
+        except (NotADirectoryError, FileNotFoundError):
+            pass
 
     @property
     def localpath(self) -> pathlib.Path:
@@ -679,6 +705,13 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def read_bytes(self):
         return self.localpath.read_bytes()
+
+    def riterdir(self):
+        for p in self.iterdir():
+            if p.is_file():
+                yield p
+            elif p.is_dir():
+                yield from p.riterdir()
 
     def rm(self, *, missing_ok=False) -> int:
         if not self.exists():
@@ -727,7 +760,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
 
     def clear(self):
         n = 0
-        for p in self._recursive_iterdir():
+        for p in self.iterdir():
             p.rm()
             n += 1
         if n > 0:
@@ -743,7 +776,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if self._blob_exists():
             return True
         try:
-            next(self._recursive_iterdir())
+            next(self.iterdir())
             return True
         except StopIteration:
             return False
@@ -781,7 +814,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if self._as_dir:
             return True
         try:
-            next(self._recursive_iterdir())
+            next(self.iterdir())
             return True
         except StopIteration:
             if self._blob_exists():
@@ -803,7 +836,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             p0 += '/'
         np0 = len(p0)
         subdirs = set()
-        for p in self._recursive_iterdir():
+        for p in self.riterdir():
             tail = p._path[np0:]
             if '/' in tail:
                 tail = tail[: tail.find('/')]
@@ -831,43 +864,9 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             # blobs under the "directory".
             return self
 
-    @abc.abstractmethod
-    def _recursive_iterdir(self: T) -> Iterator[T]:
-        '''Yield blobs under the current "directory".
-
-        For example, if self._path is
-
-            /ab/cd/efgh
-
-        then yield blobs named like
-
-            /ab/cd/efgh/j
-            /ab/cd/efgh/k/p.txt
-            /ab/cd/efgh/o/p/q.data
-
-        However, do not yield blobs named like
-
-            /ab/cd/efghij
-            /ab/cd/efghx/y
-
-        S3, Azure, GCP all have API's to list blobs
-        whose name starts with a given prefix.
-        In this case, the prefix should be essentially
-        `self._path` with '/' appended to the end.
-
-        This classes lists `_recursive_iterdir` as abstract,
-        while `iterdir` is implemented using `_recursive_iterdir`.
-        A concrete subclass may choose to implement `_recursive_iterdir`
-        (leaving `iterdir` to the implementation provided in this class),
-        or `iterdir` (and `_recursive_iterdir` implemented using `iterdir`),
-        or both `iterdir` and `_recrusive_iterdir` separately, depending
-        on the capabilities of the API of the storage engine.
-        '''
-        raise NotImplementedError
-
     def rmdir(self):
         try:
-            next(self._recursive_iterdir())
+            next(self.riterdir())
             raise FileExistsError(self)
         except StopIteration:
             self._as_dir = False

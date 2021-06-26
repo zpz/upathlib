@@ -18,4 +18,4 @@ that a subclass needs to implement.
 
 - What's the 'u' in the name?
 
-  It stands for "universal". Hey, it's just a name.
+  It stands for "universal" or "unified". Hey, it's just a name.

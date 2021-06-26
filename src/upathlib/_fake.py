@@ -79,7 +79,7 @@ class FakeBlobUpath(BlobUpath):
         except ResourceNotFoundError as e:
             raise FileNotFoundError(self) from e
 
-    def _recursive_iterdir(self):
+    def riterdir(self):
         p = self._path
         if not p.endswith('/'):
             p += '/'

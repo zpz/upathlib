@@ -76,7 +76,7 @@ class GcpBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
         return b.download_as_bytes()
 
-    def _recursive_iterdir(self):
+    def riterdir(self):
         prefix = self._path.lstrip('/') + '/'
         k = len(prefix)
         for p in self._client.list_blobs(self._bucket, prefix=prefix):
