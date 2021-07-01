@@ -601,10 +601,10 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
 
 class LocalUpath(Upath):  # pylint: disable=abstract-method
-    def __init__(self, *parts: str):
+    def __init__(self, *pathsegments: str):
         assert os.name == 'posix'
-        if parts:
-            parts = [str(pathlib.Path(*parts).absolute())]
+        if pathsegments:
+            parts = [str(pathlib.Path(*pathsegments).absolute())]
         else:
             parts = [str(pathlib.Path.cwd().absolute())]
         super().__init__(*parts)
@@ -670,17 +670,32 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             elif p.is_dir():
                 yield from p.riterdir()
 
-    def rm(self, *, missing_ok=False) -> int:
-        if not self.exists():
-            if missing_ok:
-                return 0
-            raise FileNotFoundError(str(self.localpath))
-        logger.info('deleting %s', self.localpath)
-        self.localpath.unlink()
-        return 1
+    def rm(self, *, missing_ok=False):
+        if self.is_file():
+            logger.info('deleting %s', self.localpath)
+            self.localpath.unlink()
+            return 1
 
-    def rmdir(self):
-        self.localpath.rmdir()
+        if missing_ok:
+            return 0
+
+        raise FileNotFoundError(str(self.localpath))
+
+    def rmdir(self, *, missing_ok=False):
+        if self.is_dir():
+            n = 0
+            for p in self.iterdir():
+                if p.is_file():
+                    n += p.rm()
+                else:
+                    n += p.rmdir()
+            self.localpath.rmdir()  # this is a `pathlib.Path` call
+            return n
+
+        if missing_ok:
+            return 0
+
+        raise NotADirectoryError(str(self.localpath))
 
     def stat(self):
         return self.localpath.stat()
