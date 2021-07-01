@@ -11,7 +11,7 @@ import os
 import os.path
 import pathlib
 import pickle
-from concurrent.futures import ThreadPoolExecutor, Future
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from io import UnsupportedOperation
 from typing import List, Union, Iterator, TypeVar, Optional
@@ -37,19 +37,33 @@ class LockAcquisitionTimeoutError(TimeoutError):
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     _executor: ThreadPoolExecutor = None
 
-    def __init__(self, *parts: str, **kwargs):
+    def __init__(self, *pathsegments: str, **kwargs):
+        '''`Upath` is the base class for a blob store, including
+        local file system as a special case.
+
+        `*pathsegments`: analogous to the input to `pathlib.Path`.
+        The first segment may start with `/`; if not, a leading
+        `/` will be added. Hence, presence or lack of a leading `/`
+        makes no difference. The final path compiled with `*parts`
+        is always "absolute" under a known "root".
+
+        `**kwargs`: additional arguments. This usually concerns
+        credentials and top-level "buckets" for a blob store.
+        For local file system, this is not needed.
+        In general, these arguments should be read-only
+        and remain unchanged during the lifetime of the object.
+        '''
+
         self._path = os.path.normpath(os.path.join(
-            '/', *parts))  # pylint: disable=no-value-for-parameter
+            '/', *pathsegments))  # pylint: disable=no-value-for-parameter
         # The path is always "absolute" starting with '/'.
         # Unless it is `/`, it does not have a trailing `/`.
-        self._kwargs = kwargs
 
+        self._kwargs = kwargs
         # The extra `kwargs` is handled this way so that
         # the few functions that calls `self.__class__(...)`
         # work with subclasses that take additional arguments
         # in their `__init__`.
-        # In general, these arguments should be read-only
-        # and remain unchanged during the lifetime of the object.
         # A subclass that uses such extra arguments may need to
         # redefine the "comparison" special methods to take
         # into account some of these parameters as needed.
@@ -85,52 +99,20 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             return NotImplemented
         return self._path >= other._path
 
-    def __copy__(self: T) -> T:
-        return self.__class__(self._path, **self._kwargs)
-
-    def __hash__(self) -> int:
-        return hash((
-            self.__class__.__name__,
-            self._path,
-            tuple(self._kwargs.items())
-        ))
-        # TODO: with some unusual values of `self._kwargs`,
-        # this could be unhashable.
-
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
-    def clear(self) -> None:
-        '''Clear all contents of the directory, but keep the directory.
-
-        If the path is not a directory, raise NotADirectoryError.
-        '''
-        for p in self.iterdir():
-            p.rmrf()
-
     def copy_from(self,
-                  source: Union[str, pathlib.Path, Upath],
+                  source: Upath,
                   *,
                   exist_action: str = None) -> int:
-        '''This is like "import" or "upload".
-        The reverse of `copy_to`.
+        '''Copy the content of `source` into `self`.
+
+        `source` may be a file or a directory.
+        In the latter case, it content will be copied recursively.
 
         Return the number of files copied.
-
-        The name 'import' can't be used. The name 'upload'
-        would be confusing when we do something like
-
-            local_upath.upload(remote_upath)
-
-        which by the design of this method would mean
-        copying from `remote_upath` to `local_upath`.
         '''
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath(str(source.absolute()))
-        else:
-            assert isinstance(source, Upath)
         return source.copy_to(self, exist_action=exist_action)
 
     def _copy_to_internal(self, target: Upath, *, exist_action: str) -> int:
@@ -176,12 +158,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return nn
 
     def copy_to(self,
-                target: Union[str, pathlib.Path, Upath],
+                target: Upath,
                 *,
                 exist_action: str = None,
                 ) -> int:
-        '''Copy the content of the `self` path to the specified `target`
-        in another store. Return number of files copied.
+        '''Copy the content of `self` to the specified `target`
+        in another store.
 
         Compare with `cp`, which copies to another location in the
         same store.
@@ -203,16 +185,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             abc.txt, xy/ => xy/abc.txt
             abc/, xy ==> xy/
             abc/, xy/ ==> xy/abc/
+
+        Return number of files copied.
         '''
         if not self.exists():
             raise FileNotFoundError(self)
-
-        if isinstance(target, str):
-            target = pathlib.Path(target)
-        if isinstance(target, pathlib.Path):
-            target = LocalUpath(target.absolute())
-        else:
-            assert isinstance(target, Upath)
 
         if target == self:
             return 0
@@ -326,14 +303,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    @ abc.abstractmethod
-    def mkdir(self: T, *, exist_ok: bool = False) -> T:
-        '''Create a new directory at this given path. Return self.
-
-        If the directory already exists, and `exist_ok` is False,
-        raise FileExistsError.'''
-        raise NotImplementedError
-
     def _mv_internal(self: T, target: Upath, *, overwrite: bool) -> T:
         if self.is_file():
             if target.is_file():
@@ -424,8 +393,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Yield files under the current dir recursively.
 
         Compared to `iterdir`, this is recursive, and yields
-        files only. Empty subdirectories will have no representation
+        *files* only. Empty subdirectories will have no representation
         in the return.
+
+        If `self` is not a dir, or does not exist at all,
+        nothing will be yielded, but no exception is raised either.
 
         There is no guarantee on the order of the returned elements.'''
 
@@ -433,52 +405,43 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @ abc.abstractmethod
     def rm(self, *, missing_ok: bool = False) -> int:
-        '''Removes the file pointed to by `self`.
-        Return number of files removed.
+        '''Remove the file pointed to by `self`.
 
-        If the file does not exist, and `missing_ok` is False,
-        raise FileNotFoundError.
+        Return the number of files removed.
 
-        If `self` is a directory, raise IsADirectoryError.
-        In this case, use `rmdir` instead.
+        If `self.exists()` is `False` or `self.is_file()` is `False`,
+        and `missing_ok` is `False`, raise `FileNotFoundError`;
+        otherwise, return 0.
         '''
         raise NotImplementedError
 
     @ abc.abstractmethod
-    def rmdir(self) -> None:
-        '''Remove the directory pointed to by `self`.
-        The directory must be empty.
+    def rmdir(self, *, missing_ok: bool = False) -> int:
+        '''Remove the directory pointed to by `self`,
+        along with all the content under this dir, recursively.
 
-        If the directory is not empty, raise OSError.'''
+        Return the number of files removed.
+
+        If `self.exists()` is `False` or `self.is_dir()` is `False`,
+        and `missing_ok` is `False`, raise `NotADirectoryError`;
+        otherwise, return 0.
+
+        Note: the behavior is different from that of `pathlib.Path.rmdir`.
+        '''
         raise NotImplementedError
 
     def rmrf(self) -> int:
         '''Analogous to `rm -rf`. Return number of files removed.
 
         The object pointed to by `self` may be either a file
-        or a directory. If file, remove it. If directory,
-        remove its contents recursively, and finally the directory itself.
+        or a directory, or both. All these cases are handled.
 
-        Compare `rmrf` with `clear`. The latter removes content
-        in the directory but keeps the directory itself.
-        Also, `clear` does not work on a file.
+        If file, remove it. If directory,
+        remove its contents recursively, and finally the directory itself.
         '''
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
-
-        k = 0
-        if self.is_file():
-            logger.info(f'deleting {self}')
-            self.rm()
-            k += 1
-
-        if self.is_dir():
-            for v in self.iterdir():
-                n = v.rmrf()
-                k += n
-            self.rmdir()
-
-        return k
+        return self.rm(missing_ok=True) + self.rmdir(missing_ok=True)
 
     @ abc.abstractmethod
     def stat(self) -> os.stat_result:
@@ -558,9 +521,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await asyncio.get_running_loop().run_in_executor(
             self._executor, func)
 
-    async def a_clear(self, *args, **kwargs):
-        return await self._a_do(self.clear, *args, **kwargs)
-
     async def a_copy_from(self, *args, **kwargs):
         return await self._a_do(self.copy_from, *args, **kwargs)
 
@@ -594,9 +554,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # if available.
         with self.lock(wait=wait) as obj:
             yield obj
-
-    async def a_mkdir(self, *args, **kwargs):
-        return await self._a_do(self.mkdir, *args, **kwargs)
 
     async def a_mv(self, *args, **kwargs):
         return await self._a_do(self.mv, *args, **kwargs)
@@ -770,6 +727,12 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                  target: Union[str, pathlib.Path, LocalUpath],
                  *,
                  exist_action: str = None) -> int:
+        if isinstance(target, str):
+            target = pathlib.Path(target)
+        if isinstance(target, pathlib.Path):
+            target = LocalUpath(str(target.absolute()))
+        else:
+            assert isinstance(target, LocalUpath)
         return self.copy_to(target, exist_action=exist_action)
 
     def exists(self):
@@ -875,6 +838,12 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                source: Union[str, pathlib.Path, LocalUpath],
                *,
                exist_action: str = None) -> int:
+        if isinstance(source, str):
+            source = pathlib.Path(source)
+        if isinstance(source, pathlib.Path):
+            source = LocalUpath(str(source.absolute()))
+        else:
+            assert isinstance(source, LocalUpath)
         return self.copy_from(source, exist_action=exist_action)
 
     async def a_download(self, *args, **kwargs):
