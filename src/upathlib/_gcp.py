@@ -3,7 +3,7 @@ from io import BufferedReader
 from google.oauth2 import service_account
 from google.cloud import storage
 
-from ._upath import BlobUpath
+from ._blob import BlobUpath
 
 
 class GcpBlobUpath(BlobUpath):

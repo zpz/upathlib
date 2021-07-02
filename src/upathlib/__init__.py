@@ -1,7 +1,9 @@
-__version__ = '0.3.7'
+__version__ = '0.3.8'
 
 
-from ._upath import Upath, LocalUpath, BlobUpath
+from ._upath import Upath
+from ._local import LocalUpath
+from ._blob import BlobUpath
 from ._azure import AzureBlobUpath
 from ._gcp import GcpBlobUpath
 

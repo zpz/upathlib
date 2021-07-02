@@ -1,9 +1,12 @@
 from __future__ import annotations
+# Enable using `Upath` in type annotations in the code
+# that defines this class.
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
 import abc
 import asyncio
+import concurrent.futures
 import contextlib
 import json
 import logging
@@ -14,17 +17,8 @@ import pickle
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Union, Iterator, TypeVar, Optional
+from typing import List, Iterator, TypeVar
 
-import filelock
-# `filelock` is also called `py-filelock`.
-# Tried `fasteners` also. In one use case,
-# `filelock` worked whereas `fasteners.InterprocessLock` failed.
-#
-# Other options to lock into include
-# `oslo.concurrency`, `pylocker`, `portalocker`.
-
-logging.getLogger('filelock').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='Upath')
@@ -35,23 +29,27 @@ class LockAcquisitionTimeoutError(TimeoutError):
 
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
-    _executor: ThreadPoolExecutor = None
+    _executor: concurrent.futures.ThreadPoolExecutor = None
 
     def __init__(self, *pathsegments: str, **kwargs):
-        '''`Upath` is the base class for a blob store, including
-        local file system as a special case.
+        '''`Upath` is the base class for a client to a blob store,
+        including local file system as a special case.
 
         `*pathsegments`: analogous to the input to `pathlib.Path`.
-        The first segment may start with `/`; if not, a leading
-        `/` will be added. Hence, presence or lack of a leading `/`
-        makes no difference. The final path compiled with `*parts`
+        The first segment may or may not start with `/`; it makes
+        no difference. The path constructed with `*pathsegments`
         is always "absolute" under a known "root".
 
+        For a local POSIX file system, the root is the regular `/`.
+        For Azure blob store, the root is that of a "container".
+        For AWS and GCP blob stores, the root is that of a "bucket".
+
         `**kwargs`: additional arguments. This usually concerns
-        credentials and top-level "buckets" for a blob store.
-        For local file system, this is not needed.
+        credentials and top-level "divisions" for a blob store.
+        (For example, "container" for Azure, "bucket" for AWS or GCP.)
         In general, these arguments should be read-only
         and remain unchanged during the lifetime of the object.
+        For local file system, this is not needed (refer to class `LocalUpath`).
         '''
 
         self._path = os.path.normpath(os.path.join(
@@ -105,114 +103,142 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def copy_from(self,
                   source: Upath,
                   *,
+                  concurrency: int = None,
                   exist_action: str = None) -> int:
         '''Copy the content of `source` into `self`.
 
         `source` may be a file or a directory.
-        In the latter case, it content will be copied recursively.
+        In the latter case, its content will be copied recursively.
 
         Return the number of files copied.
         '''
-        return source.copy_to(self, exist_action=exist_action)
+        return source.copy_to(self,
+                              concurrency=concurrency,
+                              exist_action=exist_action)
 
-    def _copy_to_internal(self, target: Upath, *, exist_action: str) -> int:
+    def _copy_file(self, target: Upath, *, exist_action: str) -> int:
         if target == self:
             return 0
 
-        if self.is_file():
-            if target.is_file():
-                if exist_action == 'raise':
-                    raise FileExistsError(target)
-                if exist_action == 'skip':
-                    logger.info(f"target {target!r} exists; skipped")
-                    return 0
-                target.write_bytes(self.read_bytes(), overwrite=True)
-                return 1
-            if target.is_dir():
-                # Do not delete.
-                raise FileExistsError(target)
-            target.write_bytes(self.read_bytes(), overwrite=True)
-            return 1
-
-        if not self.is_dir():
-            logger.info(
-                f"source {self!r} is neither file nor directory; skipped")
-            return 0
-
-        if target.is_file():
+        if target.isfile():
             if exist_action == 'raise':
                 raise FileExistsError(target)
             if exist_action == 'skip':
                 logger.info(f"target {target!r} exists; skipped")
                 return 0
-            target.rm()
+            target.write_bytes(self.read_bytes(), overwrite=True)
+            return 1
 
-        # If `target` is an existing directory, just copy
-        # into it. If `target` contains files that are not present
-        # in the source, those files are untouched.
+        if target.isdir():
+            # Do not delete.
+            raise FileExistsError(target)
 
-        nn = 0
-        for s in self.iterdir():
-            k = s._copy_to_internal(target / s.name, exist_action=exist_action)
-            nn += k
-        return nn
+        target.write_bytes(self.read_bytes(), overwrite=False)
+        return 1
 
     def copy_to(self,
                 target: Upath,
                 *,
+                concurrency: int = None,
                 exist_action: str = None,
                 ) -> int:
-        '''Copy the content of `self` to the specified `target`
-        in another store.
+        '''Copy the content of `self` to the specified `target`,
+        which is typically in another store.
 
-        Compare with `cp`, which copies to another location in the
-        same store.
+        `concurrency`: number of threads to use. If `None`,
+        a default value (e.g. 4) is used.
 
         `exist_action`: what to do when the target file already exists.
-        There are three acceptible values:
+        There are three possible values:
 
-            'raise' (default): raise FileExistsError.
+            'raise' (default): raise `FileExistsError`.
             'skip': skip this file; proceed to work on other files.
-            'overwrite': overwrite the existing target file.
+            'overwrite': overwrite the existing file.
+
+        The behavior is analogous to the command `cp` in Linux:
+
+            # self   target  outcome
+            abc.txt, xy      ==> xy
+            abc.txt, xy/     => xy/abc.txt
+            abc/,    xy      ==> xy/
+            abc/,    xy/     ==> xy/abc/
+
+        Return the number of files copied.
+
+        Compare with `cp`, which copies to another location
+        in the same store.
 
         Subclasses should provide more efficient implementations
         if possible, while maintains the behavior defined in
         this implementation.
-
-        The behavior is analogous to the command `cp` in Linux:
-
-            abc.txt, xy ==> xy
-            abc.txt, xy/ => xy/abc.txt
-            abc/, xy ==> xy/
-            abc/, xy/ ==> xy/abc/
-
-        Return number of files copied.
         '''
-        if not self.exists():
-            raise FileNotFoundError(self)
-
-        if target == self:
-            return 0
-
         if exist_action is None:
             exist_action = 'raise'
         else:
             assert exist_action in ('raise', 'skip', 'overwrite')
 
-        if target.is_dir():
+        if target.isdir():
             target = target / self.name
 
-        return self._copy_to_internal(
-            target, exist_action=exist_action)
+        if self.isfile():
+            return self._copy_file(target, exist_action=exist_action)
 
-    def cp(self: T, target: str, exist_action: str = None) -> T:
+        if self.isdir():
+            if concurrency is None:
+                concurrency = 4
+            else:
+                assert 0 <= concurrency <= 16
+            pool = concurrent.futures.ThreadPoolExecutor(concurrency)
+            tasks = []
+            for p in self.riterdir():
+                extra = str(p.path.relative_to(self.path))
+                tasks.append(pool.submit(
+                    p._copy_file,
+                    target=target/extra,
+                    exist_action=exist_action
+                ))
+            n = 0
+            for f in concurrent.futures.as_completed(tasks):
+                n += f.result()
+            return n
+
+        raise FileNotFoundError(self)
+
+    def cp(self: T,
+           target: str,
+           *,
+           overwrite: bool = False,
+           concurrency: int = None) -> T:
         '''Copy the content of the current path to the location
-        `target` in the same store.'''
+        `target` in the same store. The path `target` is relative
+        to `self`.
+
+        Return a path to the target.
+
+        Examples: suppose these blobs are present
+
+            /a/b/c.txt
+            /a/b/c/d/c.txt
+            /e/f/g/xy.data
+            /e/f/g/h/d/dd.txt
+
+        now with `overwrite=False`:
+
+            self         target         outcome
+            /a/b/c.txt   ../c           /a/b/c/c.txt
+            /a/b/c.txt   ../c/d         FileExistsError
+            /a/b/c.txt   ../c.txt.back  /a/b/c.txt.back
+            /a/b/c/d     /e/f           /e/f/d/c.txt
+            /a/b/c/d     /e/f/g/h       FileExistsError
+        '''
         raise NotImplementedError
 
     @ abc.abstractmethod
     def exists(self) -> bool:
-        '''In a blobstore with blobs
+        '''Return `True` if the path is an existing file or dir,
+        `False` otherwise.
+
+        In a blobstore with blobs
 
             /a/b/cd
             /a/b/cd/e.txt
@@ -221,40 +247,62 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '/a/b/cd/e.txt' exists, and is a file;
         '/a/b' exists, and is a dir;
         '/a/b/c' does not exist.
-
-        In practice, one probably should avoid that situation
-        where a path is both a file and a dir.
         '''
         raise NotImplementedError
 
     @ abc.abstractmethod
-    def is_dir(self) -> Optional[bool]:
-        '''Return `True` if the path is an existing directory,
-        `False` if an existing non-directory, `None` if non-existent.'''
+    def isdir(self) -> bool:
+        '''Return `True` if the path is an existing directory, `False` otherwise.
+
+        If there exists a file named like
+
+            /a/b/c/d.txt
+
+        we say `/a`, `/a/b`, `/a/b/c` are existing directories.
+
+        In a cloud blob store, there's no such thing as an
+        "empty directory", because there is no concept of "directory".
+        A blob store just consists of files (aka blobs) with names,
+        which could contain the letter '/', with no special meaning
+        attached to it.
+        We interpret the name `/a/b` as a directory
+        to emulate the familiar concept in a local file system because
+        there exist files named `/a/b/...`.
+
+        In a local file system, there can be empty directories.
+        However, the class `LocalUpath` tries to prevent that from happening
+        (but can't strictly enforce it).
+        Therefore, `isdir` can be understood as "is a non-empty dir".
+        Consequently, there is usually no need to check whether a directory is
+        "empty".
+
+        Along similar lines, there is no method for "creating a dir" (like `mkdir`).
+        Simply create a file under the dir, and the dir will come into being.
+        This is analogous to our treatment to files---we don't "create" a file
+        in advance; we simply write to a path, intending it to be a file.
+        '''
         raise NotImplementedError
 
-    def is_empty_dir(self) -> Optional[bool]:
-        if not self.exists():
-            return None
-        if not self.is_dir():
-            return False
-        try:
-            _ = next(self.iterdir())
-            return False
-        except StopIteration:
-            return True
-
     @ abc.abstractmethod
-    def is_file(self) -> Optional[bool]:
-        '''Return `True` if the path is an existing file,
-        `False` if an existing non-file, `None` if non-existent.'''
+    def isfile(self) -> bool:
+        '''Return `True` if the path is an existing file, `False` otherwise.
+
+        In a cloud blob store, a path can be both a file and a dir. For
+        example, if these blobs exist:
+
+            /a/b/c/d.txt
+            /a/b/c
+
+        we say `/a/b/c` is a "file", and also a "dir".
+        User is recommended to avoid such namings.
+
+        This situation does not happen in a local file system.'''
         raise NotImplementedError
 
     @ abc.abstractmethod
     def iterdir(self: T) -> Iterator[T]:
-        '''Yield the first-level children of the current dir.
-
-        Not recursive.
+        '''Yield the first-level (i.e. non-recursive) children
+        of the current dir.
 
         Each yielded element is either a file or a dir.
 
@@ -278,11 +326,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         This is a "mandatory lock", as opposed to an "advisory lock".
         However, this API does not specify that the locked file
-        can be used for its content. (A subclass may provide that capability
-        if it so wishes.) The design use case is for this lock
-        to be used in implementing a (cooperative) "code lock".
+        can be accessed for its content or used in any particular way.
+        The intended use case is for this lock to be used
+        in implementing a (cooperative) "code lock".
 
-        The `yield` statement is not required to yield anything in particular,
+        The `yield` statement is not required to yield anything,
         that is, it may be simply
 
             yield
@@ -296,65 +344,37 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
             f = Upath('abc.txt')
             with f.with_suffix('.txt.lock').lock():
-                ...  # use `f` with exclusive access
+                ...  # now read/write `f` with exclusive access
 
         Some storage engines may not provide the capability to implement
         this lock.
         '''
         raise NotImplementedError
 
-    def _mv_internal(self: T, target: Upath, *, overwrite: bool) -> T:
-        if self.is_file():
-            if target.is_file():
-                if not overwrite:
-                    raise FileExistsError(target)
-                target.write_bytes(self.read_bytes(), overwrite=True)
-            elif target.is_dir():
-                raise FileExistsError(target)
-            else:
-                target.write_bytes(self.read_bytes(), overwrite=True)
-            self.rm()
-            return target
-
-        if self.is_dir():
-            if target.exists():
-                if not overwrite:
-                    raise FileExistsError(target)
-                target.rmrf()
-            for p in self.iterdir():
-                p._mv_internal(target / p.name)
-            self.rmdir()
-            return target
-
-        raise RuntimeError('should never reach here')
+    def ls(self: T) -> List[T]:
+        return sorted(self.iterdir())
 
     def mv(self: T, target: str, *, overwrite: bool = False) -> T:
         '''Rename this file or directory to the given `target`
-        in the same store, and
-        return a new Upath instance pointing to `target`.
+        in the same store.
+
+        Return a new `Upath` instance pointing to `target`.
 
         Behavior is analogous to the Linux command `mv`.
+        Aslo refer to the doc of `cp`.
 
         This reference implementation uses copy/delete
         to achieve the effect of renaming.
         Concrete subclasses may have a more efficient way
-        to conduct renaming.
+        to achieve renaming.
         '''
         # TODO: needs more careful check on the location relationship
         # between `self` and `target`.
-        target = self / target
-        if target.is_dir():
-            target = target / self.name
-
-        if target == self:
-            return self
-        if not self.exists():
-            raise FileNotFoundError(self)
-
-        return self._mv_internal(target, overwrite=overwrite)
+        raise NotImplementedError
 
     @ property
     def name(self) -> str:
+        '''Return the segment after the last `/`.'''
         # If `self.path` is '/', then `self.path.name` is ''.
         return self.path.name
 
@@ -370,9 +390,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def read_bytes(self) -> bytes:
         '''Return the binary contents of the file.
 
-        If `self` is a directory, raise IsADirectoryError.
-
-        If `self` does not exist, raise FileNotFoundError.
+        If `self` is not a file or is non-existent,
+        raise `FileNotFoundError`.
         '''
         raise NotImplementedError
 
@@ -388,60 +407,73 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @abc.abstractmethod
     def riterdir(self: T) -> Iterator[T]:
-        '''Recursive `iterdir`.
-
-        Yield files under the current dir recursively.
+        '''Yield files under the current dir recursively.
 
         Compared to `iterdir`, this is recursive, and yields
         *files* only. Empty subdirectories will have no representation
         in the return.
 
-        If `self` is not a dir, or does not exist at all,
-        nothing will be yielded, but no exception is raised either.
+        Similar to `iterdir`, if `self` is not a dir or does not exist,
+        then nothing is yielded, and no exception is raised either.
 
         There is no guarantee on the order of the returned elements.'''
 
         raise NotImplementedError
 
     @ abc.abstractmethod
-    def rm(self, *, missing_ok: bool = False) -> int:
-        '''Remove the file pointed to by `self`.
+    def rmdir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
+        '''Remove the directory pointed to by `self`,
+        along with all its contents, recursively.
 
         Return the number of files removed.
 
-        If `self.exists()` is `False` or `self.is_file()` is `False`,
+        `concurrency`: number of threads to use. If `None`,
+        a default value (e.g. 4) is used.
+
+        If `self.exists()` is `False` or `self.isdir()` is `False`,
         and `missing_ok` is `False`, raise `FileNotFoundError`;
         otherwise, return 0.
         '''
         raise NotImplementedError
 
     @ abc.abstractmethod
-    def rmdir(self, *, missing_ok: bool = False) -> int:
-        '''Remove the directory pointed to by `self`,
-        along with all the content under this dir, recursively.
+    def rmfile(self, *, missing_ok: bool = False) -> int:
+        '''Remove the file pointed to by `self`.
 
-        Return the number of files removed.
+        Return the number of files removed (0 or 1).
 
-        If `self.exists()` is `False` or `self.is_dir()` is `False`,
-        and `missing_ok` is `False`, raise `NotADirectoryError`;
+        If `self.exists()` is `False` or `self.isfile()` is `False`,
+        and `missing_ok` is `False`, raise `FileNotFoundError`;
         otherwise, return 0.
 
-        Note: the behavior is different from that of `pathlib.Path.rmdir`.
+        If the file is the only element in its parent directory,
+        then the directory is also removed. This is to avoid having
+        empty directories. (See doc of `isdir`.)
         '''
         raise NotImplementedError
 
-    def rmrf(self) -> int:
-        '''Analogous to `rm -rf`. Return number of files removed.
+    def rmrf(self, *, concurrency: int = None) -> int:
+        '''Analogous to `rm -rf`. Remove the file or dir pointed to
+        by `self`.
 
-        The object pointed to by `self` may be either a file
-        or a directory, or both. All these cases are handled.
+        Return the number of files removed.
 
-        If file, remove it. If directory,
-        remove its contents recursively, and finally the directory itself.
+        `concurrency`: number of threads to use. If `None`,
+        a default value (e.g. 4) is used.
+
+        For example, if these blobs are present:
+
+            /a/b/c/d/e.txt
+            /a/b/c/kk.data
+            /a/b/c
+
+        then `Upath('/a/b/c')` would remove all of them.
         '''
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
-        return self.rm(missing_ok=True) + self.rmdir(missing_ok=True)
+        n1 = self.rmfile(missing_ok=True)
+        n2 = self.rmdir(missing_ok=True, concurrency=concurrency)
+        return n1 + n2
 
     @ abc.abstractmethod
     def stat(self) -> os.stat_result:
@@ -479,14 +511,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     data: bytes,
                     *,
                     overwrite: bool = False) -> int:
-        '''Write bytes to file. Parent directories are created as needed.
+        '''Write bytes to file.
 
         Return number of bytes written.
 
-        `overwrite`: overwrite existing file?
-            If False, and file exists, raises FileExistsError.
+        Parent directories are created as needed.
 
-        If the object pointed to is a directory, raise IsADirectoryError.
+        `overwrite`: overwrite existing file?
+            If `False`, and file exists, raises `FileExistsError`.
         '''
         raise NotImplementedError
 
@@ -505,8 +537,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    data: str,
                    *,
                    overwrite: bool = False,
-                   encoding='utf-8',
-                   errors='strict',
+                   encoding: str = 'utf-8',
+                   errors: str = 'strict',
                    ) -> int:
         '''
         Return number of characters written.
@@ -533,14 +565,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_exists(self):
         return await self._a_do(self.exists)
 
-    async def a_is_dir(self):
-        return await self._a_do(self.is_dir)
+    async def a_isdir(self):
+        return await self._a_do(self.isdir)
 
-    async def a_is_empty_dir(self):
-        return await self._a_do(self.is_empty_dir)
-
-    async def a_is_file(self):
-        return await self._a_do(self.is_file)
+    async def a_isfile(self):
+        return await self._a_do(self.isfile)
 
     async def a_iterdir(self):
         # This is a suboptimal reference implementation.
@@ -554,6 +583,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # if available.
         with self.lock(wait=wait) as obj:
             yield obj
+
+    async def a_ls(self):
+        return await self._a_do(self.ls)
 
     async def a_mv(self, *args, **kwargs):
         return await self._a_do(self.mv, *args, **kwargs)
@@ -575,14 +607,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         for p in self.riterdir():
             yield p
 
-    async def a_rm(self, *args, **kwargs):
-        return await self._a_do(self.rm, *args, **kwargs)
-
     async def a_rmdir(self, *args, **kwargs):
         return await self._a_do(self.rmdir, *args, **kwargs)
 
-    async def a_rmrf(self):
-        return await self._a_do(self.rmrf)
+    async def a_rmfile(self, *args, **kwargs):
+        return await self._a_do(self.rmfile, *args, **kwargs)
+
+    async def a_rmrf(self, *args, **kwargs):
+        return await self._a_do(self.rmrf), *args, **kwargs
 
     async def a_stat(self):
         return await self._a_do(self.stat)
@@ -598,271 +630,3 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_write_text(self, data, **kwargs):
         return await self._a_do(self.write_text, data, **kwargs)
-
-
-class LocalUpath(Upath):  # pylint: disable=abstract-method
-    def __init__(self, *pathsegments: str):
-        assert os.name == 'posix'
-        if pathsegments:
-            parts = [str(pathlib.Path(*pathsegments).absolute())]
-        else:
-            parts = [str(pathlib.Path.cwd().absolute())]
-        super().__init__(*parts)
-
-    def exists(self):
-        return self.localpath.exists()
-
-    def is_dir(self):
-        if not self.exists():
-            return None
-        return self.localpath.is_dir()
-
-    def is_file(self):
-        if not self.exists():
-            return None
-        return self.localpath.is_file()
-
-    def iterdir(self):
-        try:
-            for p in self.localpath.iterdir():
-                yield self / p.name
-        except (NotADirectoryError, FileNotFoundError):
-            pass
-
-    @property
-    def localpath(self) -> pathlib.Path:
-        return pathlib.Path(self._path)
-
-    @contextlib.contextmanager
-    def lock(self, *, wait=60):
-        lock = filelock.FileLock(str(self.localpath))
-        try:
-            lock.acquire(timeout=wait)
-            yield
-        except filelock.Timeout as e:
-            raise LockAcquisitionTimeoutError(str(self)) from e
-        finally:
-            lock.release()
-
-    def mkdir(self, *, exist_ok=False):
-        self.localpath.mkdir(parents=True, exist_ok=exist_ok)
-        return self
-
-    def mv(self, target, *, overwrite=False):
-        if isinstance(target, str):
-            target = self / target
-        else:
-            assert target.__class__ is self.__class__
-        if target == self:
-            return self
-        if target.exists() and not overwrite:
-            raise FileExistsError(str(target))
-        self.localpath.rename(target.localpath)
-        return target
-
-    def read_bytes(self):
-        return self.localpath.read_bytes()
-
-    def riterdir(self):
-        for p in self.iterdir():
-            if p.is_file():
-                yield p
-            elif p.is_dir():
-                yield from p.riterdir()
-
-    def rm(self, *, missing_ok=False):
-        if self.is_file():
-            logger.info('deleting %s', self.localpath)
-            self.localpath.unlink()
-            return 1
-
-        if missing_ok:
-            return 0
-
-        raise FileNotFoundError(str(self.localpath))
-
-    def rmdir(self, *, missing_ok=False):
-        if self.is_dir():
-            n = 0
-            for p in self.iterdir():
-                if p.is_file():
-                    n += p.rm()
-                else:
-                    n += p.rmdir()
-            self.localpath.rmdir()  # this is a `pathlib.Path` call
-            return n
-
-        if missing_ok:
-            return 0
-
-        raise NotADirectoryError(str(self.localpath))
-
-    def stat(self):
-        return self.localpath.stat()
-
-    def write_bytes(self, data: bytes, *, overwrite=False):
-        if self.is_file():
-            if not overwrite:
-                raise FileExistsError(self)
-        else:
-            self.parent.mkdir(exist_ok=True)
-        return self.localpath.write_bytes(data)
-
-
-class BlobUpath(Upath):  # pylint: disable=abstract-method
-    def __init__(self, *parts: str, **kwargs):
-        super().__init__(*parts, **kwargs)
-        self._as_dir = None
-        if self._path == '/':
-            self._as_dir = True
-        else:
-            if parts:
-                if parts[-1].endswith('/'):
-                    self._as_dir = True
-
-    @abc.abstractmethod
-    def _blob_exists(self) -> bool:
-        # Unless `self.path` is '/', the path
-        # does not end with '/'. This function determines
-        # whether a blob with this name exists.
-        # If it does, it is equivalent to a *file*.
-        # Note the difference between `_blob_exists`
-        # and `exists`.
-        raise NotImplementedError
-
-    def clear(self):
-        n = 0
-        for p in self.iterdir():
-            p.rm()
-            n += 1
-        if n > 0:
-            self._as_dir = True
-
-    def download(self,
-                 target: Union[str, pathlib.Path, LocalUpath],
-                 *,
-                 exist_action: str = None) -> int:
-        if isinstance(target, str):
-            target = pathlib.Path(target)
-        if isinstance(target, pathlib.Path):
-            target = LocalUpath(str(target.absolute()))
-        else:
-            assert isinstance(target, LocalUpath)
-        return self.copy_to(target, exist_action=exist_action)
-
-    def exists(self):
-        if self._blob_exists():
-            return True
-        try:
-            next(self.iterdir())
-            return True
-        except StopIteration:
-            return False
-
-    def is_dir(self):
-        '''In a typical blob store, there is no such concept as a
-        "directory". Here we emulate the situation in a local file
-        system. If there are blobs named like
-
-            /ab/cd/ef/g.txt
-
-        we say there exists directory "/ab/cd/ef".
-        We should never have blobs named like
-
-            /ab/cd/ef/
-
-        (I don't know whether the blob store offerings allow
-        such blob names.)
-
-        Consequently, `is_dir` is almost equivalent
-        to "having stuff in the dir". There is no such thing as
-        an "empty directory" in blob stores.
-        However, we provide two ways to emulate an "empty dir".
-        The first way is a call to `mkdir`. The second way is
-        to include a trailing '/' in the name, as in
-
-            BlobUpath('ab', 'cd', 'efg/')
-            blob_upath / 'xy/'
-
-        Both ways mark the path as a dir in the remaining life
-        of the BlobUpath object. The mark is not persisted anywhere
-        outside of the object. Given the subtlety involved, this
-        feature is not highlighted for now.
-        '''
-        if self._as_dir:
-            return True
-        try:
-            next(self.iterdir())
-            return True
-        except StopIteration:
-            if self._blob_exists():
-                return False
-            return None
-
-    def is_file(self):
-        if self._blob_exists():
-            return True
-        return None
-
-    def iterdir(self):
-        # For efficiency reasons, this does not first check that
-        # `self` is a dir, and raise NotADirectoryError if it isn't.
-        # This could change later, to be aligned with the behavior of
-        # `LocalUpath` as well as `pathlib`.
-        p0 = self._path  # this could be '/'.
-        if not p0.endswith('/'):
-            p0 += '/'
-        np0 = len(p0)
-        subdirs = set()
-        for p in self.riterdir():
-            tail = p._path[np0:]
-            if '/' in tail:
-                tail = tail[: tail.find('/')]
-            if tail not in subdirs:
-                yield self / tail
-                subdirs.add(tail)
-
-    def mkdir(self, *, exist_ok=False):
-        if self.is_dir():
-            if exist_ok or self.is_empty_dir():
-                return self
-            raise FileExistsError(self)
-        else:
-            # Make sure that a path name can't be both a file
-            # and a directory.
-            p = self
-            while p._path != '/':
-                if p.is_file():
-                    raise FileExistsError(p)
-                p = p.parent
-
-            self._as_dir = True
-            # There is no need to "create a directory"
-            # in a blob store. Just go ahead creating
-            # blobs under the "directory".
-            return self
-
-    def rmdir(self):
-        try:
-            next(self.riterdir())
-            raise FileExistsError(self)
-        except StopIteration:
-            self._as_dir = False
-
-    def upload(self,
-               source: Union[str, pathlib.Path, LocalUpath],
-               *,
-               exist_action: str = None) -> int:
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath(str(source.absolute()))
-        else:
-            assert isinstance(source, LocalUpath)
-        return self.copy_from(source, exist_action=exist_action)
-
-    async def a_download(self, *args, **kwargs):
-        return await self._a_do(self.download, *args, **kwargs)
-
-    async def a_upload(self, *args, **kwargs):
-        return await self._a_do(self.upload, *args, **kwargs)

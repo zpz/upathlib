@@ -1,5 +1,5 @@
 import contextlib
-from ._upath import BlobUpath
+from ._blob import BlobUpath
 
 
 class ResourceNotFoundError(Exception):

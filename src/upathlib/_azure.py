@@ -9,7 +9,8 @@ from typing import Optional
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
 
-from ._upath import BlobUpath, LockAcquisitionTimeoutError
+from ._upath import LockAcquisitionTimeoutError
+from ._blob import BlobUpath
 
 
 class AzureBlobUpath(BlobUpath):
