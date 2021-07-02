@@ -61,7 +61,10 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             lock.release()
 
     def read_bytes(self):
-        return self.localpath.read_bytes()
+        try:
+            return self.localpath.read_bytes()
+        except (IsADirectoryError, FileNotFoundError) as e:
+            raise FileNotFoundError(self) from e
 
     def rename(self, target, *, overwrite=False):
         target = self / target
@@ -90,40 +93,47 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             elif p.is_dir():
                 yield from p.riterdir()
 
-    def rm(self, *, missing_ok=False):
-        if self.is_file():
-            logger.info('deleting %s', self.localpath)
-            self.localpath.unlink()
-            return 1
-
-        if missing_ok:
-            return 0
-
-        raise FileNotFoundError(str(self.localpath))
-
-    def rmdir(self, *, missing_ok=False):
-        if self.is_dir():
+    def rmdir(self, *, missing_ok=False, concurrency=None):
+        if self.isdir():
             n = 0
             for p in self.iterdir():
-                if p.is_file():
-                    n += p.rm()
+                if p.isfile():
+                    p.localpath.unlink()
+                    n += 1
                 else:
-                    n += p.rmdir()
+                    k = p.rmdir(missing_ok=False)
+                    n += k
             self.localpath.rmdir()  # this is a `pathlib.Path` call
             return n
 
         if missing_ok:
             return 0
 
-        raise NotADirectoryError(str(self.localpath))
+        raise FileNotFoundError(self.localpath)
+
+    def rmfile(self, *, missing_ok=False):
+        if self.is_file():
+            logger.info('deleting %s', self.localpath)
+            self.localpath.unlink()
+            p = self.localpath.parent
+            if not list(p.iterdir()):  # empty dir
+                p.rmdir()
+            return 1
+
+        if missing_ok:
+            return 0
+
+        raise FileNotFoundError(self)
 
     def stat(self):
         return self.localpath.stat()
 
     def write_bytes(self, data: bytes, *, overwrite=False):
-        if self.is_file():
+        if self.localpath.is_file():
             if not overwrite:
                 raise FileExistsError(self)
+        elif self.localpath.is_dir():
+            raise IsADirectoryError(self)
         else:
-            self.parent.mkdir(exist_ok=True)
+            self.localpath.parent.mkdir(exist_ok=True, parents=True)
         return self.localpath.write_bytes(data)

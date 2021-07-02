@@ -13,8 +13,8 @@ def test_localupath_init():
 
 def test_localupath():
     p = LocalUpath('/tmp/upathlib_local')
-    if p.is_dir():
-        p.clear()
+    if p.isdir():
+        p.rmdir()
         assert not list(p.iterdir())
 
     p.joinpath('abc.txt').write_text('abc')
@@ -33,8 +33,6 @@ def test_localupath():
     p /= 'a'
     assert p._path == '/tmp/upathlib_local/a'
     assert not p.exists()
-    p.mkdir()
-    assert p.exists()
     p.joinpath('x.data').write_bytes(b'x')
     p /= '..'
     assert p._path == '/tmp/upathlib_local'
@@ -43,18 +41,16 @@ def test_localupath():
 
 def test_copy():
     source = LocalUpath('/tmp/upath-test-source')
-    source.mkdir(exist_ok=True)
-    source.clear()
+    source.rmdir(missing_ok=True)
 
     target = LocalUpath('/tmp/upath-test-target')
-    target.mkdir(exist_ok=True)
-    target.clear()
+    target.rmdir(missing_ok=True)
 
     local_file = source / 'testfile'
     local_file.write_text('abc', overwrite=True)
 
     target.copy_from(local_file)
-    assert (target / 'testfile').read_text() == 'abc'
+    assert target.with_name(local_file.name).read_text() == 'abc'
 
     target.joinpath('samplefile').copy_from(local_file)
 

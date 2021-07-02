@@ -611,7 +611,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await self._a_do(self.rmfile, *args, **kwargs)
 
     async def a_rmrf(self, *args, **kwargs):
-        return await self._a_do(self.rmrf), *args, **kwargs
+        return await self._a_do(self.rmrf, *args, **kwargs)
 
     async def a_stat(self):
         return await self._a_do(self.stat)
