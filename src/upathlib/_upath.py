@@ -116,7 +116,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                               concurrency=concurrency,
                               exist_action=exist_action)
 
-    def _copy_file(self, target: Upath, *, exist_action: str) -> int:
+    def _copy_file_to(self, target: Upath, *, exist_action: str) -> int:
         if target == self:
             return 0
 
@@ -181,7 +181,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             target = target / self.name
 
         if self.isfile():
-            return self._copy_file(target, exist_action=exist_action)
+            return self._copy_file_to(target, exist_action=exist_action)
 
         if self.isdir():
             if concurrency is None:
@@ -193,7 +193,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             for p in self.riterdir():
                 extra = str(p.path.relative_to(self.path))
                 tasks.append(pool.submit(
-                    p._copy_file,
+                    p._copy_file_to,
                     target=target/extra,
                     exist_action=exist_action
                 ))
@@ -207,13 +207,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def cp(self: T,
            target: str,
            *,
-           overwrite: bool = False,
-           concurrency: int = None) -> T:
+           concurrency: int = None,
+           exist_action: str = None,
+           ) -> int:
         '''Copy the content of the current path to the location
-        `target` in the same store. The path `target` is relative
-        to `self`.
+        `target` in the same store. The path `target` is absolute
+        or relative to `self`.
 
-        Return a path to the target.
+        Return the number of files copied.
 
         Examples: suppose these blobs are present
 
@@ -222,16 +223,19 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             /e/f/g/xy.data
             /e/f/g/h/d/dd.txt
 
-        now with `overwrite=False`:
+        then with `overwrite=False`:
 
             self         target         outcome
             /a/b/c.txt   ../c           /a/b/c/c.txt
             /a/b/c.txt   ../c/d         FileExistsError
             /a/b/c.txt   ../c.txt.back  /a/b/c.txt.back
             /a/b/c/d     /e/f           /e/f/d/c.txt
-            /a/b/c/d     /e/f/g/h       FileExistsError
+            /a/b/c/d     /e/f/g/h       /e/f/g/h/d/c.txt
         '''
-        raise NotImplementedError
+        return self.copy_to(self / target,
+                            concurrency=concurrency,
+                            exist_action=exist_action,
+                            )
 
     @ abc.abstractmethod
     def exists(self) -> bool:
@@ -354,24 +358,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def ls(self: T) -> List[T]:
         return sorted(self.iterdir())
 
-    def mv(self: T, target: str, *, overwrite: bool = False) -> T:
-        '''Rename this file or directory to the given `target`
-        in the same store.
-
-        Return a new `Upath` instance pointing to `target`.
-
-        Behavior is analogous to the Linux command `mv`.
-        Aslo refer to the doc of `cp`.
-
-        This reference implementation uses copy/delete
-        to achieve the effect of renaming.
-        Concrete subclasses may have a more efficient way
-        to achieve renaming.
-        '''
-        # TODO: needs more careful check on the location relationship
-        # between `self` and `target`.
-        raise NotImplementedError
-
     @ property
     def name(self) -> str:
         '''Return the segment after the last `/`.'''
@@ -404,6 +390,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def read_text(self, *, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
+
+    def rename(self: T, target: str, *, overwrite: bool = False) -> T:
+        '''Rename this file or directory to the given `target`
+        in the same store. The path `target` is absolute
+        or relative to `self`.
+
+        Return a new `Upath` instance pointing to `target`.
+
+        Behavior is similar to `pathlib.Path.rename`.
+        '''
+        raise NotImplementedError
 
     @abc.abstractmethod
     def riterdir(self: T) -> Iterator[T]:
@@ -587,9 +584,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_ls(self):
         return await self._a_do(self.ls)
 
-    async def a_mv(self, *args, **kwargs):
-        return await self._a_do(self.mv, *args, **kwargs)
-
     async def a_read_bytes(self):
         return await self._a_do(self.read_bytes)
 
@@ -601,6 +595,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_read_text(self, **kwargs):
         return await self._a_do(self.read_text, **kwargs)
+
+    async def a_rename(self, *args, **kwargs):
+        return await self._a_do(self.rename, *args, **kwargs)
 
     async def a_riterdir(self):
         # This is a suboptimal reference implementation.

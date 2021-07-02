@@ -32,14 +32,10 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def exists(self):
         return self.localpath.exists()
 
-    def is_dir(self):
-        if not self.exists():
-            return None
+    def isdir(self):
         return self.localpath.is_dir()
 
-    def is_file(self):
-        if not self.exists():
-            return None
+    def isfile(self):
         return self.localpath.is_file()
 
     def iterdir(self):
@@ -64,24 +60,28 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         finally:
             lock.release()
 
-    def mkdir(self, *, exist_ok=False):
-        self.localpath.mkdir(parents=True, exist_ok=exist_ok)
-        return self
-
-    def mv(self, target, *, overwrite=False):
-        if isinstance(target, str):
-            target = self / target
-        else:
-            assert target.__class__ is self.__class__
-        if target == self:
-            return self
-        if target.exists() and not overwrite:
-            raise FileExistsError(str(target))
-        self.localpath.rename(target.localpath)
-        return target
-
     def read_bytes(self):
         return self.localpath.read_bytes()
+
+    def rename(self, target, *, overwrite=False):
+        target = self / target
+        if target == self:
+            return self
+
+        if not self.exists():
+            raise FileNotFoundError(self)
+
+        if target.isfile():
+            if not overwrite:
+                raise FileExistsError(target)
+        elif target.isdir():
+            if list(target.iterdir()):  # dir not empty
+                raise FileExistsError(target)
+            target.rmdir()
+        else:
+            assert not target.exists()
+        self.localpath.rename(target.localpath)
+        return target
 
     def riterdir(self):
         for p in self.iterdir():
