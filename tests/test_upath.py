@@ -1,16 +1,16 @@
 import contextlib
 import pathlib
-from upathlib import Upath
+from upathlib._upath import Upath
 
 
 class MyUpath(Upath):
     def exists(self):
         raise NotImplementedError
 
-    def is_dir(self):
+    def isdir(self):
         raise NotImplementedError
 
-    def is_file(self):
+    def isfile(self):
         raise NotImplementedError
 
     def iterdir(self):
@@ -20,16 +20,16 @@ class MyUpath(Upath):
     def lock(self, wait=100):
         yield self
 
-    def mkdir(self):
-        raise NotImplementedError
-
     def read_bytes(self):
         raise NotImplementedError
 
-    def rm(self):
+    def riterdir(self):
         raise NotImplementedError
 
     def rmdir(self):
+        raise NotImplementedError
+
+    def rmfile(self):
         raise NotImplementedError
 
     def stat(self):
@@ -43,12 +43,10 @@ def test_upath():
     p = MyUpath('abc/def/')
     assert p.path == pathlib.PurePosixPath('/abc/def')
     assert repr(p) == "MyUpath('/abc/def')"
-    print('hash:', hash(p))
 
     p = MyUpath('x/y/z')
     assert p.path == pathlib.PurePosixPath('/x/y/z')
     assert repr(p) == "MyUpath('/x/y/z')"
-    print('hash:', hash(p))
 
 
 def test_upath_joinpath():

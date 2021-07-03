@@ -100,6 +100,39 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
+    def copy(self: T,
+             target: str,
+             *,
+             concurrency: int = None,
+             exist_action: str = None,
+             ) -> int:
+        '''Copy the content of the current path to the location
+        `target` in the same store. The path `target` is absolute
+        or relative to `self`.
+
+        Return the number of files copied.
+
+        Examples: suppose these blobs are present
+
+            /a/b/c.txt
+            /a/b/c/d/c.txt
+            /e/f/g/xy.data
+            /e/f/g/h/d/dd.txt
+
+        then with `overwrite=False`:
+
+            self         target         outcome
+            /a/b/c.txt   ../c           /a/b/c/c.txt
+            /a/b/c.txt   ../c/d         FileExistsError
+            /a/b/c.txt   ../c.txt.back  /a/b/c.txt.back
+            /a/b/c/d     /e/f           /e/f/d/c.txt
+            /a/b/c/d     /e/f/g/h       /e/f/g/h/d/c.txt
+        '''
+        return self.copy_to(self / target,
+                            concurrency=concurrency,
+                            exist_action=exist_action,
+                            )
+
     def copy_from(self,
                   source: Upath,
                   *,
@@ -165,7 +198,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         Return the number of files copied.
 
-        Compare with `cp`, which copies to another location
+        Compare with `copy`, which copies to another location
         in the same store.
 
         Subclasses should provide more efficient implementations
@@ -203,39 +236,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             return n
 
         raise FileNotFoundError(self)
-
-    def cp(self: T,
-           target: str,
-           *,
-           concurrency: int = None,
-           exist_action: str = None,
-           ) -> int:
-        '''Copy the content of the current path to the location
-        `target` in the same store. The path `target` is absolute
-        or relative to `self`.
-
-        Return the number of files copied.
-
-        Examples: suppose these blobs are present
-
-            /a/b/c.txt
-            /a/b/c/d/c.txt
-            /e/f/g/xy.data
-            /e/f/g/h/d/dd.txt
-
-        then with `overwrite=False`:
-
-            self         target         outcome
-            /a/b/c.txt   ../c           /a/b/c/c.txt
-            /a/b/c.txt   ../c/d         FileExistsError
-            /a/b/c.txt   ../c.txt.back  /a/b/c.txt.back
-            /a/b/c/d     /e/f           /e/f/d/c.txt
-            /a/b/c/d     /e/f/g/h       /e/f/g/h/d/c.txt
-        '''
-        return self.copy_to(self / target,
-                            concurrency=concurrency,
-                            exist_action=exist_action,
-                            )
 
     @ abc.abstractmethod
     def exists(self) -> bool:
@@ -550,14 +550,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await asyncio.get_running_loop().run_in_executor(
             self._executor, func)
 
+    async def a_copy(self, *args, **kwargs):
+        return await self._a_do(self.copy, *args, **kwargs)
+
     async def a_copy_from(self, *args, **kwargs):
         return await self._a_do(self.copy_from, *args, **kwargs)
 
     async def a_copy_to(self, *args, **kwargs):
         return await self._a_do(self.copy_to, *args, **kwargs)
-
-    async def a_cp(self, *args, **kwargs):
-        return await self._a_do(self.cp, *args, **kwargs)
 
     async def a_exists(self):
         return await self._a_do(self.exists)

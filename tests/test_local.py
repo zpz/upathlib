@@ -1,6 +1,6 @@
 import pathlib
 import pytest
-from upathlib import LocalUpath
+from upathlib._local import LocalUpath
 
 
 def test_localupath_init():
@@ -41,19 +41,21 @@ def test_localupath():
 
 def test_copy():
     source = LocalUpath('/tmp/upath-test-source')
-    source.rmdir(missing_ok=True)
-
-    target = LocalUpath('/tmp/upath-test-target')
-    target.rmdir(missing_ok=True)
+    source.rmrf()
 
     local_file = source / 'testfile'
     local_file.write_text('abc', overwrite=True)
 
-    target.copy_from(local_file)
-    assert target.with_name(local_file.name).read_text() == 'abc'
+    target = LocalUpath('/tmp/upath-test-target')
+    target.rmrf()
 
-    target.joinpath('samplefile').copy_from(local_file)
+    target.joinpath('test').copy_from(local_file)
+    assert target.joinpath('test').read_text() == 'abc'
 
-    assert sorted(target.iterdir()) == [
-        target / 'samplefile', target / 'testfile'
+    # Now `target` is a dir.
+    target.copy_from(source)
+
+    assert target.ls() == [
+        target / 'test',
+        target / 'upath-test-source',
     ]

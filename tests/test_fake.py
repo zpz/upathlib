@@ -1,5 +1,5 @@
 import pytest
-from upathlib import LocalUpath
+from upathlib._local import LocalUpath
 from upathlib._fake import FakeBlobUpath
 
 
