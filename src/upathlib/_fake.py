@@ -88,7 +88,7 @@ class FakeBlobUpath(BlobUpath):
         for pp in _store.list_blobs(self._bucket, p):
             yield self / pp[len(p):]
 
-    def rmfile(self, missing_ok=False):
+    def rmfile(self, *, missing_ok=False):
         try:
             _store.delete_blob(self._bucket, self._path)
             return 1

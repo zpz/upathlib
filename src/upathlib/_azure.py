@@ -3,13 +3,14 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime
 from dateutil.parser import parse
+from io import UnsupportedOperation
 from typing import Optional
 
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
 
-from ._upath import LockAcquisitionTimeoutError
+from ._upath import LockAcquisitionTimeoutError, FileInfo
 from ._blob import BlobUpath
 
 
@@ -85,7 +86,22 @@ class AzureBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
-    def _blob_exists(self):
+    def file_info(self):
+        try:
+            with self._provide_blob_client():
+                info = self._blob_client.get_blob_properties()
+                return FileInfo(
+                    ctime=parse(str(info.creation_time)),
+                    mtime=parse(str(info.last_modified)),
+                    atime=parse(str(info.last_accessed_on)),
+                    size=info.size,
+                    details=info,
+                )
+                # TODO: correct the types and values of the attributes.
+        except ResourceNotFoundError as e:
+            raise FileNotFoundError(self) from e
+
+    def isfile(self):
         with self._provide_blob_client():
             return self._blob_client.exists()
 
@@ -225,41 +241,22 @@ class AzureBlobUpath(BlobUpath):
                     name_starts_with=prefix):
                 yield self / p.name[k:]
 
-    def rm(self, missing_ok=False):
+    def rmfile(self, *, missing_ok=False):
         with self._provide_blob_client():
-            if not self.is_file():
+            try:
+                self._blob_client.delete_blob(
+                    delete_snapshots='include',
+                    lease=self._lease_id)
+                return 1
+            except ResourceNotFoundError as e:
                 if missing_ok:
                     return 0
-                if self.is_dir():
-                    raise IsADirectoryError(self)
-                raise FileNotFoundError(self)
-            self._blob_client.delete_blob(
-                delete_snapshots='include',
-                lease=self._lease_id)
-            return 1
-
-    def stat(self):
-        with self._provide_blob_client():
-            info = self._blob_client.get_blob_properties()
-            return {
-                'created_at': parse(str(info.creation_time)),
-                'modified_at': parse(str(info.last_modified)),
-                'last_accessed_at': parse(str(info.last_accessed_on)),
-                'size_bytes': info.size,
-            }
-            # TODO: refer to the local stat data structure.
+                raise FileNotFoundError(self) from e
 
     def write_bytes(self, data, *, overwrite=False):
         with self._provide_blob_client():
-            # if self.is_dir():
-            #     raise IsADirectoryError(self)
             if self._path == '/':
-                raise IsADirectoryError(self)
-            # p = self.parent
-            # while p._path != '/':
-            #     if p.is_file():
-            #         raise FileExistsError(p)
-            #     p = p.parent
+                raise UnsupportedOperation("can not write to root as a blob")
 
             nbytes = len(data)
             try:

@@ -1,5 +1,5 @@
 import contextlib
-from io import BufferedReader
+from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account
 from google.cloud import storage
 
@@ -63,7 +63,10 @@ class GcpBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
-    def _blob_exists(self) -> bool:
+    def file_info(self):
+        raise NotImplementedError
+
+    def isfile(self) -> bool:
         return self._bucket.blob(self._path.lstrip('/')).exists()
 
     @contextlib.contextmanager
@@ -82,32 +85,20 @@ class GcpBlobUpath(BlobUpath):
         for p in self._client.list_blobs(self._bucket, prefix=prefix):
             yield self / p.name[k:]
 
-    def rm(self, missing_ok=False):
+    def rmfile(self, *, missing_ok=False):
         if not self.is_file():
             if missing_ok:
                 return 0
-            if self.is_dir():
-                raise IsADirectoryError(self)
             raise FileNotFoundError(self)
+        # TODO: try/except without first check.
 
         b = self._bucket.blob(self._path.lstrip('/'))
         b.delete()
         return 1
 
-    def stat(self):
-        # place holder
-        return {}
-
     def write_bytes(self, data, *, overwrite=False):
-        # if self.is_dir():
-        #     raise IsADirectoryError(self)
         if self._path == '/':
-            raise IsADirectoryError(self)
-        # p = self.parent
-        # while p._path != '/':
-        #     if p.is_file():
-        #         raise FileExistsError(p)
-        #     p = p.parent
+            raise UnsupportedOperation("can not write to root as a blob")
 
         nbytes = len(data)
 
