@@ -17,7 +17,7 @@ import pickle
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Iterator, TypeVar
+from typing import List, Iterator, TypeVar, Any
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ class FileInfo:
     atime: float   # last access time
     ctime: float   # creation time
     mtime: float   # last modification time
+    details: Any   # platform-dependent
 
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods

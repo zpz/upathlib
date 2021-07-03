@@ -41,6 +41,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             atime=st.st_atime,
             ctime=st.st_ctime,
             mtime=st.st_mtime,
+            details=st,
         )
 
     def isdir(self):
