@@ -1,9 +1,12 @@
 import contextlib
+import logging
 from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account
 from google.cloud import storage
 
 from ._blob import BlobUpath
+
+logger = logging.getLogger(__name__)
 
 
 class GcpBlobUpath(BlobUpath):
@@ -92,6 +95,7 @@ class GcpBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
         # TODO: try/except without first check.
 
+        logger.info('deleting %s', self.path)
         b = self._bucket.blob(self._path.lstrip('/'))
         b.delete()
         return 1

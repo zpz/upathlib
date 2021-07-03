@@ -1,6 +1,6 @@
 # upathlib
 
-This package defines some APIs for working with a cloud blob store (aka "object store"). The motivation is to provide a unified or "universal" API for blob store clients, including local file systems.
+This package defines some APIs for working with a cloud blob store (aka "object store"). The motivation is to provide a "unified" or "universal" API for blob store clients, including local file systems.
 
 The APIs follow the style of the standard library [`pathlib`](https://docs.python.org/3/library/pathlib.html) where appropriate.
 Attention is focused on identifying the *most essential* functionalities

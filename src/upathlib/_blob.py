@@ -1,13 +1,9 @@
 import concurrent.futures
-import logging
 import pathlib
 from typing import Union
 
 from ._upath import Upath
 from ._local import LocalUpath
-
-
-logger = logging.getLogger(__name__)
 
 
 class BlobUpath(Upath):  # pylint: disable=abstract-method

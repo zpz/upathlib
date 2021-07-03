@@ -1,3 +1,4 @@
+import logging
 import time
 import threading
 from contextlib import contextmanager
@@ -6,12 +7,16 @@ from dateutil.parser import parse
 from io import UnsupportedOperation
 from typing import Optional
 
-
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
 
 from ._upath import LockAcquisitionTimeoutError, FileInfo
 from ._blob import BlobUpath
+
+logging.getLogger('azure.storage').setLevel(logging.WARNING)
+logging.getLogger('azure.core.pipeline.policies').setLevel(logging.WARNING)
+
+logger = logging.getLogger(__name__)
 
 
 class AzureBlobUpath(BlobUpath):
@@ -244,6 +249,7 @@ class AzureBlobUpath(BlobUpath):
     def rmfile(self, *, missing_ok=False):
         with self._provide_blob_client():
             try:
+                logger.info('deleting %s', self.path)
                 self._blob_client.delete_blob(
                     delete_snapshots='include',
                     lease=self._lease_id)
