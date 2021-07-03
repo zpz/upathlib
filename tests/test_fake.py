@@ -6,9 +6,7 @@ from upathlib._fake import FakeBlobUpath
 def test_1():
     init_path = '/tmp/test'
     p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
-    if p.isdir():
-        p.rmdir()
-        assert not list(p.iterdir())
+    p.rmrf()
 
     p.joinpath('abc.txt').write_text('abc')
 
@@ -29,7 +27,6 @@ def test_1():
     assert not p.isfile()
     assert not p.isdir()
     assert not p.exists()
-    assert p.isdir()
     p.joinpath('x.data').write_bytes(b'x')
     p /= '..'
     assert p._path == init_path
@@ -47,10 +44,16 @@ def test_copy():
     source_file.write_text('abc', overwrite=True)
 
     target.copy_from(source_file)
-    assert (target / 'testfile').read_text() == 'abc'
+    assert target.read_text() == 'abc'
 
-    target.joinpath('samplefile').copy_from(source_file)
+    with pytest.raises(NotADirectoryError):
+        # cant' write to `target/'samplefile'`
+        # because `target` is a file.
+        target.joinpath('samplefile').copy_from(source)
 
-    assert sorted(target.iterdir()) == [
-        target / 'samplefile', target / 'testfile'
-    ]
+    target.rmrf()
+    (target / 'samplefile').copy_from(source)
+    assert target.ls() == [target / 'samplefile']
+    assert target.joinpath('samplefile').ls() == [
+        target/'samplefile'/'testfile']
+    assert (target / 'samplefile' / 'testfile').read_text() == 'abc'

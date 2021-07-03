@@ -106,17 +106,20 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
                 yield from p.riterdir()
 
     def rmdir(self, *, missing_ok=False, concurrency=None):
-        if self.isdir():
+        def _rmdir(path):
             n = 0
-            for p in self.iterdir():
+            for p in path.iterdir():
                 if p.isfile():
                     logger.info('deleting %s', p.localpath)
                     p.localpath.unlink()
                     n += 1
                 else:
-                    k = p.rmdir(missing_ok=False)
-                    n += k
-            self.localpath.rmdir()  # this is a `pathlib.Path` call
+                    n += _rmdir(p)
+            path.localpath.rmdir()  # this is a `pathlib.Path` call
+            return n
+
+        if self.isdir():
+            n = _rmdir(self)
 
             p = self.parent
             while not list(p.iterdir()):  # empty dir

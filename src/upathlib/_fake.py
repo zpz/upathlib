@@ -20,11 +20,9 @@ class FakeBlobStore:
         }
 
     def write_bytes(self, bucket: str, name: str, data: bytes, overwrite: bool = False):
-        print('write bytes', bucket, name, data)
         if name in self._data[bucket] and not overwrite:
             raise ResourceExistsError
         self._data[bucket][name] = data
-        print('_data:', self._data)
         return len(data)
 
     def read_bytes(self, bucket: str, name: str):
@@ -69,9 +67,6 @@ class FakeBlobUpath(BlobUpath):
         # place holder
         return {}
 
-    def itedir(self):
-        raise NotImplementedError
-
     def isfile(self):
         return _store.exists(self._bucket, self._path)
 
@@ -90,22 +85,21 @@ class FakeBlobUpath(BlobUpath):
         p = self._path
         if not p.endswith('/'):
             p += '/'
-        return _store.list_blobs(self._bucket, p)
+        for pp in _store.list_blobs(self._bucket, p):
+            yield self / pp[len(p):]
 
     def rmfile(self, missing_ok=False):
-        if not self.isfile():
+        try:
+            _store.delete_blob(self._bucket, self._path)
+            return 1
+        except ResourceNotFoundError as e:
             if missing_ok:
                 return 0
-            if self.is_dir():
-                raise IsADirectoryError(self)
-            raise FileNotFoundError(self)
-
-        _store.delete_blob(self._bucket, self._path)
-        return 1
+            raise FileNotFoundError(self) from e
 
     def write_bytes(self, data, *, overwrite=False):
         try:
             _store.write_bytes(self._bucket, self._path,
                                data, overwrite=overwrite)
-        except ResourceExistsError:
-            raise FileExistsError(self)
+        except ResourceExistsError as e:
+            raise FileExistsError(self) from e

@@ -233,6 +233,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             pool = concurrent.futures.ThreadPoolExecutor(concurrency)
             tasks = []
             for p in self.riterdir():
+
                 extra = str(p.path.relative_to(self.path))
                 tasks.append(pool.submit(
                     p._copy_file_to,
