@@ -12,7 +12,7 @@ import filelock
 # Other options to lock into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
 
-from ._upath import Upath, LockAcquisitionTimeoutError
+from ._upath import Upath, LockAcquisitionTimeoutError, FileInfo
 
 
 logging.getLogger('filelock').setLevel(logging.WARNING)
@@ -31,6 +31,17 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
 
     def exists(self):
         return self.localpath.exists()
+
+    def file_info(self):
+        if not self.isfile():
+            raise FileNotFoundError(self)
+        st = self.localpath.stat()
+        return FileInfo(
+            size=st.st_size,
+            atime=st.st_atime,
+            ctime=st.st_ctime,
+            mtime=st.st_mtime,
+        )
 
     def isdir(self):
         return self.localpath.is_dir()
@@ -134,9 +145,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             return 0
 
         raise FileNotFoundError(self)
-
-    def stat(self):
-        return self.localpath.stat()
 
     def write_bytes(self, data: bytes, *, overwrite=False):
         if self.localpath.is_file():

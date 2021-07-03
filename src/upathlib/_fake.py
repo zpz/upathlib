@@ -68,6 +68,9 @@ class FakeBlobUpath(BlobUpath):
     def _blob_exists(self):
         return _store.exists(self._bucket, self._path)
 
+    def itedir(self):
+        raise NotImplementedError
+
     @contextlib.contextmanager
     def lock(self, *, wait=60):
         # place holder
@@ -85,7 +88,7 @@ class FakeBlobUpath(BlobUpath):
             p += '/'
         return _store.list_blobs(self._bucket, p)
 
-    def rm(self, missing_ok=False):
+    def rmfile(self, missing_ok=False):
         if not self.is_file():
             if missing_ok:
                 return 0

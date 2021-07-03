@@ -14,7 +14,7 @@ import os
 import os.path
 import pathlib
 import pickle
-from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
 from typing import List, Iterator, TypeVar
@@ -26,6 +26,14 @@ T = TypeVar('T', bound='Upath')
 
 class LockAcquisitionTimeoutError(TimeoutError):
     pass
+
+
+@dataclass
+class FileInfo:
+    size: int      # in bytes
+    atime: float   # last access time
+    ctime: float   # creation time
+    mtime: float   # last modification time
 
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
@@ -255,6 +263,13 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @ abc.abstractmethod
+    def file_info(self) -> FileInfo:
+        '''
+        If `self.isfile()` is `False`, raise `FileNotFoundError`.
+        '''
+        raise NotImplementedError
+
+    @ abc.abstractmethod
     def isdir(self) -> bool:
         '''Return `True` if the path is an existing directory, `False` otherwise.
 
@@ -472,11 +487,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         n2 = self.rmdir(missing_ok=True, concurrency=concurrency)
         return n1 + n2
 
-    @ abc.abstractmethod
-    def stat(self) -> os.stat_result:
-        # TODO: spec of the output content.
-        raise NotImplementedError
-
     @ property
     def stem(self) -> str:
         return self.path.stem
@@ -550,17 +560,30 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await asyncio.get_running_loop().run_in_executor(
             self._executor, func)
 
-    async def a_copy(self, *args, **kwargs):
-        return await self._a_do(self.copy, *args, **kwargs)
+    async def a_copy(self, target: str, *,
+                     concurrency: int = None, exist_action: str = None):
+        return await self.a_copy_to(self / target,
+                                    concurrency=concurrency,
+                                    exist_action=exist_action,
+                                    )
 
-    async def a_copy_from(self, *args, **kwargs):
-        return await self._a_do(self.copy_from, *args, **kwargs)
+    async def a_copy_from(self, source: Upath, *,
+                          concurrency: int = None,
+                          exist_action: str = None):
+        return await source.a_copy_to(self,
+                                      concurrency=concurrency,
+                                      exist_action=exist_action,
+                                      )
 
-    async def a_copy_to(self, *args, **kwargs):
-        return await self._a_do(self.copy_to, *args, **kwargs)
+    async def a_copy_to(self, target: Upath, *,
+                        concurrency: int = None, exist_action: str = None):
+        raise NotImplementedError
 
     async def a_exists(self):
         return await self._a_do(self.exists)
+
+    async def a_file_info(self):
+        return await self._a_do(self.file_info)
 
     async def a_isdir(self):
         return await self._a_do(self.isdir)
@@ -568,18 +591,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_isfile(self):
         return await self._a_do(self.isfile)
 
-    async def a_iterdir(self):
-        # This is a suboptimal reference implementation.
-        for p in self.iterdir():
-            yield p
+    async def a_iterdir(self: T) -> Iterator[T]:
+        raise NotImplementedError
 
     @contextlib.asynccontextmanager
     async def a_lock(self, *, wait: float = 60):
-        # This implementation may be suboptimal.
-        # Subclass should provide a better implementation
-        # if available.
-        with self.lock(wait=wait) as obj:
-            yield obj
+        raise NotImplementedError
 
     async def a_ls(self):
         return await self._a_do(self.ls)
@@ -600,21 +617,21 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await self._a_do(self.rename, *args, **kwargs)
 
     async def a_riterdir(self):
-        # This is a suboptimal reference implementation.
-        for p in self.riterdir():
-            yield p
+        raise NotImplementedError
 
-    async def a_rmdir(self, *args, **kwargs):
-        return await self._a_do(self.rmdir, *args, **kwargs)
+    async def a_rmdir(self, *,
+                      missing_ok: bool = False, concurrency: int = None) -> int:
+        raise NotImplementedError
 
     async def a_rmfile(self, *args, **kwargs):
         return await self._a_do(self.rmfile, *args, **kwargs)
 
-    async def a_rmrf(self, *args, **kwargs):
-        return await self._a_do(self.rmrf, *args, **kwargs)
-
-    async def a_stat(self):
-        return await self._a_do(self.stat)
+    async def a_rmrf(self, *, concurrency: int = None) -> int:
+        if self._path == '/':
+            raise UnsupportedOperation("`rmrf` not allowed on root directory")
+        n1 = await self.a_rmfile(missing_ok=True)
+        n2 = await self.rmdir(missing_ok=True, concurrency=concurrency)
+        return n1 + n2
 
     async def a_write_bytes(self, data, **kwargs):
         return await self._a_do(self.write_bytes, data, **kwargs)
