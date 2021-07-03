@@ -96,13 +96,12 @@ class AzureBlobUpath(BlobUpath):
             with self._provide_blob_client():
                 info = self._blob_client.get_blob_properties()
                 return FileInfo(
-                    ctime=parse(str(info.creation_time)),
-                    mtime=parse(str(info.last_modified)),
-                    atime=parse(str(info.last_accessed_on)),
+                    ctime=info.creation_time.timestamp(),
+                    mtime=info.last_modified.timestamp(),
+                    atime=info.last_accessed_on,  # often None; need to observe other values
                     size=info.size,
                     details=info,
                 )
-                # TODO: correct the types and values of the attributes.
         except ResourceNotFoundError as e:
             raise FileNotFoundError(self) from e
 

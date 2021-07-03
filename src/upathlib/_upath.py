@@ -31,9 +31,9 @@ class LockAcquisitionTimeoutError(TimeoutError):
 @dataclass
 class FileInfo:
     size: int      # in bytes
-    atime: float   # last access time
-    ctime: float   # creation time
-    mtime: float   # last modification time
+    atime: float   # last access POSIX timestamp
+    ctime: float   # creation POSIX timetamp
+    mtime: float   # last modification POSIX timestamp
     details: Any   # platform-dependent
 
 
