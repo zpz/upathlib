@@ -7,6 +7,9 @@ class MyUpath(Upath):
     def exists(self):
         raise NotImplementedError
 
+    def file_info(self):
+        raise NotImplementedError
+
     def isdir(self):
         raise NotImplementedError
 
@@ -32,10 +35,7 @@ class MyUpath(Upath):
     def rmfile(self):
         raise NotImplementedError
 
-    def stat(self):
-        raise NotImplementedError
-
-    def write_bytes(self, data, overwrite=False):
+    def write_bytes(self):
         raise NotImplementedError
 
 

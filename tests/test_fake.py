@@ -6,8 +6,8 @@ from upathlib._fake import FakeBlobUpath
 def test_1():
     init_path = '/tmp/test'
     p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
-    if p.is_dir():
-        p.clear()
+    if p.isdir():
+        p.rmdir()
         assert not list(p.iterdir())
 
     p.joinpath('abc.txt').write_text('abc')
@@ -26,12 +26,10 @@ def test_1():
     assert p._path == init_path
     p /= 'a'
     assert p._path == f'{init_path}/a'
-    assert not p.is_file()
-    assert not p.is_dir()
+    assert not p.isfile()
+    assert not p.isdir()
     assert not p.exists()
-    p.mkdir()
-    assert not p.exists()
-    assert p.is_dir()
+    assert p.isdir()
     p.joinpath('x.data').write_bytes(b'x')
     p /= '..'
     assert p._path == init_path
@@ -40,12 +38,10 @@ def test_1():
 
 def test_copy():
     source = FakeBlobUpath('/tmp/upath-test-source', bucket='bucket_b')
-    source.mkdir(exist_ok=True)
-    source.clear()
+    source.rmrf()
 
     target = LocalUpath('/tmp/upath-test-target')
-    target.mkdir(exist_ok=True)
-    target.clear()
+    target.rmrf()
 
     source_file = source / 'testfile'
     source_file.write_text('abc', overwrite=True)

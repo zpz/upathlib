@@ -65,11 +65,15 @@ class FakeBlobUpath(BlobUpath):
         super().__init__(*parts, bucket=bucket)
         self._bucket = bucket
 
-    def _blob_exists(self):
-        return _store.exists(self._bucket, self._path)
+    def file_info(self):
+        # place holder
+        return {}
 
     def itedir(self):
         raise NotImplementedError
+
+    def isfile(self):
+        return _store.exists(self._bucket, self._path)
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):
@@ -89,7 +93,7 @@ class FakeBlobUpath(BlobUpath):
         return _store.list_blobs(self._bucket, p)
 
     def rmfile(self, missing_ok=False):
-        if not self.is_file():
+        if not self.isfile():
             if missing_ok:
                 return 0
             if self.is_dir():
@@ -98,10 +102,6 @@ class FakeBlobUpath(BlobUpath):
 
         _store.delete_blob(self._bucket, self._path)
         return 1
-
-    def stat(self):
-        # place holder
-        return {}
 
     def write_bytes(self, data, *, overwrite=False):
         try:
