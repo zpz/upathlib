@@ -77,8 +77,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if concurrency <= 1:
             n = 0
             for p in self.riterdir():
-                p.rmfile()
-                n += 1
+                n += p.rmfile(missing_ok=False)
             if n == 0 and not missing_ok:
                 raise FileNotFoundError(self)
             return n

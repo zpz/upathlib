@@ -131,41 +131,34 @@ class AzureBlobUpath(BlobUpath):
                     try:
                         self.write_text(
                             datetime.utcnow().isoformat(), overwrite=True)
-                    except HttpResponseError as e:
-                        if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
-                            # Blob exists and has a lease on it.
-                            # Proceed to next step---acquire a lease.
-                            time.sleep(0.03)
-                        else:
-                            raise
-
-                    lock_acquired = False
-                    while True:
                         try:
                             self._lease_id = self._blob_client.acquire_lease(
                                 lease_duration=60,
                                 timeout=1).id
-                            lock_acquired = True
                             break
                         except ResourceNotFoundError:
-                            break  # go to the outer looper to write the file.
+                            continue  # go to the outer looper to write the file again
                         except HttpResponseError as e:
                             if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':
                                 # Having a lease held by others. Continue to wait.
                                 pass
                             else:
                                 raise
+                    except HttpResponseError as e:
+                        if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
+                            # Blob exists and has a lease on it. Wait and try again.
+                            pass
+                        else:
+                            raise
 
-                        t1 = time.perf_counter()
-                        if t1 - t0 >= wait:
-                            raise LockAcquisitionTimeoutError(self, t1 - t0)
-                        time.sleep(0.03)
-
-                    if lock_acquired:
-                        break
+                    t1 = time.perf_counter()
+                    if t1 - t0 >= wait:
+                        raise LockAcquisitionTimeoutError(self, t1 - t0)
+                    time.sleep(0.011)
 
                 self._t_renew_lease = threading.Thread(
                     target=self._renew_lease)
+                self._t_renew_lease_stopped = False
                 self._t_renew_lease.start()
 
             self._lock_count += 1
@@ -176,11 +169,9 @@ class AzureBlobUpath(BlobUpath):
                 if self._lock_count <= 0:
                     self._t_renew_lease_stopped = True
                     self._t_renew_lease.join()
-                    self._t_renew_lease_stopped = False
                     self._t_renew_lease = None
-                    self.rm()
-                    # BlobLeaseClient(self._blob_client,
-                    #                 lease_id=self._lease_id).release()
+                    self.rmfile()
+                    # still holding the lease; this should succeed.
                     self._lease_id = None
                     self._lock_count = 0
 
@@ -229,11 +220,12 @@ class AzureBlobUpath(BlobUpath):
     def _renew_lease(self):
         t0 = time.perf_counter()
         while True:
-            time.sleep(0.012)
+            time.sleep(0.002)
             if self._t_renew_lease_stopped:
+                self._t_renew_lease_stopped = False
                 return
             if time.perf_counter() - t0 >= 13:
-                # Renew ahead of the lease duration 60 seconds.
+                # Renew ahead of the lease duration of 60 seconds.
                 BlobLeaseClient(self._blob_client,
                                 lease_id=self._lease_id).renew()
                 t0 = time.perf_counter()
@@ -249,10 +241,10 @@ class AzureBlobUpath(BlobUpath):
     def rmfile(self, *, missing_ok=False):
         with self._provide_blob_client():
             try:
-                logger.info('deleting %s', self.path)
                 self._blob_client.delete_blob(
                     delete_snapshots='include',
                     lease=self._lease_id)
+                logger.info('deleting %s', self.path)
                 return 1
             except ResourceNotFoundError as e:
                 if missing_ok:

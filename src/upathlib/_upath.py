@@ -106,6 +106,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             return NotImplemented
         return self._path >= other._path
 
+    def __hash__(self) -> int:
+        return hash(repr(self))
+
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
@@ -618,7 +621,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_rename(self, *args, **kwargs):
         return await self._a_do(self.rename, *args, **kwargs)
 
-    async def a_riterdir(self):
+    async def a_riterdir(self: T) -> Iterator[T]:
         raise NotImplementedError
 
     async def a_rmdir(self, *,
@@ -630,19 +633,20 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_rmrf(self, *, concurrency: int = None) -> int:
         if self._path == '/':
-            raise UnsupportedOperation("`rmrf` not allowed on root directory")
+            raise UnsupportedOperation(
+                "`a_rmrf` not allowed on root directory")
         n1 = await self.a_rmfile(missing_ok=True)
-        n2 = await self.rmdir(missing_ok=True, concurrency=concurrency)
+        n2 = await self.a_rmdir(missing_ok=True, concurrency=concurrency)
         return n1 + n2
 
-    async def a_write_bytes(self, data, **kwargs):
-        return await self._a_do(self.write_bytes, data, **kwargs)
+    async def a_write_bytes(self, *args, **kwargs):
+        return await self._a_do(self.write_bytes, *args, **kwargs)
 
-    async def a_write_json(self, data, **kwargs):
-        return await self._a_do(self.write_json, data, **kwargs)
+    async def a_write_json(self, *args, **kwargs):
+        return await self._a_do(self.write_json, *args, **kwargs)
 
-    async def a_write_pickle(self, data, **kwargs):
-        return await self._a_do(self.write_pickle, data, **kwargs)
+    async def a_write_pickle(self, *args, **kwargs):
+        return await self._a_do(self.write_pickle, *args, **kwargs)
 
-    async def a_write_text(self, data, **kwargs):
-        return await self._a_do(self.write_text, data, **kwargs)
+    async def a_write_text(self, *args, **kwargs):
+        return await self._a_do(self.write_text, *args, **kwargs)
