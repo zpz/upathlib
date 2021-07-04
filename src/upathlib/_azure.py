@@ -1,13 +1,18 @@
+import asyncio
 import logging
 import time
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime
-from dateutil.parser import parse
 from io import UnsupportedOperation
-from typing import Optional
+from typing import Optional, Union
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
+from azure.storage.blob.aio import (
+    ContainerClient as aContainerClient,
+    BlobClient as aBlobClient,
+    BlobLeaseClient as aBlobLeaseClient,
+)
 from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
 
 from ._upath import LockAcquisitionTimeoutError, FileInfo
@@ -43,10 +48,13 @@ class AzureBlobUpath(BlobUpath):
 
         self._container_client: Optional[ContainerClient] = None
         self._blob_client: Optional[BlobClient] = None
-        self._lease_id = None
-        self._lock_count = 0
-        self._t_renew_lease = None
-        self._t_renew_lease_stopped = False
+        self._a_container_client: Optional[aContainerClient] = None
+        self._a_blob_client: Optional[aBlobClient] = None
+        self._lease_id: str = None
+        self._lock_count: int = 0
+        self._t_renew_lease: Optional[Union[threading.Thread,
+                                            asyncio.Task]] = None
+        self._t_renew_lease_stopped: bool = False
 
     def __repr__(self) -> str:
         return "{}('{}', container_name='{}'".format(
@@ -116,10 +124,6 @@ class AzureBlobUpath(BlobUpath):
             for p in self._container_client.walk_blobs(
                     name_starts_with=prefix):
                 yield self / p.name[k:]
-
-    # TODO:
-    # `a_lock` needs reimplementation, as the raw thread
-    # will not work with async.
 
     @contextmanager
     def lock(self, *, wait=60):
@@ -251,14 +255,187 @@ class AzureBlobUpath(BlobUpath):
                 raise FileNotFoundError(self) from e
 
     def write_bytes(self, data, *, overwrite=False):
-        with self._provide_blob_client():
-            if self._path == '/':
-                raise UnsupportedOperation(
-                    "can not write to root as a blob", self)
+        if self._path == '/':
+            raise UnsupportedOperation(
+                "can not write to root as a blob", self)
 
+        with self._provide_blob_client():
             nbytes = len(data)
             try:
                 self._blob_client.upload_blob(
+                    data,
+                    overwrite=overwrite,
+                    lease=self._lease_id)
+            except ResourceExistsError as e:
+                raise FileExistsError(self) from e
+            return nbytes
+
+    async def a_file_info(self):
+        try:
+            async with self._a_provide_blob_client():
+                info = await self._a_blob_client.get_blob_properties()
+                return FileInfo(
+                    ctime=info.creation_time.timestamp(),
+                    mtime=info.last_modified.timestamp(),
+                    atime=info.last_accessed_on,  # often None; need to observe other values
+                    size=info.size,
+                    details=info,
+                )
+        except ResourceNotFoundError as e:
+            raise FileNotFoundError(self) from e
+
+    async def a_isfile(self):
+        async with self._a_provide_blob_client():
+            return await self._a_blob_client.exists()
+
+    async def a_iterdir(self):
+        async with self._a_provide_container_client():
+            prefix = self._path.lstrip('/') + '/'
+            k = len(prefix)
+            async for p in self._a_container_client.walk_blobs(
+                    name_starts_with=prefix):
+                yield self / p.name[k:]
+
+    @ asynccontextmanager
+    async def a_lock(self, *, wait=60):
+        async with self._a_provide_blob_client():
+            if self._lease_id is None:
+                loop = asyncio.get_running_loop()
+                t0 = loop.time()
+                while True:
+                    try:
+                        await self.a_write_text(
+                            datetime.utcnow().isoformat(), overwrite=True)
+                        try:
+                            self._lease_id = (
+                                await self._a_blob_client.acquire_lease(
+                                    lease_duration=60,
+                                    timeout=1)).id
+                            break
+                        except ResourceNotFoundError:
+                            continue  # go to the outer looper to write the file again
+                        except HttpResponseError as e:
+                            if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':
+                                # Having a lease held by others. Continue to wait.
+                                pass
+                            else:
+                                raise
+                    except HttpResponseError as e:
+                        if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
+                            # Blob exists and has a lease on it. Wait and try again.
+                            pass
+                        else:
+                            raise
+
+                    t1 = loop.time()
+                    if t1 - t0 >= wait:
+                        raise LockAcquisitionTimeoutError(self, t1 - t0)
+                    await asyncio.sleep(0.011)
+
+                self._t_renew_lease_stopped = False
+                self._t_renew_lease = asyncio.create_task(
+                    self._a_renew_lease)
+
+            self._lock_count += 1
+            try:
+                yield
+            finally:
+                self._lock_count -= 1
+                if self._lock_count <= 0:
+                    self._t_renew_lease_stopped = True
+                    await self._t_renew_lease
+                    self._t_renew_lease = None
+                    await self.a_rmfile(missing_ok=True)
+                    # still holding the lease; this should succeed.
+                    self._lease_id = None
+                    self._lock_count = 0
+
+    @ asynccontextmanager
+    async def _a_provide_blob_client(self):
+        if self._a_blob_client is None:
+            bc = aBlobClient(
+                account_url=self._account_url,
+                container_name=self._container_name,
+                blob_name=self._path.lstrip('/'),
+                credential=self._sas_token or self._account_key,
+            )
+            self._a_blob_client = bc
+            try:
+                async with bc:
+                    yield
+            finally:
+                self._a_blob_client = None
+        else:
+            yield
+
+    @ asynccontextmanager
+    async def _a_provide_container_client(self):
+        if self._a_container_client is None:
+            cc = aContainerClient(
+                account_url=self._account_url,
+                container_name=self._container_name,
+                credential=self._sas_token or self._account_key,
+            )
+            self._a_container_client = cc
+            try:
+                async with cc:
+                    yield
+            finally:
+                self._a_container_client = None
+        else:
+            yield
+
+    async def a_read_bytes(self):
+        async with self._a_provide_blob_client():
+            try:
+                return await (await self._a_blob_client.download_blob()).readall()
+            except ResourceNotFoundError as e:
+                raise FileNotFoundError(self) from e
+
+    async def _a_renew_lease(self):
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        while True:
+            await asyncio.sleep(0.002)
+            if self._t_renew_lease_stopped:
+                self._t_renew_lease_stopped = False
+                return
+            if loop.time() - t0 >= 13:
+                # Renew ahead of the lease duration of 60 seconds.
+                await aBlobLeaseClient(
+                    self._blob_client, lease_id=self._lease_id).renew()
+                t0 = loop.time()
+
+    async def a_riterdir(self):
+        async with self._a_provide_container_client():
+            prefix = self._path.lstrip('/') + '/'
+            k = len(prefix)
+            async for p in self._a_container_client.list_blobs(
+                    name_starts_with=prefix):
+                yield self / p.name[k:]
+
+    async def a_rmfile(self, *, missing_ok=False):
+        async with self._a_provide_blob_client():
+            try:
+                await self._a_blob_client.delete_blob(
+                    delete_snapshots='include',
+                    lease=self._lease_id)
+                logger.info('deleting %s', self.path)
+                return 1
+            except ResourceNotFoundError as e:
+                if missing_ok:
+                    return 0
+                raise FileNotFoundError(self) from e
+
+    async def a_write_bytes(self, data, *, overwrite=False):
+        if self._path == '/':
+            raise UnsupportedOperation(
+                "can not write to root as a blob", self)
+
+        async with self._a_provide_blob_client():
+            nbytes = len(data)
+            try:
+                await self._a_blob_client.upload_blob(
                     data,
                     overwrite=overwrite,
                     lease=self._lease_id)

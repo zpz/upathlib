@@ -17,7 +17,7 @@ import pickle
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Iterator, TypeVar, Any
+from typing import List, Iterator, TypeVar, Any, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -171,6 +171,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             if exist_action == 'skip':
                 logger.info(f"target {target!r} exists; skipped")
                 return 0
+            logger.info("copying '%s' to '%s'", self, target)
             target.write_bytes(self.read_bytes(), overwrite=True)
             return 1
 
@@ -178,6 +179,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             # Do not delete.
             raise FileExistsError(target)
 
+        logger.info("copying '%s' to '%s'", self, target)
         target.write_bytes(self.read_bytes(), overwrite=False)
         return 1
 
@@ -233,10 +235,21 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 concurrency = 4
             else:
                 assert 0 <= concurrency <= 16
+
+            if concurrency <= 1:
+                n = 0
+                for p in self.riterdir():
+                    extra = str(p.path.relative_to(self.path))
+                    k = p._copy_file_to(
+                        target=target/extra,
+                        exist_action=exist_action,
+                    )
+                    n += k
+                return n
+
             pool = concurrent.futures.ThreadPoolExecutor(concurrency)
             tasks = []
             for p in self.riterdir():
-
                 extra = str(p.path.relative_to(self.path))
                 tasks.append(pool.submit(
                     p._copy_file_to,
@@ -580,13 +593,90 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                                       exist_action=exist_action,
                                       )
 
-    async def a_copy_to(self, target: Upath, *,
-                        concurrency: int = None, exist_action: str = None):
-        # TODO: may need reimplementation.
-        return await self._a_do(
-            self.copy_to, target=target, concurrency=concurrency,
-            exist_action=exist_action,
-        )
+    async def _a_copy_file_to(self,
+                              target: Upath, *,
+                              exist_action: str,
+                              semaphore: Optional[asyncio.Semaphore] = None,
+                              ) -> int:
+        if target == self:
+            return 0
+
+        async def foo():
+            if await target.a_isfile():
+                if exist_action == 'raise':
+                    raise FileExistsError(target)
+                if exist_action == 'skip':
+                    logger.info(f"target {target!r} exists; skipped")
+                    return 0
+                logger.info("copying '%s' to '%s'", self, target)
+                await target.a_write_bytes(
+                    await self.a_read_bytes(), overwrite=True)
+                return 1
+
+            if await target.a_isdir():
+                # Do not delete.
+                raise FileExistsError(target)
+
+            logger.info("copying '%s' to '%s'", self, target)
+            await target.a_write_bytes(
+                await self.a_read_bytes(), overwrite=False)
+            return 1
+
+        if semaphore is None:
+            return await foo()
+
+        async with semaphore:
+            return await foo()
+
+    async def a_copy_to(self,
+                        target: Upath,
+                        *,
+                        concurrency: int = None,
+                        exist_action: str = None,
+                        ) -> int:
+        if exist_action is None:
+            exist_action = 'raise'
+        else:
+            assert exist_action in ('raise', 'skip', 'overwrite')
+
+        if await target.a_isdir():
+            target = target / self.name
+
+        if await self.a_isfile():
+            return await self._a_copy_file_to(
+                target, exist_action=exist_action)
+
+        if not await self.a_isdir():
+            raise FileNotFoundError(self)
+
+        if concurrency is None:
+            concurrency = 4
+        else:
+            assert 0 <= concurrency <= 16
+
+        if concurrency <= 1:
+            n = 0
+            async for p in self.a_riterdir():
+                extra = str(p.path.relative_to(self.path))
+                k = await self._a_copy_file_to(
+                    target/extra,
+                    exist_action=exist_action,
+                )
+                n += k
+            return n
+
+        sem = asyncio.Semaphore(concurrency)
+        tasks = []
+        async for p in self.a_riterdir():
+            extra = str(p.path.relative_to(self.path))
+            tasks.append(self._a_copy_file_to(
+                target/extra,
+                exist_action=exist_action,
+                semaphore=sem,
+            ),
+            )
+        nn = await asyncio.gather(*tasks)
+        return sum(nn)
 
     async def a_exists(self):
         return await self._a_do(self.exists)
@@ -607,7 +697,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @contextlib.asynccontextmanager
     async def a_lock(self, *, wait: float = 60):
-        raise NotImplementedError
+        # TODO: may need reimplementation.
+        with self.lock(wait=wait):
+            yield
 
     async def a_ls(self):
         return await self._a_do(self.ls)

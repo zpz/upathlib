@@ -3,6 +3,7 @@ import logging
 from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account
 from google.cloud import storage
+from google.api_core.exceptions import NotFound
 
 from ._blob import BlobUpath
 
@@ -68,25 +69,24 @@ class GcpBlobUpath(BlobUpath):
 
     @property
     def _blob(self):
-        return self._bucket.get_blob(self._path.lstrip('/'))
-        # If the blob does not exist, this is `None`.
+        return self._bucket.blob(self._path.lstrip('/'))
 
     def file_info(self):
         raise NotImplementedError
 
     def isfile(self) -> bool:
         # return self._bucket.blob(self._path.lstrip('/')).exists()
-        return self._blob is not None
+        return self._blob.exists()
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):
         raise NotImplementedError
 
     def read_bytes(self):
-        b = self._blob
-        if b is None:
-            raise FileNotFoundError(self)
-        return b.download_as_bytes()
+        try:
+            return self._blob.download_as_bytes()
+        except NotFound as e:
+            raise FileNotFoundError(self) from e
 
     def riterdir(self):
         prefix = self._path.lstrip('/') + '/'
@@ -94,27 +94,28 @@ class GcpBlobUpath(BlobUpath):
         for p in self._client.list_blobs(self._bucket, prefix=prefix):
             yield self / p.name[k:]
 
+    # TODO:
+    # `rmdir` could be more efficient if using
+    # `p.delete()` on the elements returned by `self._client.list_blobs`.
+
     def rmfile(self, *, missing_ok=False):
-        b = self._blob
-        if b is None:
+        try:
+            self._blob.delete()
+            logger.info('deleting %s', self.path)
+            return 1
+        except NotFound as e:
             if missing_ok:
                 return 0
-            raise FileNotFoundError(self)
-
-        logger.info('deleting %s', self.path)
-        b.delete()
-        return 1
+            raise FileNotFoundError(self) from e
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
-
-        nbytes = len(data)
-
-        b = self._blob
-        if b is not None and not overwrite:
-            raise FileExistsError(self)
         if isinstance(data, BufferedReader):
             data = data.read()
+        nbytes = len(data)
+        b = self._blob
+        if not overwrite and b.exists():
+            raise FileExistsError(self)
         b.upload_from_string(data)  # this will overwrite existing content.
         return nbytes

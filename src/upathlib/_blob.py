@@ -1,3 +1,4 @@
+import asyncio
 import concurrent.futures
 import pathlib
 from typing import Union
@@ -111,8 +112,58 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                               concurrency=concurrency,
                               exist_action=exist_action)
 
-    async def a_download(self, *args, **kwargs):
-        return await self._a_do(self.download, *args, **kwargs)
+    async def a_download(self,
+                         target: Union[str, pathlib.Path, LocalUpath],
+                         *,
+                         concurrency: int = None,
+                         exist_action: str = None) -> int:
+        if isinstance(target, str):
+            target = pathlib.Path(target)
+        if isinstance(target, pathlib.Path):
+            target = LocalUpath(str(target.absolute()))
+        else:
+            assert isinstance(target, LocalUpath)
+        return await self.a_copy_to(
+            target, concurrency=concurrency, exist_action=exist_action)
 
-    async def a_upload(self, *args, **kwargs):
-        return await self._a_do(self.upload, *args, **kwargs)
+    async def a_rmdir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
+        if concurrency is None:
+            concurrency = 4
+        else:
+            0 <= concurrency <= 16
+
+        if concurrency <= 1:
+            n = 0
+            async for p in self.a_riterdir():
+                n += await p.a_rmfile(missing_ok=False)
+            if n == 0 and not missing_ok:
+                raise FileNotFoundError(self)
+            return n
+
+        async def _rmfile(path, sem):
+            async with sem:
+                return path.a_rmfile(missing_ok=False)
+
+        sema = asyncio.Semaphore(concurrency)
+        tasks = []
+        async for p in self.a_riterdir():
+            tasks.append(_rmfile(p, sema))
+        nn = await asyncio.gather(*tasks)
+        n = sum(nn)
+        if n == 0 and not missing_ok:
+            raise FileNotFoundError(self)
+        return n
+
+    async def a_upload(self,
+                       source: Union[str, pathlib.Path, LocalUpath],
+                       *,
+                       concurrency: int = None,
+                       exist_action: str = None) -> int:
+        if isinstance(source, str):
+            source = pathlib.Path(source)
+        if isinstance(source, pathlib.Path):
+            source = LocalUpath(str(source.absolute()))
+        else:
+            assert isinstance(source, LocalUpath)
+        return await self.a_copy_from(
+            source, concurrency=concurrency, exist_action=exist_action)
