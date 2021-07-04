@@ -582,7 +582,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_copy_to(self, target: Upath, *,
                         concurrency: int = None, exist_action: str = None):
-        raise NotImplementedError
+        # TODO: may need reimplementation.
+        return await self._a_do(
+            self.copy_to, target=target, concurrency=concurrency,
+            exist_action=exist_action,
+        )
 
     async def a_exists(self):
         return await self._a_do(self.exists)
@@ -597,7 +601,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await self._a_do(self.isfile)
 
     async def a_iterdir(self: T) -> Iterator[T]:
-        raise NotImplementedError
+        # TODO: may need reimplementation.
+        for p in self.iterdir():
+            yield p
 
     @contextlib.asynccontextmanager
     async def a_lock(self, *, wait: float = 60):
@@ -622,11 +628,16 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await self._a_do(self.rename, *args, **kwargs)
 
     async def a_riterdir(self: T) -> Iterator[T]:
-        raise NotImplementedError
+        # TODO: may need reimplementation.
+        for p in self.riterdir():
+            yield p
 
     async def a_rmdir(self, *,
                       missing_ok: bool = False, concurrency: int = None) -> int:
-        raise NotImplementedError
+        # TODO: may need reimplementation.
+        return await self._a_do(self.rmdir,
+                                missing_ok=missing_ok,
+                                concurrency=concurrency)
 
     async def a_rmfile(self, *args, **kwargs):
         return await self._a_do(self.rmfile, *args, **kwargs)

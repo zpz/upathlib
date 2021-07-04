@@ -110,3 +110,9 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         return self.copy_from(source,
                               concurrency=concurrency,
                               exist_action=exist_action)
+
+    async def a_download(self, *args, **kwargs):
+        return await self._a_do(self.download, *args, **kwargs)
+
+    async def a_upload(self, *args, **kwargs):
+        return await self._a_do(self.upload, *args, **kwargs)
