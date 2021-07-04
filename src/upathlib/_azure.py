@@ -253,7 +253,8 @@ class AzureBlobUpath(BlobUpath):
     def write_bytes(self, data, *, overwrite=False):
         with self._provide_blob_client():
             if self._path == '/':
-                raise UnsupportedOperation("can not write to root as a blob")
+                raise UnsupportedOperation(
+                    "can not write to root as a blob", self)
 
             nbytes = len(data)
             try:

@@ -66,18 +66,24 @@ class GcpBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
+    @property
+    def _blob(self):
+        return self._bucket.get_blob(self._path.lstrip('/'))
+        # If the blob does not exist, this is `None`.
+
     def file_info(self):
         raise NotImplementedError
 
     def isfile(self) -> bool:
-        return self._bucket.blob(self._path.lstrip('/')).exists()
+        # return self._bucket.blob(self._path.lstrip('/')).exists()
+        return self._blob is not None
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):
         raise NotImplementedError
 
     def read_bytes(self):
-        b = self._bucket.get_blob(self._path.lstrip('/'))
+        b = self._blob
         if b is None:
             raise FileNotFoundError(self)
         return b.download_as_bytes()
@@ -89,29 +95,26 @@ class GcpBlobUpath(BlobUpath):
             yield self / p.name[k:]
 
     def rmfile(self, *, missing_ok=False):
-        if not self.is_file():
+        b = self._blob
+        if b is None:
             if missing_ok:
                 return 0
             raise FileNotFoundError(self)
-        # TODO: try/except without first check.
 
         logger.info('deleting %s', self.path)
-        b = self._bucket.blob(self._path.lstrip('/'))
         b.delete()
         return 1
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':
-            raise UnsupportedOperation("can not write to root as a blob")
+            raise UnsupportedOperation("can not write to root as a blob", self)
 
         nbytes = len(data)
 
-        b = self._bucket.blob(self._path.lstrip('/'))
-        if b.exists():
-            if not overwrite:
-                raise FileExistsError(self)
-            b.delete()
+        b = self._blob
+        if b is not None and not overwrite:
+            raise FileExistsError(self)
         if isinstance(data, BufferedReader):
             data = data.read()
-        b.upload_from_string(data)
+        b.upload_from_string(data)  # this will overwrite existing content.
         return nbytes

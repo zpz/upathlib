@@ -17,3 +17,8 @@ Clients for Azure and GCP blob stores are implemented by subclasses
 add very thin wrappers to handle credentials. Clients for other public-cloud blob stores will be added as needed.
 
 Each method that involves cloud service calls has both sync and async versions.
+
+One use case is the [`biglist` package](https://github.com/zpz/biglist).
+The class `Biglist` takes a `Upath` object to indicate its location of storage.
+It does not care whether the storage is local, or in Azure or GCP or AWS S3 or other
+cloud blob store---it simply uses the common API to operate the storage.
