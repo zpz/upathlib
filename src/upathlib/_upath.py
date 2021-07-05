@@ -657,7 +657,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             n = 0
             async for p in self.a_riterdir():
                 extra = str(p.path.relative_to(self.path))
-                k = await self._a_copy_file_to(
+                k = await p._a_copy_file_to(
                     target/extra,
                     exist_action=exist_action,
                 )
@@ -668,7 +668,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         tasks = []
         async for p in self.a_riterdir():
             extra = str(p.path.relative_to(self.path))
-            tasks.append(self._a_copy_file_to(
+            tasks.append(p._a_copy_file_to(
                 target/extra,
                 exist_action=exist_action,
                 semaphore=sem,
