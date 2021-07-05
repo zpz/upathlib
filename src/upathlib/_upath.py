@@ -263,7 +263,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         raise FileNotFoundError(self)
 
-    @ abc.abstractmethod
     def exists(self) -> bool:
         '''Return `True` if the path is an existing file or dir,
         `False` otherwise.
@@ -278,7 +277,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '/a/b' exists, and is a dir;
         '/a/b/c' does not exist.
         '''
-        raise NotImplementedError
+        return self.isfile() or self.isdir()
 
     @ abc.abstractmethod
     def file_info(self) -> FileInfo:
@@ -679,7 +678,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return sum(nn)
 
     async def a_exists(self):
-        return await self._a_do(self.exists)
+        return (await self.a_isfile()) or (await self.a_isdir())
 
     async def a_file_info(self):
         return await self._a_do(self.file_info)
@@ -708,13 +707,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await self._a_do(self.read_bytes)
 
     async def a_read_json(self, **kwargs):
-        return await self._a_do(self.read_json, **kwargs)
+        return json.loads(await self.a_read_text(**kwargs))
 
     async def a_read_pickle(self):
-        return await self._a_do(self.read_pickle)
+        return pickle.loads(await self.a_read_bytes())
 
-    async def a_read_text(self, **kwargs):
-        return await self._a_do(self.read_text, **kwargs)
+    async def a_read_text(self, *,
+                          encoding: str = 'utf-8', errors: str = 'strict'):
+        return (await self.a_read_bytes()).decode(
+            encoding=encoding, errors=errors)
 
     async def a_rename(self, *args, **kwargs):
         return await self._a_do(self.rename, *args, **kwargs)
@@ -745,11 +746,25 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_write_bytes(self, *args, **kwargs):
         return await self._a_do(self.write_bytes, *args, **kwargs)
 
-    async def a_write_json(self, *args, **kwargs):
-        return await self._a_do(self.write_json, *args, **kwargs)
+    async def a_write_json(self, data, *, overwrite=False, **kwargs) -> int:
+        return await self.a_write_text(
+            json.dumps(data), overwrite=overwrite, **kwargs)
 
-    async def a_write_pickle(self, *args, **kwargs):
-        return await self._a_do(self.write_pickle, *args, **kwargs)
+    async def a_write_pickle(self, data, *, overwrite=False) -> int:
+        return await self.a_write_bytes(
+            pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
+            overwrite=overwrite,
+        )
 
-    async def a_write_text(self, *args, **kwargs):
-        return await self._a_do(self.write_text, *args, **kwargs)
+    async def a_write_text(
+            self,
+            data: str,
+            *,
+            overwrite: bool = False,
+            encoding: str = 'utf-8',
+            errors: str = 'strict',
+    ) -> int:
+        n = len(data)
+        z = data.encode(encoding=encoding, errors=errors)
+        await self.a_write_bytes(z, overwrite=overwrite)
+        return n
