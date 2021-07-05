@@ -29,9 +29,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             parts = [str(pathlib.Path.cwd().absolute())]
         super().__init__(*parts)
 
-    def exists(self):
-        return self.localpath.exists()
-
     def file_info(self):
         if not self.isfile():
             raise FileNotFoundError(self)

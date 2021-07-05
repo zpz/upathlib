@@ -23,11 +23,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                             concurrency=concurrency,
                             exist_action=exist_action)
 
-    def exists(self):
-        if self.isfile():
-            return True
-        return self.isdir()
-
     def isdir(self):
         '''In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
