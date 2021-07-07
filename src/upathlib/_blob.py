@@ -137,7 +137,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
 
         async def _rmfile(path, sem):
             async with sem:
-                return path.a_rmfile(missing_ok=False)
+                return await path.a_rmfile(missing_ok=False)
 
         sema = asyncio.Semaphore(concurrency)
         tasks = []
