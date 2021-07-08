@@ -8,6 +8,7 @@ import abc
 import asyncio
 import concurrent.futures
 import contextlib
+import gc
 import json
 import logging
 import os
@@ -35,6 +36,17 @@ class FileInfo:
     ctime: float   # creation POSIX timetamp
     mtime: float   # last modification POSIX timestamp
     details: Any   # platform-dependent
+
+
+def nogc(func, *args, **kwargs):
+    isgc = gc.isenabled()
+    if isgc:
+        gc.disable()
+    try:
+        return func(*args, **kwargs)
+    finally:
+        if isgc:
+            gc.enable()
 
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
@@ -413,11 +425,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def read_json(self, **kwargs):
-        return json.loads(self.read_text(**kwargs))
+    def read_json(self, *, no_gc: bool = True, **kwargs):
+        z = self.read_text(**kwargs)
+        if no_gc:
+            return nogc(json.loads, z)
+        return json.loads(z)
 
-    def read_pickle(self):
-        return pickle.loads(self.read_bytes())
+    def read_pickle(self, *, no_gc: bool = True):
+        z = self.read_bytes()
+        if no_gc:
+            return nogc(pickle.loads, z)
+        return pickle.loads(z)
 
     def read_text(self, *, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
@@ -706,11 +724,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_read_bytes(self):
         return await self._a_do(self.read_bytes)
 
-    async def a_read_json(self, **kwargs):
-        return json.loads(await self.a_read_text(**kwargs))
+    async def a_read_json(self, *, no_gc: bool = True, **kwargs):
+        z = await self.a_read_text(**kwargs)
+        if no_gc:
+            return nogc(json.loads, z)
+        return json.loads(z)
 
-    async def a_read_pickle(self):
-        return pickle.loads(await self.a_read_bytes())
+    async def a_read_pickle(self, *, no_gc: bool = True):
+        z = await self.a_read_bytes()
+        if no_gc:
+            return nogc(pickle.loads, z)
+        return pickle.loads(z)
 
     async def a_read_text(self, *,
                           encoding: str = 'utf-8', errors: str = 'strict'):
