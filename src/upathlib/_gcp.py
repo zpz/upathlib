@@ -5,6 +5,7 @@ from google.oauth2 import service_account
 from google.cloud import storage
 from google.api_core.exceptions import NotFound
 
+from ._upath import FileInfo
 from ._blob import BlobUpath
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class GcpBlobUpath(BlobUpath):
         self._bucket = self._client.get_bucket(bucket_name)
 
     def __repr__(self) -> str:
-        return "{}('{}', bucket_name='{}'".format(
+        return "{}('{}', bucket_name='{}')".format(
             self.__class__.__name__, self._path, self._bucket_name
         )
 
@@ -71,11 +72,24 @@ class GcpBlobUpath(BlobUpath):
     def _blob(self):
         return self._bucket.blob(self._path.lstrip('/'))
 
+    def _get_blob(self):
+        return self._bucket.get_blob(self._path.lstrip('/'))
+        # This is `None` if the blob does not exist.
+
     def file_info(self):
-        raise NotImplementedError
+        b = self._get_blob()
+        if b is not None:
+            return FileInfo(
+                size=b.size,
+                ctime=b.time_created.timestamp(),
+                mtime=b.updated.timestamp(),
+                details=b._properties,
+            )
+            # If an existing file is written to again using `write_...`,
+            # then its `ctime` and `mtime` are both updated.
+            # My experiments showed that `ctime` and `mtime` are equal.
 
     def isfile(self) -> bool:
-        # return self._bucket.blob(self._path.lstrip('/')).exists()
         return self._blob.exists()
 
     @contextlib.contextmanager

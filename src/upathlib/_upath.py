@@ -32,7 +32,6 @@ class LockAcquisitionTimeoutError(TimeoutError):
 @dataclass
 class FileInfo:
     size: int      # in bytes
-    atime: float   # last access POSIX timestamp
     ctime: float   # creation POSIX timetamp
     mtime: float   # last modification POSIX timestamp
     details: Any   # platform-dependent
@@ -292,9 +291,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self.isfile() or self.isdir()
 
     @ abc.abstractmethod
-    def file_info(self) -> FileInfo:
+    def file_info(self) -> Optional[FileInfo]:
         '''
-        If `self.isfile()` is `False`, raise `FileNotFoundError`.
+        If `self.isfile()` is `False`, return `None`.
         '''
         raise NotImplementedError
 

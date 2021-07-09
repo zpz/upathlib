@@ -30,16 +30,19 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         super().__init__(*parts)
 
     def file_info(self):
-        if not self.isfile():
-            raise FileNotFoundError(self)
-        st = self.localpath.stat()
-        return FileInfo(
-            size=st.st_size,
-            atime=st.st_atime,
-            ctime=st.st_ctime,
-            mtime=st.st_mtime,
-            details=st,
-        )
+        try:
+            st = self.localpath.stat()
+            return FileInfo(
+                size=st.st_size,
+                ctime=st.st_ctime,
+                mtime=st.st_mtime,
+                details=st,
+            )
+            # If an existing file is written to again using `write_...`,
+            # then its `ctime` and `mtime` are both updated.
+            # My experiments showed that `ctime` and `mtime` are equal.
+        except FileNotFoundError:
+            return
 
     def isdir(self):
         return self.localpath.is_dir()

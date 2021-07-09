@@ -57,7 +57,7 @@ class AzureBlobUpath(BlobUpath):
         self._t_renew_lease_stopped: bool = False
 
     def __repr__(self) -> str:
-        return "{}('{}', container_name='{}'".format(
+        return "{}('{}', container_name='{}')".format(
             self.__class__.__name__, self._path, self._container_name
         )
 
@@ -106,12 +106,15 @@ class AzureBlobUpath(BlobUpath):
                 return FileInfo(
                     ctime=info.creation_time.timestamp(),
                     mtime=info.last_modified.timestamp(),
-                    atime=info.last_accessed_on,  # often None; need to observe other values
                     size=info.size,
                     details=info,
                 )
-        except ResourceNotFoundError as e:
-            raise FileNotFoundError(self) from e
+                # If an existing file is written to again using
+                # `write_...(..., overwrite=True)`,
+                # then its `ctime` will not change; only `mtime`
+                # will be updated.
+        except ResourceNotFoundError:
+            return None
 
     def isfile(self):
         with self._provide_blob_client():
