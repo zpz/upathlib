@@ -142,7 +142,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             /e/f/g/xy.data
             /e/f/g/h/d/dd.txt
 
-        then with `overwrite=False`:
+        then with `exist_action='raise'`:
 
             self         target         outcome
             /a/b/c.txt   ../c           /a/b/c/c.txt
@@ -182,6 +182,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             if exist_action == 'skip':
                 logger.info(f"target {target!r} exists; skipped")
                 return 0
+            if exist_action == 'update':
+                sourceinfo = self.file_info()
+                targetinfo = target.file_info()
+                if (targetinfo.size == sourceinfo.size
+                        and targetinfo.mtime >= sourceinfo.mtime):
+                    # We're assuming that this suggests
+                    # the target file was copied from the source
+                    # previously.
+                    return 0
             logger.info("copying '%s' to '%s'", self, target)
             target.write_bytes(self.read_bytes(), overwrite=True)
             return 1
@@ -207,11 +216,13 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         a default value (e.g. 4) is used.
 
         `exist_action`: what to do when the target file already exists.
-        There are three possible values:
+        These are the possible values:
 
             'raise' (default): raise `FileExistsError`.
             'skip': skip this file; proceed to work on other files.
             'overwrite': overwrite the existing file.
+            'update': overwrite if source `mtime` is newer than target,
+                or source and target have diff size; otherwise skip.
 
         The behavior is analogous to the command `cp` in Linux:
 
@@ -233,7 +244,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if exist_action is None:
             exist_action = 'raise'
         else:
-            assert exist_action in ('raise', 'skip', 'overwrite')
+            assert exist_action in ('raise', 'skip', 'overwrite', 'update')
 
         if target.isdir():
             target = target / self.name
@@ -624,6 +635,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 if exist_action == 'skip':
                     logger.info(f"target {target!r} exists; skipped")
                     return 0
+                if exist_action == 'update':
+                    sourceinfo = await self.a_file_info()
+                    targetinfo = await target.a_file_info()
+                    if (targetinfo.size == sourceinfo.size
+                            and targetinfo.mtime >= sourceinfo.mtime):
+                        # We're assuming that this suggests
+                        # the target file was copied from the source
+                        # previously.
+                        return 0
                 logger.info("copying '%s' to '%s'", self, target)
                 await target.a_write_bytes(
                     await self.a_read_bytes(), overwrite=True)
@@ -653,7 +673,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if exist_action is None:
             exist_action = 'raise'
         else:
-            assert exist_action in ('raise', 'skip', 'overwrite')
+            assert exist_action in ('raise', 'skip', 'overwrite', 'update')
 
         if await target.a_isdir():
             target = target / self.name
