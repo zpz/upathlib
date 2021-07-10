@@ -8,6 +8,7 @@ import abc
 import asyncio
 import concurrent.futures
 import contextlib
+import datetime
 import gc
 import json
 import logging
@@ -31,9 +32,11 @@ class LockAcquisitionTimeoutError(TimeoutError):
 
 @dataclass
 class FileInfo:
-    size: int      # in bytes
     ctime: float   # creation POSIX timetamp
     mtime: float   # last modification POSIX timestamp
+    timed_created: datetime.datetime
+    timed_modified: datetime.datetime
+    size: int      # in bytes
     details: Any   # platform-dependent
 
 

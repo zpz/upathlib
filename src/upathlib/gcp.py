@@ -80,9 +80,11 @@ class GcpBlobUpath(BlobUpath):
         b = self._get_blob()
         if b is not None:
             return FileInfo(
-                size=b.size,
                 ctime=b.time_created.timestamp(),
                 mtime=b.updated.timestamp(),
+                time_created=b.time_created,
+                time_modified=b.updated,
+                size=b.size,
                 details=b._properties,
             )
             # If an existing file is written to again using `write_...`,

@@ -106,6 +106,8 @@ class AzureBlobUpath(BlobUpath):
                 return FileInfo(
                     ctime=info.creation_time.timestamp(),
                     mtime=info.last_modified.timestamp(),
+                    time_created=info.creation_time,
+                    time_modified=info.last_modified,
                     size=info.size,
                     details=info,
                 )
@@ -280,7 +282,8 @@ class AzureBlobUpath(BlobUpath):
                 return FileInfo(
                     ctime=info.creation_time.timestamp(),
                     mtime=info.last_modified.timestamp(),
-                    atime=info.last_accessed_on,  # often None; need to observe other values
+                    time_created=info.creation_time,
+                    time_modified=info.last_modified,
                     size=info.size,
                     details=info,
                 )

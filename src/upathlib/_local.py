@@ -1,4 +1,5 @@
 import contextlib
+import datetime
 import logging
 import os
 import os.path
@@ -33,9 +34,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         try:
             st = self.localpath.stat()
             return FileInfo(
-                size=st.st_size,
                 ctime=st.st_ctime,
                 mtime=st.st_mtime,
+                time_created=datetime.datetime.fromtimestamp(st.st_ctime),
+                time_modified=datetime.datetime.fromtimestamp(st.st_mtime),
+                size=st.st_size,
                 details=st,
             )
             # If an existing file is written to again using `write_...`,
