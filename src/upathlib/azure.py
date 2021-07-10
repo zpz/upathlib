@@ -253,6 +253,7 @@ class AzureBlobUpath(BlobUpath):
                     delete_snapshots='include',
                     lease=self._lease_id)
                 logger.info('deleting %s', self.path)
+                # log this after successful deletion.
                 return 1
             except ResourceNotFoundError as e:
                 if missing_ok:
@@ -427,6 +428,7 @@ class AzureBlobUpath(BlobUpath):
                     delete_snapshots='include',
                     lease=self._lease_id)
                 logger.info('deleting %s', self.path)
+                # log this after successful deletion.
                 return 1
             except ResourceNotFoundError as e:
                 if missing_ok:

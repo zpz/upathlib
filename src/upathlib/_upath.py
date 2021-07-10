@@ -193,6 +193,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     # We're assuming that this suggests
                     # the target file was copied from the source
                     # previously.
+                    logger.info(
+                        f"target {target!r} appears to be up-to-date; skipped")
                     return 0
             logger.info("copying '%s' to '%s'", self, target)
             target.write_bytes(self.read_bytes(), overwrite=True)

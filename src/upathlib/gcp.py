@@ -118,6 +118,7 @@ class GcpBlobUpath(BlobUpath):
         try:
             self._blob.delete()
             logger.info('deleting %s', self.path)
+            # log this after successful deletion.
             return 1
         except NotFound as e:
             if missing_ok:
