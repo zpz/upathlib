@@ -34,8 +34,8 @@ class LockAcquisitionTimeoutError(TimeoutError):
 class FileInfo:
     ctime: float   # creation POSIX timetamp
     mtime: float   # last modification POSIX timestamp
-    timed_created: datetime.datetime
-    timed_modified: datetime.datetime
+    time_created: datetime.datetime
+    time_modified: datetime.datetime
     size: int      # in bytes
     details: Any   # platform-dependent
 
