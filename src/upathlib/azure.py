@@ -24,75 +24,27 @@ logging.getLogger('azure.core.pipeline.policies').setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
-class AzureBlobCredential:
-    def __init__(self, *,
-                 account_name: str,
-                 account_key: str,
-                 sas_token: str,
-                 container_name: str):
-        self._account_name = account_name
-        self._account_key = account_key
-        self._account_url = f"https://{account_name}.blob.core.windows.net"
-        self._sas_token = sas_token
-        self.container_name = container_name
-        self._container_client = None
-        self._a_container_client = None
-
-    @contextmanager
-    def blob_client(self, blob_name: str):
-        with self.container_client() as cc:
-            with cc.get_blob_client(blob_name) as bc:
-                yield bc
-
-    @contextmanager
-    def container_client(self):
-        if self._container_client is None:
-            cc = ContainerClient(
-                account_url=self._account_url,
-                container_name=self.container_name,
-                credential=self._sas_token or self._account_key,
-            )
-            self._container_client = cc
-            try:
-                with cc:
-                    yield cc
-            finally:
-                self._container_client = None
-        else:
-            yield self._container_client
-
-    @ asynccontextmanager
-    async def a_blob_client(self, blob_name: str):
-        async with self.a_container_client() as cc:
-            async with cc.get_blob_client(blob_name) as bc:
-                yield bc
-
-    @ asynccontextmanager
-    async def a_container_client(self):
-        if self._a_container_client is None:
-            cc = aContainerClient(
-                account_url=self.account_url,
-                container_name=self.container_name,
-                credential=self._sas_token or self._account_key,
-            )
-            self._a_container_client = cc
-            try:
-                async with cc:
-                    yield cc
-            finally:
-                self._a_container_client = None
-        else:
-            yield self._a_container_client
-
-
 class AzureBlobUpath(BlobUpath):
     def __init__(self,
                  *parts: str,
-                 credential: AzureBlobCredential,
+                 account_name: str,
+                 account_key: str,
+                 sas_token: str,
+                 container_name: str,
                  ):
-        super().__init__(*parts, credential=credential)
-        self._credential = credential
-        self._container_name = credential.container_name
+        super().__init__(
+            *parts,
+            account_name=account_name,
+            account_key=account_key,
+            sas_token=sas_token,
+            container_name=container_name
+        )
+
+        self._account_name = account_name
+        self._account_key = account_key
+        self._sas_token = sas_token
+        self._account_url = f"https://{account_name}.blob.core.windows.net"
+        self._container_name = container_name
 
         self._container_client: Optional[ContainerClient] = None
         self._blob_client: Optional[BlobClient] = None
@@ -234,24 +186,35 @@ class AzureBlobUpath(BlobUpath):
     @ contextmanager
     def _provide_blob_client(self):
         if self._blob_client is None:
-            with self._credential.blob_client(self._path.lstrip('/')) as bc:
-                self._blob_client = bc
-                try:
+            bc = BlobClient(
+                account_url=self._account_url,
+                container_name=self._container_name,
+                blob_name=self._path.lstrip('/'),
+                credential=self._sas_token or self._account_key,
+            )
+            self._blob_client = bc
+            try:
+                with bc:
                     yield
-                finally:
-                    self._blob_client = None
+            finally:
+                self._blob_client = None
         else:
             yield
 
     @ contextmanager
     def _provide_container_client(self):
         if self._container_client is None:
-            with self._credential.container_client() as cc:
-                self._container_client = cc
-                try:
+            cc = ContainerClient(
+                account_url=self._account_url,
+                container_name=self._container_name,
+                credential=self._sas_token or self._account_key,
+            )
+            self._container_client = cc
+            try:
+                with cc:
                     yield
-                finally:
-                    self._container_client = None
+            finally:
+                self._container_client = None
         else:
             yield
 
@@ -397,24 +360,35 @@ class AzureBlobUpath(BlobUpath):
     @ asynccontextmanager
     async def _a_provide_blob_client(self):
         if self._a_blob_client is None:
-            async with self._credential.a_blob_client(self._path.lstrip('/')) as bc:
-                self._a_blob_client = bc
-                try:
+            bc = aBlobClient(
+                account_url=self._account_url,
+                container_name=self._container_name,
+                blob_name=self._path.lstrip('/'),
+                credential=self._sas_token or self._account_key,
+            )
+            self._a_blob_client = bc
+            try:
+                async with bc:
                     yield
-                finally:
-                    self._a_blob_client = None
+            finally:
+                self._a_blob_client = None
         else:
             yield
 
     @ asynccontextmanager
     async def _a_provide_container_client(self):
         if self._a_container_client is None:
-            async with self._credential.a_container_client() as cc:
-                self._a_container_client = cc
-                try:
+            cc = aContainerClient(
+                account_url=self._account_url,
+                container_name=self._container_name,
+                credential=self._sas_token or self._account_key,
+            )
+            self._a_container_client = cc
+            try:
+                async with cc:
                     yield
-                finally:
-                    self._a_container_client = None
+            finally:
+                self._a_container_client = None
         else:
             yield
 
