@@ -124,11 +124,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         if self.isdir():
             n = _rmdir(self)
 
-            # TODO: rethink this
-            p = self.parent
-            while not list(p.iterdir()):  # empty dir
-                p.localpath.rmdir()
-                p = p.parent
+            # # TODO: rethink this
+            # p = self.parent
+            # while not list(p.iterdir()):  # empty dir
+            #     p.localpath.rmdir()
+            #     p = p.parent
 
             return n
 
@@ -143,10 +143,10 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             self.localpath.unlink()
 
             # TODO: rethink this.
-            p = self.parent
-            while not list(p.iterdir()):  # empty dir
-                p.localpath.rmdir()
-                p = p.parent
+            # p = self.parent
+            # while not list(p.iterdir()):  # empty dir
+            #     p.localpath.rmdir()
+            #     p = p.parent
 
             return 1
 

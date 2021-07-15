@@ -333,13 +333,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         there exist files named `/a/b/...`.
 
         In a local file system, there can be empty directories.
-        However, the class `LocalUpath` tries to prevent that from happening
-        (but can't strictly enforce it).
-        Therefore, `isdir` can be understood as "is a non-empty dir".
-        Consequently, there is usually no need to check whether a directory is
-        "empty".
+        However, it is recommended to not have empty directories.
 
-        Along similar lines, there is no method for "creating a dir" (like `mkdir`).
+        There is no method for "creating a dir" (like `mkdir`).
         Simply create a file under the dir, and the dir will come into being.
         This is analogous to our treatment to files---we don't "create" a file
         in advance; we simply write to a path, intending it to be a file.
@@ -507,10 +503,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         If `self.exists()` is `False` or `self.isfile()` is `False`,
         and `missing_ok` is `False`, raise `FileNotFoundError`;
         otherwise, return 0.
-
-        If the file is the only element in its parent directory,
-        then the directory is also removed. This is to avoid having
-        empty directories. (See doc of `isdir`.)
         '''
         raise NotImplementedError
 
