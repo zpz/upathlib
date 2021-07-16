@@ -1,6 +1,8 @@
 import contextlib
+from datetime import datetime
 import upathlib.tests
-from upathlib import BlobUpath
+from upathlib import BlobUpath, FileInfo
+import pytest
 
 
 class ResourceNotFoundError(Exception):
@@ -19,11 +21,25 @@ class FakeBlobStore:
             'bucket_a': {},
             'bucket_b': {},
         }
+        self._meta = {
+            'bucket_a': {},
+            'bucket_b': {},
+        }
 
     def write_bytes(self, bucket: str, name: str, data: bytes, overwrite: bool = False):
         if name in self._data[bucket] and not overwrite:
             raise ResourceExistsError
+        ctime = datetime.now()
+        fi = FileInfo(
+            ctime=ctime.timestamp(),
+            mtime=ctime.timestamp(),
+            time_created=ctime,
+            time_modified=ctime,
+            size=len(data),
+            details={},
+        )
         self._data[bucket][name] = data
+        self._meta[bucket][name] = fi
         return len(data)
 
     def read_bytes(self, bucket: str, name: str):
@@ -41,12 +57,19 @@ class FakeBlobStore:
         z = self._data[bucket]
         try:
             del z[name]
+            del self._meta[bucket][name]
         except KeyError:
             raise ResourceNotFoundError(name)
 
     def exists(self, bucket: str, name: str):
         z = self._data[bucket]
         return name in z
+
+    def file_info(self, bucket: str, name: str):
+        try:
+            return self._meta[bucket][name]
+        except KeyError:
+            return
 
 
 _store = FakeBlobStore()
@@ -64,8 +87,7 @@ class FakeBlobUpath(BlobUpath):
         self._bucket = bucket
 
     def file_info(self):
-        # place holder
-        return {}
+        return _store.file_info(self._bucket, self._path)
 
     def isfile(self):
         return _store.exists(self._bucket, self._path)
@@ -108,3 +130,9 @@ class FakeBlobUpath(BlobUpath):
 def test_all():
     p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
     upathlib.tests.test_all(p)
+
+
+@pytest.mark.asyncio
+async def test_all_a():
+    p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
+    await upathlib.tests.test_all_a(p)

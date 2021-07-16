@@ -735,7 +735,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             yield
 
     async def a_ls(self):
-        return sorted((p async for p in self.a_iterdir()))
+        pp = [p async for p in self.a_iterdir()]
+        return sorted(pp)
 
     async def a_read_bytes(self):
         return await self._a_do(self.read_bytes)

@@ -2,6 +2,8 @@ import pathlib
 import upathlib.tests
 from upathlib import LocalUpath
 
+import pytest
+
 
 def test_localupath_init():
     p = LocalUpath()
@@ -14,3 +16,9 @@ def test_localupath_init():
 def test_all():
     p = LocalUpath('/tmp/upathlib_local_test')
     upathlib.tests.test_all(p)
+
+
+@pytest.mark.asyncio
+async def test_all_a():
+    p = LocalUpath('/tmp/upathlib_local_test')
+    await upathlib.tests.test_all_a(p)
