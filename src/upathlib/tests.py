@@ -174,15 +174,57 @@ def test_copy(p: Upath):
         target.joinpath('samplefile').copy_from(source)
 
     target.rmrf()
-    (target / 'samplefile').copy_from(source)
-    assert target.ls() == [target / 'samplefile']
-    assert target.joinpath('samplefile').ls() == [
-        target/'samplefile'/'testfile']
-    assert (target / 'samplefile' / 'testfile').read_text() == 'abc'
+    p2 = target.joinpath('samplefile')
+    p2.copy_from(source)
+    p3 = p2 / source_file.name
+    assert target.ls() == [p2]
+    assert p2.ls() == [p3]
+    assert p3.read_text() == 'abc'
+
+    p1 = source / 'a' / 'b' / 'c'
+    assert p2.copy_to(p1) == 1
+    p4 = p1 / source_file.name
+    assert p4.read_text() == 'abc'
+
+    assert p2.copy_to(source / 'a' / 'b') == 1
+    assert (source / 'a' / 'b' / p2.name /
+            source_file.name).read_text() == 'abc'
 
 
 async def test_a_copy(p: Upath):
-    pass
+    source = p
+    await source.a_rmrf()
+
+    target = LocalUpath('/tmp/upath-test-target')
+    await target.a_rmrf()
+
+    source_file = source / 'testfile'
+    await source_file.a_write_text('abc', overwrite=True)
+
+    await target.a_copy_from(source_file)
+    assert await target.a_read_text() == 'abc'
+
+    with pytest.raises(NotADirectoryError):
+        # cant' write to `target/'samplefile'`
+        # because `target` is a file.
+        await target.joinpath('samplefile').a_copy_from(source)
+
+    await target.a_rmrf()
+    p2 = target.joinpath('samplefile')
+    await p2.a_copy_from(source)
+    p3 = p2 / source_file.name
+    assert await target.a_ls() == [p2]
+    assert await p2.a_ls() == [p3]
+    assert await p3.a_read_text() == 'abc'
+
+    p1 = source / 'a' / 'b' / 'c'
+    assert await p2.a_copy_to(p1) == 1
+    p4 = p1 / source_file.name
+    assert await p4.a_read_text() == 'abc'
+
+    assert await p2.a_copy_to(source / 'a' / 'b') == 1
+    assert await (source / 'a' / 'b' / p2.name /
+                  source_file.name).a_read_text() == 'abc'
 
 
 def test_lock(p: Upath):
