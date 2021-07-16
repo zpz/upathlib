@@ -1,59 +1,110 @@
-import pytest
-from upathlib._local import LocalUpath
-from upathlib._fake import FakeBlobUpath
+import contextlib
+import upathlib.tests
+from upathlib import BlobUpath
 
 
-def test_1():
-    init_path = '/tmp/test'
+class ResourceNotFoundError(Exception):
+    pass
+
+
+class ResourceExistsError(Exception):
+    pass
+
+
+class FakeBlobStore:
+    '''A in-memory blobstore for illustration purposes'''
+
+    def __init__(self):
+        self._data = {
+            'bucket_a': {},
+            'bucket_b': {},
+        }
+
+    def write_bytes(self, bucket: str, name: str, data: bytes, overwrite: bool = False):
+        if name in self._data[bucket] and not overwrite:
+            raise ResourceExistsError
+        self._data[bucket][name] = data
+        return len(data)
+
+    def read_bytes(self, bucket: str, name: str):
+        z = self._data[bucket]
+        try:
+            return z[name]
+        except KeyError:
+            raise ResourceNotFoundError(name)
+
+    def list_blobs(self, bucket: str, prefix: str):
+        bb = [k for k in self._data[bucket] if k.startswith(prefix)]
+        yield from bb
+
+    def delete_blob(self, bucket: str, name: str):
+        z = self._data[bucket]
+        try:
+            del z[name]
+        except KeyError:
+            raise ResourceNotFoundError(name)
+
+    def exists(self, bucket: str, name: str):
+        z = self._data[bucket]
+        return name in z
+
+
+_store = FakeBlobStore()
+
+
+class FakeBlobUpath(BlobUpath):
+    '''This Upath implementation for the FakeBlobstore
+    can be used for testing basic functionalities.
+
+    This also showcases the essential methods that
+    a concrete subclass of BlobUpath needs to implement.'''
+
+    def __init__(self, *parts: str, bucket: str):
+        super().__init__(*parts, bucket=bucket)
+        self._bucket = bucket
+
+    def file_info(self):
+        # place holder
+        return {}
+
+    def isfile(self):
+        return _store.exists(self._bucket, self._path)
+
+    @contextlib.contextmanager
+    def lock(self, *, wait=60):
+        # place holder
+        yield self
+
+    def read_bytes(self):
+        try:
+            return _store.read_bytes(self._bucket, self._path)
+        except ResourceNotFoundError as e:
+            raise FileNotFoundError(self) from e
+
+    def riterdir(self):
+        p = self._path
+        if not p.endswith('/'):
+            p += '/'
+        for pp in _store.list_blobs(self._bucket, p):
+            yield self / pp[len(p):]
+
+    def rmfile(self, *, missing_ok=False):
+        try:
+            _store.delete_blob(self._bucket, self._path)
+            return 1
+        except ResourceNotFoundError as e:
+            if missing_ok:
+                return 0
+            raise FileNotFoundError(self) from e
+
+    def write_bytes(self, data, *, overwrite=False):
+        try:
+            _store.write_bytes(self._bucket, self._path,
+                               data, overwrite=overwrite)
+        except ResourceExistsError as e:
+            raise FileExistsError(self) from e
+
+
+def test_all():
     p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
-    p.rmrf()
-
-    p.joinpath('abc.txt').write_text('abc')
-
-    assert (p / 'abc.txt').read_text() == 'abc'
-
-    with pytest.raises(FileExistsError):
-        p.joinpath('abc.txt').write_text('abcd')
-
-    p.joinpath('abc.txt').write_text('abcd', overwrite=True)
-    assert (p / 'abc.txt').read_text() == 'abcd'
-
-    with p.joinpath('abc.txt').lock() as f:
-        assert f.read_text() == 'abcd'
-
-    assert p._path == init_path
-    p /= 'a'
-    assert p._path == f'{init_path}/a'
-    assert not p.isfile()
-    assert not p.isdir()
-    assert not p.exists()
-    p.joinpath('x.data').write_bytes(b'x')
-    p /= '..'
-    assert p._path == init_path
-    assert p.joinpath('a', 'x.data').read_bytes() == b'x'
-
-
-def test_copy():
-    source = FakeBlobUpath('/tmp/upath-test-source', bucket='bucket_b')
-    source.rmrf()
-
-    target = LocalUpath('/tmp/upath-test-target')
-    target.rmrf()
-
-    source_file = source / 'testfile'
-    source_file.write_text('abc', overwrite=True)
-
-    target.copy_from(source_file)
-    assert target.read_text() == 'abc'
-
-    with pytest.raises(NotADirectoryError):
-        # cant' write to `target/'samplefile'`
-        # because `target` is a file.
-        target.joinpath('samplefile').copy_from(source)
-
-    target.rmrf()
-    (target / 'samplefile').copy_from(source)
-    assert target.ls() == [target / 'samplefile']
-    assert target.joinpath('samplefile').ls() == [
-        target/'samplefile'/'testfile']
-    assert (target / 'samplefile' / 'testfile').read_text() == 'abc'
+    upathlib.tests.test_all(p)
