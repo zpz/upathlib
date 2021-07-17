@@ -64,12 +64,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                 yield self / tail
                 subdirs.add(tail)
 
-    def rename(self, target: str, *, overwrite: bool = False):
-        target = self / target
-        if target == self:
-            return self
-        if self.is_file():
-
     def upload(self,
                source: Union[str, pathlib.Path, LocalUpath],
                *,

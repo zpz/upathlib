@@ -1,10 +1,61 @@
 import asyncio
+import pathlib
 import time
 import pytest
 from upathlib import Upath, LocalUpath
 
 # User runs these tests with a `Upath` object of their subclass,
 # in a path that is safe for testing.
+
+
+def test_basic(p: Upath):
+    pp = p / '/abc/def/'
+    assert pp.path == pathlib.PurePosixPath('/abc/def')
+    print(repr(pp))
+
+    pp = pp / 'x/y/z'
+    assert pp.path == pathlib.PurePosixPath('/abc/def/x/y/z')
+    print(repr(pp))
+
+    pp /= 'xy/z'
+    assert str(pp.path) == '/abc/def/x/y/z/xy/z'
+    assert pp._path == str(pp.path)
+    pp /= '..'
+    assert pp._path == '/abc/def/x/y/z/xy'
+    pp.joinpath('..')._path == '/abc/def/x/y/z'
+    pp.joinpath('..', '..', '..', '..', '..')._path == '/'
+
+
+def test_joinpath(path: Upath):
+    try:
+        pp = path.joinpath('/abc/def/', 'x/y') / 'ab.txt'
+        assert str(pp.path) == '/abc/def/x/y/ab.txt'
+
+        pp = pp.joinpath('../a/b.txt')
+        assert pp == path / '/abc/def' / 'x/y/a/b.txt'
+        assert pp.name == 'b.txt'
+        assert pp.suffix == '.txt'
+
+        p = pp
+
+        pp = pp / '../../../../'
+        assert str(pp.path) == '/abc/def'
+
+        pp = p.joinpath('a', '.', 'b/c.data')
+        assert str(pp.path) == '/abc/def/x/y/a/b.txt/a/b/c.data'
+    except:
+        print('')
+        print('repr:  ', repr(pp))
+        print('str:   ', str(pp))
+        print('path:  ', pp.path)
+        print('_path: ', pp._path)
+        raise
+
+
+def test_compare(p: Upath):
+    assert p.joinpath('abc/def') / 'x/y/z' == p / 'abc/def/x/y' / 'z'
+    assert p / 'abc/def' < p.joinpath('abc/def', 'x')
+    assert p.joinpath('abc/def/x', 'y/z') > p.joinpath('abc/def', 'x/y')
 
 
 def test_read_write_rm_navigate(p: Upath):
@@ -236,6 +287,11 @@ async def test_a_lock(p: Upath):
 
 
 def test_all(p: Upath):
+    test_basic(p)
+    test_joinpath(p)
+    test_compare(p)
+
+    test_copy(p)
     test_read_write_rm_navigate(p)
     test_copy(p)
     test_lock(p)

@@ -98,13 +98,6 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         except (IsADirectoryError, FileNotFoundError) as e:
             raise FileNotFoundError(self) from e
 
-    def riterdir(self):
-        for p in self.iterdir():
-            if p.is_file():
-                yield p
-            elif p.is_dir():
-                yield from p.riterdir()
-
     def remove_dir(self, *, missing_ok=False, concurrency=None):
         n = super().remove_dir(missing_ok=True, concurrency=concurrency)
 
@@ -114,7 +107,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
                 _remove_dir(p)
             path.rmdir()
 
-        if self.isdir():
+        if self.is_dir():
             _remove_dir(self.localpath)
         elif not missing_ok:
             raise FileNotFoundError(self)
@@ -168,6 +161,13 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         self.localpath.rename(target.localpath)
         return target
 
+    def riterdir(self):
+        for p in self.iterdir():
+            if p.is_file():
+                yield p
+            elif p.is_dir():
+                yield from p.riterdir()
+
     def write_bytes(self, data: bytes, *, overwrite=False):
         if self.localpath.is_file():
             if not overwrite:
@@ -190,8 +190,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     async def a_is_file(self):
         return self.is_file()
 
-    async def a_rename(self, target, *, overwrite=False):
-        return self.rename(target, overwrite=overwrite)
-
     async def a_remove_file(self, *, missing_ok=False):
         return self.remove_file(missing_ok=missing_ok)
+
+    async def a_rename_dir(self, target, *, overwrite=False):
+        return self.rename_dir(target, overwrite=overwrite)
+
+    async def a_rename_file(self, target, *, overwrite=False):
+        return self.rename_file(target, overwrite=overwrite)

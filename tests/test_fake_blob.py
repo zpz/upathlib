@@ -1,4 +1,5 @@
 import contextlib
+import os.path
 from datetime import datetime
 import upathlib.tests
 from upathlib import BlobUpath, FileInfo
@@ -61,6 +62,9 @@ class FakeBlobStore:
         except KeyError:
             raise ResourceNotFoundError(name)
 
+    def copy_blob(self, bucket: str, name: str, target: str):
+        self._data[bucket][target] = self._data[bucket][name]
+
     def exists(self, bucket: str, name: str):
         z = self._data[bucket]
         return name in z
@@ -91,6 +95,15 @@ class FakeBlobUpath(BlobUpath):
 
     def is_file(self):
         return _store.exists(self._bucket, self._path)
+
+    def copy_file(self, target, *, overwrite=False):
+        target = self / target
+        if not self.is_file():
+            raise FileNotFoundError(self)
+        if target.is_file() and not overwrite:
+            raise FileExistsError(target)
+        _store.copy_blob(self._bucket, self._path, target._path)
+        return target
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):

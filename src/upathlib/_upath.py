@@ -129,8 +129,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def copy_dir(self: T, target: str, *, overwrite: bool = False) -> T:
         '''Analogous to `copy_file`.
         '''
-        if self/target == self:
-            return self
         n = 0
         for p in self.riterdir():
             extra = str(p.path.relative_to(self.path))
@@ -649,20 +647,22 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return await asyncio.get_running_loop().run_in_executor(
             self._executor, func)
 
-    async def a_copy(self, target: str, *,
-                     concurrency: int = None, exist_action: str = None):
-        return await self.a_export_to(self / target,
-                                      concurrency=concurrency,
-                                      exist_action=exist_action,
-                                      )
+    async def a_copy_dir(self, target, *, overwrite=False):
+        n = 0
+        async for p in self.a_riterdir():
+            extra = str(p.path.relative_to(self.path))
+            await p.a_copy_file(os.path.join(target, extra), overwrite=overwrite)
+            n += 1
+        if n == 0:
+            raise FileNotFoundError(self)
+        logger.info('%d files copied', n)
+        return self / target
 
-    async def a_import_from(self, source: Upath, *,
-                            concurrency: int = None,
-                            exist_action: str = None):
-        return await source.a_export_to(self,
-                                        concurrency=concurrency,
-                                        exist_action=exist_action,
-                                        )
+    async def a_copy_file(self, target, **kwargs):
+        return await self._a_do(self.copy_file, target, **kwargs)
+
+    async def a_exists(self):
+        return (await self.a_is_file()) or (await self.a_is_dir())
 
     async def _a_export_file_to(self,
                                 target: Upath, *,
@@ -758,27 +758,16 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         nn = await asyncio.gather(*tasks)
         return sum(nn)
 
-    async def a_copy_dir(self, target, *, overwrite=False):
-        target = self / target
-        if target == self:
-            return self
-        if not await self.a_is_dir():
-            raise FileNotFoundError(self)
-
-        async for p in self.a_riterdir():
-            extra = str(p.path.relative_to(self.path))
-            await p.a_copy_file(target / extra, overwrite=overwrite)
-
-        return target
-
-    async def a_copy_file(self, target, **kwargs):
-        return await self._a_do(self.copy_file, target, **kwargs)
-
-    async def a_exists(self):
-        return (await self.a_is_file()) or (await self.a_is_dir())
-
     async def a_file_info(self):
         return await self._a_do(self.file_info)
+
+    async def a_import_from(self, source: Upath, *,
+                            concurrency: int = None,
+                            exist_action: str = None):
+        return await source.a_export_to(self,
+                                        concurrency=concurrency,
+                                        exist_action=exist_action,
+                                        )
 
     async def a_is_dir(self):
         return await self._a_do(self.is_dir)
@@ -821,9 +810,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return (await self.a_read_bytes()).decode(
             encoding=encoding, errors=errors)
 
-    async def a_rename(self, *args, **kwargs):
-        return await self._a_do(self.rename, *args, **kwargs)
-
     async def a_remove_dir(self, *,
                            missing_ok: bool = False, concurrency: int = None) -> int:
         # TODO: may need reimplementation.
@@ -833,6 +819,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_remove_file(self, *args, **kwargs):
         return await self._a_do(self.remove_file, *args, **kwargs)
+
+    async def a_rename_dir(self, target, **kwargs):
+        return await self._a_do(self.rename_dir, target, **kwargs)
+
+    async def a_rename_file(self, target, **kwargs):
+        return await self._a_do(self.rename_file, target, **kwargs)
 
     async def a_riterdir(self: T) -> Iterator[T]:
         # TODO: may need reimplementation.
