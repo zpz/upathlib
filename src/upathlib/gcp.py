@@ -91,7 +91,7 @@ class GcpBlobUpath(BlobUpath):
             # then its `ctime` and `mtime` are both updated.
             # My experiments showed that `ctime` and `mtime` are equal.
 
-    def isfile(self) -> bool:
+    def is_file(self) -> bool:
         return self._blob.exists()
 
     @contextlib.contextmanager
@@ -111,10 +111,10 @@ class GcpBlobUpath(BlobUpath):
             yield self / p.name[k:]
 
     # TODO:
-    # `rmdir` could be more efficient if using
+    # `remove_dir` could be more efficient if using
     # `p.delete()` on the elements returned by `self._client.list_blobs`.
 
-    def rmfile(self, *, missing_ok=False):
+    def remove_file(self, *, missing_ok=False):
         try:
             self._blob.delete()
             logger.info('deleting %s', self.path)

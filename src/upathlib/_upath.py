@@ -126,60 +126,59 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
-    def copy(self: T,
-             target: str,
-             *,
-             concurrency: int = None,
-             exist_action: str = None,
-             ) -> int:
-        '''Copy the content of the current path to the location
-        `target` in the same store. The path `target` is absolute
-        or relative to `self`.
-
-        Return the number of files copied.
-
-        Examples: suppose these blobs are present
-
-            /a/b/c.txt
-            /a/b/c/d/c.txt
-            /e/f/g/xy.data
-            /e/f/g/h/d/dd.txt
-
-        then with `exist_action='raise'`:
-
-            self         target         outcome
-            /a/b/c.txt   ../c           /a/b/c/c.txt
-            /a/b/c.txt   ../c/d         FileExistsError
-            /a/b/c.txt   ../c.txt.back  /a/b/c.txt.back
-            /a/b/c/d     /e/f           /e/f/d/c.txt
-            /a/b/c/d     /e/f/g/h       /e/f/g/h/d/c.txt
+    def copy_dir(self: T, target: str, *, overwrite: bool = False) -> T:
+        '''Analogous to `copy_file`.
         '''
-        return self.copy_to(self / target,
-                            concurrency=concurrency,
-                            exist_action=exist_action,
-                            )
+        if self/target == self:
+            return self
+        n = 0
+        for p in self.riterdir():
+            extra = str(p.path.relative_to(self.path))
+            p.copy_file(os.path.join(target, extra), overwrite=overwrite)
+            n += 1
+        if n == 0:
+            raise FileNotFoundError(self)
+        logger.info('%d files copied', n)
+        return self / target
 
-    def copy_from(self,
-                  source: Upath,
-                  *,
-                  concurrency: int = None,
-                  exist_action: str = None) -> int:
-        '''Copy the content of `source` into `self`.
+    @abc.abstractmethod
+    def copy_file(self: T, target: str, *, overwrite: bool = False) -> T:
+        '''Copy file to `target` in the same store.
 
-        `source` may be a file or a directory.
-        In the latter case, its content will be copied recursively.
+        If `self` is not an existing file, raise `FileNotFoundError`.
 
-        Return the number of files copied.
+        If `target` is an existing file, then it is overwritten
+        if `overwritten` is `True`, otherwise raise `FileExistsError`.
+
+        If `target` is an existing directory, raise `FileExistsError`.
+        Note: this behavior is different from the Unix command `cp`
+        in this situation---it does not *copy into* the target directory.
+
+        Return a `Upath` object pointing to `target`.
         '''
-        return source.copy_to(self,
-                              concurrency=concurrency,
-                              exist_action=exist_action)
+        raise NotImplementedError
 
-    def _copy_file_to(self, target: Upath, *, exist_action: str) -> int:
+    def exists(self) -> bool:
+        '''Return `True` if the path is an existing file or dir,
+        `False` otherwise.
+
+        In a blobstore with blobs
+
+            /a/b/cd
+            /a/b/cd/e.txt
+
+        '/a/b/cd' exists, and is both a file and a dir;
+        '/a/b/cd/e.txt' exists, and is a file;
+        '/a/b' exists, and is a dir;
+        '/a/b/c' does not exist.
+        '''
+        return self.is_file() or self.is_dir()
+
+    def _export_file_to(self, target: Upath, *, exist_action: str) -> int:
         if target == self:
             return 0
 
-        if target.isfile():
+        if target.is_file():
             if exist_action == 'raise':
                 raise FileExistsError(target)
             if exist_action == 'skip':
@@ -200,7 +199,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             target.write_bytes(self.read_bytes(), overwrite=True)
             return 1
 
-        if target.isdir():
+        if target.is_dir():
             # Do not delete.
             raise FileExistsError(target)
 
@@ -208,12 +207,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         target.write_bytes(self.read_bytes(), overwrite=False)
         return 1
 
-    def copy_to(self,
-                target: Upath,
-                *,
-                concurrency: int = None,
-                exist_action: str = None,
-                ) -> int:
+    def export_to(self,
+                  target: Upath,
+                  *,
+                  concurrency: int = None,
+                  exist_action: str = None,
+                  ) -> int:
         '''Copy the content of `self` to the specified `target`,
         which is typically in another store.
 
@@ -251,13 +250,13 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         else:
             assert exist_action in ('raise', 'skip', 'overwrite', 'update')
 
-        if target.isdir():
+        if target.is_dir():
             target = target / self.name
 
-        if self.isfile():
-            return self._copy_file_to(target, exist_action=exist_action)
+        if self.is_file():
+            return self._export_file_to(target, exist_action=exist_action)
 
-        if self.isdir():
+        if self.is_dir():
             if concurrency is None:
                 concurrency = 4
             else:
@@ -267,7 +266,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 n = 0
                 for p in self.riterdir():
                     extra = str(p.path.relative_to(self.path))
-                    k = p._copy_file_to(
+                    k = p._export_file_to(
                         target=target/extra,
                         exist_action=exist_action,
                     )
@@ -279,7 +278,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             for p in self.riterdir():
                 extra = str(p.path.relative_to(self.path))
                 tasks.append(pool.submit(
-                    p._copy_file_to,
+                    p._export_file_to,
                     target=target/extra,
                     exist_action=exist_action
                 ))
@@ -290,31 +289,31 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         raise FileNotFoundError(self)
 
-    def exists(self) -> bool:
-        '''Return `True` if the path is an existing file or dir,
-        `False` otherwise.
-
-        In a blobstore with blobs
-
-            /a/b/cd
-            /a/b/cd/e.txt
-
-        '/a/b/cd' exists, and is both a file and a dir;
-        '/a/b/cd/e.txt' exists, and is a file;
-        '/a/b' exists, and is a dir;
-        '/a/b/c' does not exist.
-        '''
-        return self.isfile() or self.isdir()
-
     @ abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
         '''
-        If `self.isfile()` is `False`, return `None`.
+        If `self.is_file()` is `False`, return `None`.
         '''
         raise NotImplementedError
 
+    def import_from(self,
+                    source: Upath,
+                    *,
+                    concurrency: int = None,
+                    exist_action: str = None) -> int:
+        '''Copy the content of `source` into `self`.
+
+        `source` may be a file or a directory.
+        In the latter case, its content will be copied recursively.
+
+        Return the number of files copied.
+        '''
+        return source.export_to(self,
+                                concurrency=concurrency,
+                                exist_action=exist_action)
+
     @ abc.abstractmethod
-    def isdir(self) -> bool:
+    def is_dir(self) -> bool:
         '''Return `True` if the path is an existing directory, `False` otherwise.
 
         If there exists a file named like
@@ -343,7 +342,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         raise NotImplementedError
 
     @ abc.abstractmethod
-    def isfile(self) -> bool:
+    def is_file(self) -> bool:
         '''Return `True` if the path is an existing file, `False` otherwise.
 
         In a cloud blob store, a path can be both a file and a dir. For
@@ -452,16 +451,92 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
 
-    def rename(self: T, target: str, *, overwrite: bool = False) -> T:
-        '''Rename this file or directory to the given `target`
-        in the same store. The path `target` is absolute
-        or relative to `self`.
+    def remove_dir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
+        '''Remove the directory pointed to by `self`,
+        along with all its contents, recursively.
 
-        Return a new `Upath` instance pointing to `target`.
+        Return the number of files removed.
 
-        Behavior is similar to `pathlib.Path.rename`.
+        `concurrency`: number of threads to use. If `None`,
+        a default value (e.g. 4) is used.
+
+        If `self.exists()` is `False` or `self.is_dir()` is `False`,
+        and `missing_ok` is `False`, raise `FileNotFoundError`;
+        otherwise, return 0.
+
+        Local upath needs to customize this implementation, because
+        it needs to take care of deleting "empty" subdirectories.
+        '''
+        if concurrency is None:
+            concurrency = 4
+        else:
+            0 <= concurrency <= 16
+
+        if concurrency <= 1:
+            n = 0
+            for p in self.riterdir():
+                n += p.remove_file(missing_ok=False)
+            if n == 0 and not missing_ok:
+                raise FileNotFoundError(self)
+            return n
+
+        pool = concurrent.futures.ThreadPoolExecutor(concurrency)
+        tasks = []
+        for p in self.riterdir():
+            tasks.append(pool.submit(
+                p.remove_file,
+                missing_ok=False,
+            ))
+        n = 0
+        for f in concurrent.futures.as_completed(tasks):
+            n += f.result()
+        if n == 0 and not missing_ok:
+            raise FileNotFoundError(self)
+        return n
+
+    @ abc.abstractmethod
+    def remove_file(self, *, missing_ok: bool = False) -> int:
+        '''Remove the file pointed to by `self`.
+
+        Return the number of files removed (0 or 1).
+
+        If `self` is not an existing file, then raise `FileNotFoundError`
+        if `missing_ok` is `False`, or return 0 otherwise.
         '''
         raise NotImplementedError
+
+    def rename_dir(self: T, target: str, *, overwrite: bool = False) -> T:
+        '''
+        If `self` is not an existing directory, raise `FileNotFoundError`.
+
+        Local upath needs to customize this implementation, because
+        it needs to take care to delete empty subdirectories under `self`.
+        '''
+        n = 0
+        for p in self.riterdir():
+            extra = str(p.path.relative_to(self.path))
+            p.rename_file(os.path.join(target, extra), overwrite=overwrite)
+            n += 1
+        if n == 0:
+            raise FileNotFoundError(self)
+        return self / target
+
+    def rename_file(self: T, target: str, *, overwrite: bool = False) -> T:
+        '''Rename the current file to `target` in the same store.
+
+        Return an object pointing to the new path.
+
+        If `self` is not an existing file, raise `FileNotFoundError`.
+
+        This is a reference implementation that achieves renaming via
+        copy-and-delete. In cloud blob stores, this could be the best
+        we can do. For local file system, a more efficient approach should
+        be used.
+        '''
+        t = self.copy_file(target, overwrite=overwrite)
+        if t != self:
+            self.remove_file()
+        return t
 
     @abc.abstractmethod
     def riterdir(self: T) -> Iterator[T]:
@@ -476,34 +551,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         There is no guarantee on the order of the returned elements.'''
 
-        raise NotImplementedError
-
-    @ abc.abstractmethod
-    def rmdir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
-        '''Remove the directory pointed to by `self`,
-        along with all its contents, recursively.
-
-        Return the number of files removed.
-
-        `concurrency`: number of threads to use. If `None`,
-        a default value (e.g. 4) is used.
-
-        If `self.exists()` is `False` or `self.isdir()` is `False`,
-        and `missing_ok` is `False`, raise `FileNotFoundError`;
-        otherwise, return 0.
-        '''
-        raise NotImplementedError
-
-    @ abc.abstractmethod
-    def rmfile(self, *, missing_ok: bool = False) -> int:
-        '''Remove the file pointed to by `self`.
-
-        Return the number of files removed (0 or 1).
-
-        If `self.exists()` is `False` or `self.isfile()` is `False`,
-        and `missing_ok` is `False`, raise `FileNotFoundError`;
-        otherwise, return 0.
-        '''
         raise NotImplementedError
 
     def rmrf(self, *, concurrency: int = None) -> int:
@@ -525,8 +572,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
-        n1 = self.rmfile(missing_ok=True)
-        n2 = self.rmdir(missing_ok=True, concurrency=concurrency)
+        n1 = self.remove_file(missing_ok=True)
+        n2 = self.remove_dir(missing_ok=True, concurrency=concurrency)
         return n1 + n2
 
     @ property
@@ -604,29 +651,29 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     async def a_copy(self, target: str, *,
                      concurrency: int = None, exist_action: str = None):
-        return await self.a_copy_to(self / target,
-                                    concurrency=concurrency,
-                                    exist_action=exist_action,
-                                    )
-
-    async def a_copy_from(self, source: Upath, *,
-                          concurrency: int = None,
-                          exist_action: str = None):
-        return await source.a_copy_to(self,
+        return await self.a_export_to(self / target,
                                       concurrency=concurrency,
                                       exist_action=exist_action,
                                       )
 
-    async def _a_copy_file_to(self,
-                              target: Upath, *,
-                              exist_action: str,
-                              semaphore: Optional[asyncio.Semaphore] = None,
-                              ) -> int:
+    async def a_import_from(self, source: Upath, *,
+                            concurrency: int = None,
+                            exist_action: str = None):
+        return await source.a_export_to(self,
+                                        concurrency=concurrency,
+                                        exist_action=exist_action,
+                                        )
+
+    async def _a_export_file_to(self,
+                                target: Upath, *,
+                                exist_action: str,
+                                semaphore: Optional[asyncio.Semaphore] = None,
+                                ) -> int:
         if target == self:
             return 0
 
         async def foo():
-            if await target.a_isfile():
+            if await target.a_is_file():
                 if exist_action == 'raise':
                     raise FileExistsError(target)
                 if exist_action == 'skip':
@@ -646,7 +693,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     await self.a_read_bytes(), overwrite=True)
                 return 1
 
-            if await target.a_isdir():
+            if await target.a_is_dir():
                 # Do not delete.
                 raise FileExistsError(target)
 
@@ -661,25 +708,25 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         async with semaphore:
             return await foo()
 
-    async def a_copy_to(self,
-                        target: Upath,
-                        *,
-                        concurrency: int = None,
-                        exist_action: str = None,
-                        ) -> int:
+    async def a_export_to(self,
+                          target: Upath,
+                          *,
+                          concurrency: int = None,
+                          exist_action: str = None,
+                          ) -> int:
         if exist_action is None:
             exist_action = 'raise'
         else:
             assert exist_action in ('raise', 'skip', 'overwrite', 'update')
 
-        if await target.a_isdir():
+        if await target.a_is_dir():
             target = target / self.name
 
-        if await self.a_isfile():
-            return await self._a_copy_file_to(
+        if await self.a_is_file():
+            return await self._a_export_file_to(
                 target, exist_action=exist_action)
 
-        if not await self.a_isdir():
+        if not await self.a_is_dir():
             raise FileNotFoundError(self)
 
         if concurrency is None:
@@ -691,7 +738,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             n = 0
             async for p in self.a_riterdir():
                 extra = str(p.path.relative_to(self.path))
-                k = await p._a_copy_file_to(
+                k = await p._a_export_file_to(
                     target/extra,
                     exist_action=exist_action,
                 )
@@ -702,7 +749,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         tasks = []
         async for p in self.a_riterdir():
             extra = str(p.path.relative_to(self.path))
-            tasks.append(p._a_copy_file_to(
+            tasks.append(p._a_export_file_to(
                 target/extra,
                 exist_action=exist_action,
                 semaphore=sem,
@@ -711,17 +758,33 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         nn = await asyncio.gather(*tasks)
         return sum(nn)
 
+    async def a_copy_dir(self, target, *, overwrite=False):
+        target = self / target
+        if target == self:
+            return self
+        if not await self.a_is_dir():
+            raise FileNotFoundError(self)
+
+        async for p in self.a_riterdir():
+            extra = str(p.path.relative_to(self.path))
+            await p.a_copy_file(target / extra, overwrite=overwrite)
+
+        return target
+
+    async def a_copy_file(self, target, **kwargs):
+        return await self._a_do(self.copy_file, target, **kwargs)
+
     async def a_exists(self):
-        return (await self.a_isfile()) or (await self.a_isdir())
+        return (await self.a_is_file()) or (await self.a_is_dir())
 
     async def a_file_info(self):
         return await self._a_do(self.file_info)
 
-    async def a_isdir(self):
-        return await self._a_do(self.isdir)
+    async def a_is_dir(self):
+        return await self._a_do(self.is_dir)
 
-    async def a_isfile(self):
-        return await self._a_do(self.isfile)
+    async def a_is_file(self):
+        return await self._a_do(self.is_file)
 
     async def a_iterdir(self: T) -> Iterator[T]:
         # TODO: may need reimplementation.
@@ -761,27 +824,27 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_rename(self, *args, **kwargs):
         return await self._a_do(self.rename, *args, **kwargs)
 
+    async def a_remove_dir(self, *,
+                           missing_ok: bool = False, concurrency: int = None) -> int:
+        # TODO: may need reimplementation.
+        return await self._a_do(self.remove_dir,
+                                missing_ok=missing_ok,
+                                concurrency=concurrency)
+
+    async def a_remove_file(self, *args, **kwargs):
+        return await self._a_do(self.remove_file, *args, **kwargs)
+
     async def a_riterdir(self: T) -> Iterator[T]:
         # TODO: may need reimplementation.
         for p in self.riterdir():
             yield p
 
-    async def a_rmdir(self, *,
-                      missing_ok: bool = False, concurrency: int = None) -> int:
-        # TODO: may need reimplementation.
-        return await self._a_do(self.rmdir,
-                                missing_ok=missing_ok,
-                                concurrency=concurrency)
-
-    async def a_rmfile(self, *args, **kwargs):
-        return await self._a_do(self.rmfile, *args, **kwargs)
-
     async def a_rmrf(self, *, concurrency: int = None) -> int:
         if self._path == '/':
             raise UnsupportedOperation(
                 "`a_rmrf` not allowed on root directory")
-        n1 = await self.a_rmfile(missing_ok=True)
-        n2 = await self.a_rmdir(missing_ok=True, concurrency=concurrency)
+        n1 = await self.a_remove_file(missing_ok=True)
+        n2 = await self.a_remove_dir(missing_ok=True, concurrency=concurrency)
         return n1 + n2
 
     async def a_write_bytes(self, *args, **kwargs):

@@ -118,7 +118,7 @@ class AzureBlobUpath(BlobUpath):
         except ResourceNotFoundError:
             return None
 
-    def isfile(self):
+    def is_file(self):
         with self._provide_blob_client():
             return self._blob_client.exists()
 
@@ -178,7 +178,7 @@ class AzureBlobUpath(BlobUpath):
                     self._t_renew_lease_stopped = True
                     self._t_renew_lease.join()
                     self._t_renew_lease = None
-                    self.rmfile()
+                    self.remove_file()
                     # still holding the lease; this should succeed.
                     self._lease_id = None
                     self._lock_count = 0
@@ -246,7 +246,7 @@ class AzureBlobUpath(BlobUpath):
                     name_starts_with=prefix):
                 yield self / p.name[k:]
 
-    def rmfile(self, *, missing_ok=False):
+    def remove_file(self, *, missing_ok=False):
         with self._provide_blob_client():
             try:
                 self._blob_client.delete_blob(
@@ -291,7 +291,7 @@ class AzureBlobUpath(BlobUpath):
         except ResourceNotFoundError as e:
             raise FileNotFoundError(self) from e
 
-    async def a_isfile(self):
+    async def a_is_file(self):
         async with self._a_provide_blob_client():
             return await self._a_blob_client.exists()
 
@@ -352,7 +352,7 @@ class AzureBlobUpath(BlobUpath):
                     self._t_renew_lease_stopped = True
                     await self._t_renew_lease
                     self._t_renew_lease = None
-                    await self.a_rmfile(missing_ok=True)
+                    await self.a_remove_file(missing_ok=True)
                     # still holding the lease; this should succeed.
                     self._lease_id = None
                     self._lock_count = 0
@@ -421,7 +421,7 @@ class AzureBlobUpath(BlobUpath):
                     name_starts_with=prefix):
                 yield self / p.name[k:]
 
-    async def a_rmfile(self, *, missing_ok=False):
+    async def a_remove_file(self, *, missing_ok=False):
         async with self._a_provide_blob_client():
             try:
                 await self._a_blob_client.delete_blob(

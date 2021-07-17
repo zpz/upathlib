@@ -14,8 +14,8 @@ def test_read_write_rm_navigate(p: Upath):
     p1 = p / 'abc.txt'
     assert not p1.exists()
     p1.write_text('abc')
-    assert p1.isfile()
-    assert not p1.isdir()
+    assert p1.is_file()
+    assert not p1.is_dir()
     assert p1.exists()
     assert p1.read_text() == 'abc'
 
@@ -27,8 +27,8 @@ def test_read_write_rm_navigate(p: Upath):
 
     p /= 'a'
     assert p._path == f'{init_path}/a'
-    assert not p.isfile()
-    assert not p.isdir()
+    assert not p.is_file()
+    assert not p.is_dir()
     assert not p.exists()
 
     time.sleep(0.3)
@@ -56,26 +56,26 @@ def test_read_write_rm_navigate(p: Upath):
     assert fi1.mtime < fi2.mtime
     assert fi1.size > fi2.size
 
-    assert p3.isdir()
-    assert p3.rmdir() == 1
+    assert p3.is_dir()
+    assert p3.remove_dir() == 1
     assert not p3.exists()
     assert not p2.exists()
 
     with pytest.raises(FileNotFoundError):
-        p3.rmdir()
+        p3.remove_dir()
 
-    assert p3.rmdir(missing_ok=True) == 0
+    assert p3.remove_dir(missing_ok=True) == 0
 
     assert p.ls() == [p1]
 
     with pytest.raises(FileNotFoundError):
-        p1.rmdir()
+        p1.remove_dir()
 
-    assert p1.rmfile() == 1
+    assert p1.remove_file() == 1
 
     with pytest.raises(FileNotFoundError):
-        p1.rmfile()
-    assert p1.rmfile(missing_ok=True) == 0
+        p1.remove_file()
+    assert p1.remove_file(missing_ok=True) == 0
 
     assert p.rmrf() == 0
 
@@ -87,8 +87,8 @@ async def test_a_read_write_rm_navigate(p: Upath):
     p1 = p / 'abc.txt'
     assert not await p1.a_exists()
     await p1.a_write_text('abc')
-    assert await p1.a_isfile()
-    assert not await p1.a_isdir()
+    assert await p1.a_is_file()
+    assert not await p1.a_is_dir()
     assert await p1.a_exists()
     assert await p1.a_read_text() == 'abc'
 
@@ -100,8 +100,8 @@ async def test_a_read_write_rm_navigate(p: Upath):
 
     p /= 'a'
     assert p._path == f'{init_path}/a'
-    assert not await p.a_isfile()
-    assert not await p.a_isdir()
+    assert not await p.a_is_file()
+    assert not await p.a_is_dir()
     assert not await p.a_exists()
 
     await asyncio.sleep(0.3)
@@ -131,26 +131,26 @@ async def test_a_read_write_rm_navigate(p: Upath):
     assert fi1.mtime < fi2.mtime
     assert fi1.size > fi2.size
 
-    assert await p3.a_isdir()
-    assert await p3.a_rmdir() == 1
+    assert await p3.a_is_dir()
+    assert await p3.a_remove_dir() == 1
     assert not await p3.a_exists()
     assert not await p2.a_exists()
 
     with pytest.raises(FileNotFoundError):
-        await p3.a_rmdir()
+        await p3.a_remove_dir()
 
-    assert await p3.a_rmdir(missing_ok=True) == 0
+    assert await p3.a_remove_dir(missing_ok=True) == 0
 
     assert await p.a_ls() == [p1]
 
     with pytest.raises(FileNotFoundError):
-        await p1.a_rmdir()
+        await p1.a_remove_dir()
 
-    assert await p1.a_rmfile() == 1
+    assert await p1.a_remove_file() == 1
 
     with pytest.raises(FileNotFoundError):
-        await p1.a_rmfile()
-    assert await p1.a_rmfile(missing_ok=True) == 0
+        await p1.a_remove_file()
+    assert await p1.a_remove_file(missing_ok=True) == 0
 
     assert await p.a_rmrf() == 0
 
@@ -165,28 +165,28 @@ def test_copy(p: Upath):
     source_file = source / 'testfile'
     source_file.write_text('abc', overwrite=True)
 
-    target.copy_from(source_file)
+    target.import_from(source_file)
     assert target.read_text() == 'abc'
 
     with pytest.raises(NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
-        target.joinpath('samplefile').copy_from(source)
+        target.joinpath('samplefile').import_from(source)
 
     target.rmrf()
     p2 = target.joinpath('samplefile')
-    p2.copy_from(source)
+    p2.import_from(source)
     p3 = p2 / source_file.name
     assert target.ls() == [p2]
     assert p2.ls() == [p3]
     assert p3.read_text() == 'abc'
 
     p1 = source / 'a' / 'b' / 'c'
-    assert p2.copy_to(p1) == 1
+    assert p2.export_to(p1) == 1
     p4 = p1 / source_file.name
     assert p4.read_text() == 'abc'
 
-    assert p2.copy_to(source / 'a' / 'b') == 1
+    assert p2.export_to(source / 'a' / 'b') == 1
     assert (source / 'a' / 'b' / p2.name /
             source_file.name).read_text() == 'abc'
 
@@ -201,28 +201,28 @@ async def test_a_copy(p: Upath):
     source_file = source / 'testfile'
     await source_file.a_write_text('abc', overwrite=True)
 
-    await target.a_copy_from(source_file)
+    await target.a_import_from(source_file)
     assert await target.a_read_text() == 'abc'
 
     with pytest.raises(NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
-        await target.joinpath('samplefile').a_copy_from(source)
+        await target.joinpath('samplefile').a_import_from(source)
 
     await target.a_rmrf()
     p2 = target.joinpath('samplefile')
-    await p2.a_copy_from(source)
+    await p2.a_import_from(source)
     p3 = p2 / source_file.name
     assert await target.a_ls() == [p2]
     assert await p2.a_ls() == [p3]
     assert await p3.a_read_text() == 'abc'
 
     p1 = source / 'a' / 'b' / 'c'
-    assert await p2.a_copy_to(p1) == 1
+    assert await p2.a_export_to(p1) == 1
     p4 = p1 / source_file.name
     assert await p4.a_read_text() == 'abc'
 
-    assert await p2.a_copy_to(source / 'a' / 'b') == 1
+    assert await p2.a_export_to(source / 'a' / 'b') == 1
     assert await (source / 'a' / 'b' / p2.name /
                   source_file.name).a_read_text() == 'abc'
 

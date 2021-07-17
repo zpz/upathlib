@@ -10,10 +10,10 @@ class MyUpath(Upath):
     def file_info(self):
         raise NotImplementedError
 
-    def isdir(self):
+    def is_dir(self):
         raise NotImplementedError
 
-    def isfile(self):
+    def is_file(self):
         raise NotImplementedError
 
     def iterdir(self):
@@ -29,10 +29,10 @@ class MyUpath(Upath):
     def riterdir(self):
         raise NotImplementedError
 
-    def rmdir(self):
+    def remove_dir(self):
         raise NotImplementedError
 
-    def rmfile(self):
+    def remove_file(self):
         raise NotImplementedError
 
     def write_bytes(self):

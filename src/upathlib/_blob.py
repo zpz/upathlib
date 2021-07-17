@@ -19,11 +19,11 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             target = LocalUpath(str(target.absolute()))
         else:
             assert isinstance(target, LocalUpath)
-        return self.copy_to(target,
-                            concurrency=concurrency,
-                            exist_action=exist_action)
+        return self.export_to(target,
+                              concurrency=concurrency,
+                              exist_action=exist_action)
 
-    def isdir(self):
+    def is_dir(self):
         '''In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
         system. If there is a blob named like
@@ -38,7 +38,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         (I don't know whether the blob stores allow
         such blob names.)
 
-        Consequently, `isdir` is equivalent
+        Consequently, `is_dir` is equivalent
         to "having stuff in the dir". There is no such thing as
         an "empty directory" in blob stores.
         '''
@@ -64,33 +64,11 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                 yield self / tail
                 subdirs.add(tail)
 
-    def rmdir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
-        if concurrency is None:
-            concurrency = 4
-        else:
-            0 <= concurrency <= 16
-
-        if concurrency <= 1:
-            n = 0
-            for p in self.riterdir():
-                n += p.rmfile(missing_ok=False)
-            if n == 0 and not missing_ok:
-                raise FileNotFoundError(self)
-            return n
-
-        pool = concurrent.futures.ThreadPoolExecutor(concurrency)
-        tasks = []
-        for p in self.riterdir():
-            tasks.append(pool.submit(
-                p.rmfile,
-                missing_ok=False,
-            ))
-        n = 0
-        for f in concurrent.futures.as_completed(tasks):
-            n += f.result()
-        if n == 0 and not missing_ok:
-            raise FileNotFoundError(self)
-        return n
+    def rename(self, target: str, *, overwrite: bool = False):
+        target = self / target
+        if target == self:
+            return self
+        if self.is_file():
 
     def upload(self,
                source: Union[str, pathlib.Path, LocalUpath],
@@ -103,9 +81,9 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             source = LocalUpath(str(source.absolute()))
         else:
             assert isinstance(source, LocalUpath)
-        return self.copy_from(source,
-                              concurrency=concurrency,
-                              exist_action=exist_action)
+        return self.import_from(source,
+                                concurrency=concurrency,
+                                exist_action=exist_action)
 
     async def a_download(self,
                          target: Union[str, pathlib.Path, LocalUpath],
@@ -118,10 +96,10 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             target = LocalUpath(str(target.absolute()))
         else:
             assert isinstance(target, LocalUpath)
-        return await self.a_copy_to(
+        return await self.a_export_to(
             target, concurrency=concurrency, exist_action=exist_action)
 
-    async def a_rmdir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
+    async def a_remove_dir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
         if concurrency is None:
             concurrency = 4
         else:
@@ -130,19 +108,19 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if concurrency <= 1:
             n = 0
             async for p in self.a_riterdir():
-                n += await p.a_rmfile(missing_ok=False)
+                n += await p.a_remove_file(missing_ok=False)
             if n == 0 and not missing_ok:
                 raise FileNotFoundError(self)
             return n
 
-        async def _rmfile(path, sem):
+        async def _remove_file(path, sem):
             async with sem:
-                return await path.a_rmfile(missing_ok=False)
+                return await path.a_remove_file(missing_ok=False)
 
         sema = asyncio.Semaphore(concurrency)
         tasks = []
         async for p in self.a_riterdir():
-            tasks.append(_rmfile(p, sema))
+            tasks.append(_remove_file(p, sema))
         nn = await asyncio.gather(*tasks)
         n = sum(nn)
         if n == 0 and not missing_ok:
@@ -160,5 +138,5 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             source = LocalUpath(str(source.absolute()))
         else:
             assert isinstance(source, LocalUpath)
-        return await self.a_copy_from(
+        return await self.a_import_from(
             source, concurrency=concurrency, exist_action=exist_action)

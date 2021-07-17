@@ -89,7 +89,7 @@ class FakeBlobUpath(BlobUpath):
     def file_info(self):
         return _store.file_info(self._bucket, self._path)
 
-    def isfile(self):
+    def is_file(self):
         return _store.exists(self._bucket, self._path)
 
     @contextlib.contextmanager
@@ -110,7 +110,7 @@ class FakeBlobUpath(BlobUpath):
         for pp in _store.list_blobs(self._bucket, p):
             yield self / pp[len(p):]
 
-    def rmfile(self, *, missing_ok=False):
+    def remove_file(self, *, missing_ok=False):
         try:
             _store.delete_blob(self._bucket, self._path)
             return 1

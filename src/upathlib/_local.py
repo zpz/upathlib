@@ -4,6 +4,7 @@ import logging
 import os
 import os.path
 import pathlib
+import shutil
 
 import filelock
 # `filelock` is also called `py-filelock`.
@@ -30,8 +31,25 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             parts = [str(pathlib.Path.cwd().absolute())]
         super().__init__(*parts)
 
+    def copy_file(self, target, *, overwrite=False):
+        if not self.is_file():
+            raise FileNotFoundError(self)
+        target = self / target
+        if self == target:
+            return self
+        if target.is_file():
+            if not overwrite:
+                raise FileExistsError(target)
+            target.remove_file()
+        elif target.is_dir():
+            raise FileExistsError(target)
+        else:
+            assert not target.exists()
+        shutil.copy(self.localpath, target.localpath)
+        return target
+
     def file_info(self):
-        if not self.isfile():
+        if not self.is_file():
             return
         st = self.localpath.stat()
         return FileInfo(
@@ -46,10 +64,10 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
 
-    def isdir(self):
+    def is_dir(self):
         return self.localpath.is_dir()
 
-    def isfile(self):
+    def is_file(self):
         return self.localpath.is_file()
 
     def iterdir(self):
@@ -80,79 +98,75 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         except (IsADirectoryError, FileNotFoundError) as e:
             raise FileNotFoundError(self) from e
 
-    def rename(self, target, *, overwrite=False):
-        target = self / target
-        if target == self:
-            return self
-
-        if not self.exists():
-            raise FileNotFoundError(self)
-
-        if target.isfile():
-            if not overwrite:
-                raise FileExistsError(target)
-        elif target.isdir():
-            if list(target.iterdir()):  # dir not empty
-                raise FileExistsError(target)
-            target.rmdir()
-        else:
-            assert not target.exists()
-        self.localpath.rename(target.localpath)
-        return target
-
     def riterdir(self):
         for p in self.iterdir():
-            if p.isfile():
+            if p.is_file():
                 yield p
-            elif p.isdir():
+            elif p.is_dir():
                 yield from p.riterdir()
 
-    def rmdir(self, *, missing_ok=False, concurrency=None):
-        def _rmdir(path):
-            n = 0
+    def remove_dir(self, *, missing_ok=False, concurrency=None):
+        n = super().remove_dir(missing_ok=True, concurrency=concurrency)
+
+        def _remove_dir(path):
             for p in path.iterdir():
-                if p.isfile():
-                    logger.info('deleting %s', p.localpath)
-                    p.localpath.unlink()
-                    n += 1
-                else:
-                    n += _rmdir(p)
-            path.localpath.rmdir()  # this is a `pathlib.Path` call
-            return n
+                assert p.is_dir()
+                _remove_dir(p)
+            path.rmdir()
 
         if self.isdir():
-            n = _rmdir(self)
+            _remove_dir(self.localpath)
+        elif not missing_ok:
+            raise FileNotFoundError(self)
 
-            # # TODO: rethink this
-            # p = self.parent
-            # while not list(p.iterdir()):  # empty dir
-            #     p.localpath.rmdir()
-            #     p = p.parent
+        return n
 
-            return n
-
-        if missing_ok:
-            return 0
-
-        raise FileNotFoundError(self.localpath)
-
-    def rmfile(self, *, missing_ok=False):
-        if self.isfile():
+    def remove_file(self, *, missing_ok=False):
+        if self.is_file():
             logger.info('deleting %s', self.localpath)
             self.localpath.unlink()
-
-            # TODO: rethink this.
-            # p = self.parent
-            # while not list(p.iterdir()):  # empty dir
-            #     p.localpath.rmdir()
-            #     p = p.parent
-
             return 1
 
         if missing_ok:
             return 0
 
         raise FileNotFoundError(self)
+
+    def rename_dir(self, target, *, overwrite=False):
+        if not self.is_dir():
+            raise FileNotFoundError(self)
+        target = self / target
+
+        if target.is_file():
+            if not overwrite:
+                raise FileExistsError(target)
+        elif target.is_dir():
+            if list(target.iterdir()):  # dir not empty
+                raise FileExistsError(target)
+            target.remove_dir()
+        else:
+            assert not target.exists()
+        self.localpath.rename(target.localpath)
+        return target
+
+    def rename_file(self, target, *, overwrite=False):
+        if not self.is_file():
+            raise FileNotFoundError(self)
+        target = self / target
+        if target == self:
+            return self
+
+        if target.is_file():
+            if not overwrite:
+                raise FileExistsError(target)
+        elif target.is_dir():
+            if list(target.iterdir()):  # dir not empty
+                raise FileExistsError(target)
+            target.remove_dir()
+        else:
+            assert not target.exists()
+        self.localpath.rename(target.localpath)
+        return target
 
     def write_bytes(self, data: bytes, *, overwrite=False):
         if self.localpath.is_file():
@@ -170,14 +184,14 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     async def a_file_info(self):
         return self.file_info()
 
-    async def a_isdir(self):
-        return self.isdir()
+    async def a_is_dir(self):
+        return self.is_dir()
 
-    async def a_isfile(self):
-        return self.isfile()
+    async def a_is_file(self):
+        return self.is_file()
 
     async def a_rename(self, target, *, overwrite=False):
         return self.rename(target, overwrite=overwrite)
 
-    async def a_rmfile(self, *, missing_ok=False):
-        return self.rmfile(missing_ok=missing_ok)
+    async def a_remove_file(self, *, missing_ok=False):
+        return self.remove_file(missing_ok=missing_ok)
