@@ -196,39 +196,23 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             self.localpath.parent.mkdir(exist_ok=True, parents=True)
         return self.localpath.write_bytes(data)
 
-    async def a_exists(self):
-        return self.exists()
+    # async def a_exists(self):
+    #     return self.exists()
 
-    async def _a_export_file(self, target: Upath, *, overwrite=False):
-        if isinstance(target, LocalUpath):
-            await self.a_copy_file(str(target), overwrite=overwrite)
-            return
-        # Call the other side in case it implements an efficient
-        # file upload.
-        await target._a_import_file(self, overwrite=overwrite)
+    # async def a_file_info(self):
+    #     return self.file_info()
 
-    async def a_file_info(self):
-        return self.file_info()
+    # async def a_is_dir(self):
+    #     return self.is_dir()
 
-    async def _a_import_file(self, source: Upath, *, overwrite=False):
-        if isinstance(source, LocalUpath):
-            await source.a_copy_file(str(self), overwrite=overwrite)
-            return
-        # Call the other side in case it implements an efficient
-        # file download.
-        await source._a_export_file(self, overwrite=overwrite)
+    # async def a_is_file(self):
+    #     return self.is_file()
 
-    async def a_is_dir(self):
-        return self.is_dir()
+    # async def a_remove_file(self, *, missing_ok=False):
+    #     return self.remove_file(missing_ok=missing_ok)
 
-    async def a_is_file(self):
-        return self.is_file()
+    # async def a_rename_dir(self, target, *, overwrite=False):
+    #     return self.rename_dir(target, overwrite=overwrite)
 
-    async def a_remove_file(self, *, missing_ok=False):
-        return self.remove_file(missing_ok=missing_ok)
-
-    async def a_rename_dir(self, target, *, overwrite=False):
-        return self.rename_dir(target, overwrite=overwrite)
-
-    async def a_rename_file(self, target, *, overwrite=False):
-        return self.rename_file(target, overwrite=overwrite)
+    # async def a_rename_file(self, target, *, overwrite=False):
+    #     return self.rename_file(target, overwrite=overwrite)

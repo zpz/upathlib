@@ -51,8 +51,25 @@ def nogc(func, *args, **kwargs):
             gc.enable()
 
 
+def _execute_in_thread_pool(jobs, concurrency: int = None):
+    if concurrency is None:
+        concurrency = 4
+    else:
+        assert 0 <= concurrency <= 16
+        if concurrency < 1:
+            concurrency = 1
+
+    pool = concurrent.futures.ThreadPoolExecutor(concurrency)
+    tasks = []
+    for f, args, kwargs in jobs:
+        tasks.append(pool.submit(f, *args, **kwargs))
+    results = []
+    for f in concurrent.futures.as_completed(tasks):
+        results.append(f.result())
+    return results
+
+
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
-    _executor: concurrent.futures.ThreadPoolExecutor = None
 
     def __init__(self, *pathsegments: str, **kwargs):
         '''`Upath` is the base class for a client to a blob store,
@@ -126,19 +143,28 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def __truediv__(self: T, key: str) -> T:
         return self.joinpath(key)
 
-    def copy_dir(self: T, target: str, *, overwrite: bool = False) -> T:
+    def copy_dir(self: T, target: str, *, overwrite: bool = False, concurrency: int = None) -> T:
         '''Analogous to `copy_file`.
         '''
         target = self.parent / target
-        n = 0
-        for p in self.riterdir():
-            extra = str(p.path.relative_to(self.path))
-            p.copy_file((target / extra)._path, overwrite=overwrite)
-            n += 1
+
+        def foo():
+            for p in self.riterdir():
+                extra = str(p.path.relative_to(self.path))
+                yield (
+                    p.copy_file,
+                    [(target / extra)._path],
+                    {'overwrite': overwrite},
+                )
+
+        results = _execute_in_thread_pool(foo(), concurrency)
+        n = len(results)
+        # TODO: get the actual number of files copied.
+
         if n == 0:
             raise FileNotFoundError(self)
         logger.info('%d files copied', n)
-        return self / target
+        return target
 
     @abc.abstractmethod
     def copy_file(self: T, target: str, *, overwrite: bool = False) -> T:
@@ -159,7 +185,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         Return a `Upath` object pointing to `target`.
         '''
-        raise NotImplementedError
+        # Reference implementation.
+        # Subclass should implement by direct file operation if possible.
+        target = self.parent / target
+        target.write_bytes(self.read_bytes(), overwrite=overwrite)
+        return target
 
     def exists(self) -> bool:
         '''Return `True` if the path is an existing file or dir,
@@ -197,30 +227,39 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         Return the number of files copied.
         '''
-        if concurrency is None:
-            concurrency = 4
-        else:
-            assert 0 <= concurrency <= 16
-            if concurrency < 1:
-                concurrency = 1
+        def foo():
+            for p in self.riterdir():
+                extra = str(p.path.relative_to(self.path))
+                yield (
+                    p.export_file,
+                    [],
+                    {'target': target/extra, 'exist_action': exist_action},
+                )
 
-        pool = concurrent.futures.ThreadPoolExecutor(concurrency)
-        tasks = []
-        for p in self.riterdir():
-            extra = str(p.path.relative_to(self.path))
-            tasks.append(pool.submit(
-                p.export_file,
-                target=target/extra,
-                exist_action=exist_action
-            ))
-        n = 0
-        for f in concurrent.futures.as_completed(tasks):
-            n += f.result()
+        nn = _execute_in_thread_pool(foo(), concurrency)
+        n = sum(nn)
         if n:
-            logger.info('%d files exported from %r to %r', n, self, target)
+            logger.info('%d files copied from %r to %r', n, self, target)
         else:
-            logger.warning('%d files exported from %r to %r', n, self, target)
+            logger.warning('%d files copied from %r to %r', n, self, target)
         return n
+
+    def _should_update(self, other: Upath) -> bool:
+        sourceinfo = self.file_info()
+        targetinfo = other.file_info()
+        return (sourceinfo.size != targetinfo.size
+                or sourceinfo.mtime > targetinfo.mtime)
+        # Otherwise, we're assuming that
+        # the target file was copied from the source
+        # previously.
+
+    def _export_file(self, target: Upath, *, overwrite: bool = False) -> None:
+        # Reference implementation.
+        # Subclass may customize this to perform file download
+        # when `target` is a `LocalUpath`.
+        target.write_bytes(
+            self.read_bytes(), overwrite=overwrite
+        )
 
     def export_file(self, target: Upath, *, exist_action: str = None) -> int:
         '''Copy the file to the specified `target`, which is typically
@@ -259,13 +298,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 logger.info(f"target {target!r} exists; skipped")
                 return 0
             if exist_action == 'update':
-                sourceinfo = self.file_info()
-                targetinfo = target.file_info()
-                if (targetinfo.size == sourceinfo.size
-                        and targetinfo.mtime >= sourceinfo.mtime):
-                    # We're assuming that this suggests
-                    # the target file was copied from the source
-                    # previously.
+                if not self._should_update(target):
                     logger.info(
                         f"target {target!r} appears to be up-to-date; skipped")
                     return 0
@@ -280,13 +313,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         logger.info("copying '%s' to '%s'", self, target)
         self._export_file(target, overwrite=False)
         return 1
-
-    def _export_file(self, target: Upath, *, overwrite: bool = False) -> None:
-        # Subclass may customize this to perform file download
-        # when `target` is a `LocalUpath`.
-        target.write_bytes(
-            self.read_bytes(), overwrite=overwrite
-        )
 
     @ abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
@@ -307,15 +333,18 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                                  concurrency=concurrency,
                                  exist_action=exist_action)
 
-    def import_file(self, source: Upath, *, exist_action: str = None) -> int:
-        return source.export_file(self, exist_action=exist_action)
-
     def _import_file(self, source: Upath, *, overwrite: bool = False) -> None:
         # Subclass may customize this to perform file upload
         # when `target` is a `LocalUpath`.
+        # This is not used by `import_file` directly, but
+        # it is used by `export_file` in certain situations.
+        # See `LocalUpath._export_file`.
         self.write_bytes(
             source.read_bytes(), overwrite=overwrite
         )
+
+    def import_file(self, source: Upath, *, exist_action: str = None) -> int:
+        return source.export_file(self, exist_action=exist_action)
 
     @ abc.abstractmethod
     def is_dir(self) -> bool:
@@ -472,29 +501,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Local upath needs to customize this implementation, because
         it needs to take care of deleting "empty" subdirectories.
         '''
-        if concurrency is None:
-            concurrency = 4
-        else:
-            0 <= concurrency <= 16
-
-        if concurrency <= 1:
-            n = 0
+        def foo():
             for p in self.riterdir():
-                n += p.remove_file(missing_ok=False)
-            if n == 0 and not missing_ok:
-                raise FileNotFoundError(self)
-            return n
+                yield p.remove_file, [], {'missing_ok': False}
 
-        pool = concurrent.futures.ThreadPoolExecutor(concurrency)
-        tasks = []
-        for p in self.riterdir():
-            tasks.append(pool.submit(
-                p.remove_file,
-                missing_ok=False,
-            ))
-        n = 0
-        for f in concurrent.futures.as_completed(tasks):
-            n += f.result()
+        nn = _execute_in_thread_pool(foo(), concurrency)
+        n = sum(nn)
         if n == 0 and not missing_ok:
             raise FileNotFoundError(self)
         return n
@@ -510,7 +522,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def rename_dir(self: T, target: str, *, overwrite: bool = False) -> T:
+    def rename_dir(self: T, target: str, *, overwrite: bool = False, concurrency: int = None) -> T:
         '''Analogous to `rename_file`.
 
         If `self` is not an existing directory, raise `FileNotFoundError`.
@@ -519,11 +531,18 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         it needs to take care to delete empty subdirectories under `self`.
         '''
         target = self.parent / target
-        n = 0
-        for p in self.riterdir():
-            extra = str(p.path.relative_to(self.path))
-            p.rename_file((target / extra)._path, overwrite=overwrite)
-            n += 1
+
+        def foo():
+            for p in self.riterdir():
+                extra = str(p.path.relative_to(self.path))
+                yield (
+                    p.rename_file,
+                    [(target / extra)._path],
+                    {'overwrite': overwrite},
+                )
+
+        results = _execute_in_thread_pool(foo(), concurrency)
+        n = len(results)
         if n == 0:
             raise FileNotFoundError(self)
         return target
@@ -654,215 +673,242 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         self.write_bytes(z, overwrite=overwrite)
         return n
 
-    async def _a_do(self, func, *args, **kwargs):
-        func = partial(func, *args, **kwargs)
-        return await asyncio.get_running_loop().run_in_executor(
-            self._executor, func)
+    # async def _a_do(self, func, *args, **kwargs):
+    #     func = partial(func, *args, **kwargs)
+    #     return await asyncio.get_running_loop().run_in_executor(
+    #         self._executor, func)
 
-    async def a_copy_dir(self, target, *, overwrite=False):
-        n = 0
-        async for p in self.a_riterdir():
-            extra = str(p.path.relative_to(self.path))
-            await p.a_copy_file(os.path.join(target, extra), overwrite=overwrite)
-            n += 1
-        if n == 0:
-            raise FileNotFoundError(self)
-        logger.info('%d files copied', n)
-        return self / target
+    # async def a_copy_dir(self, target, *, overwrite=False, concurrency: int = None):
+    #     n = 0
+    #     async for p in self.a_riterdir():
+    #         extra = str(p.path.relative_to(self.path))
+    #         await p.a_copy_file(os.path.join(target, extra), overwrite=overwrite)
+    #         n += 1
+    #     if n == 0:
+    #         raise FileNotFoundError(self)
+    #     logger.info('%d files copied', n)
+    #     return self / target
 
-    async def a_copy_file(self, target, **kwargs):
-        return await self._a_do(self.copy_file, target, **kwargs)
+    # async def a_copy_file(self, target, **kwargs):
+    #     return await self._a_do(self.copy_file, target, **kwargs)
 
-    async def a_exists(self):
-        return (await self.a_is_file()) or (await self.a_is_dir())
+    # async def a_exists(self):
+    #     return (await self.a_is_file()) or (await self.a_is_dir())
 
-    async def a_export_dir(self,
-                           target: Upath,
-                           *,
-                           concurrency: int = None,
-                           exist_action: str = None,
-                           ) -> int:
-        if concurrency is None:
-            concurrency = 4
-        else:
-            assert 0 <= concurrency <= 16
-            if concurrency < 1:
-                concurrency = 1
+    # async def a_export_dir(self,
+    #                        target: Upath,
+    #                        *,
+    #                        concurrency: int = None,
+    #                        exist_action: str = None,
+    #                        ) -> int:
+    #     if concurrency is None:
+    #         concurrency = 4
+    #     else:
+    #         assert 0 <= concurrency <= 16
+    #         if concurrency < 1:
+    #             concurrency = 1
 
-        async def foo(source, target, exist_action, sem):
-            async with sem:
-                return await source.a_export_file(
-                    target, exist_action=exist_action)
+    #     async def foo(source, target, exist_action, sem):
+    #         async with sem:
+    #             return await source.a_export_file(
+    #                 target, exist_action=exist_action)
 
-        sem = asyncio.Semaphore(concurrency)
-        tasks = []
-        async for p in self.a_riterdir():
-            extra = str(p.path.relative_to(self.path))
-            tasks.append(foo(
-                p, target/extra,
-                exist_action=exist_action, sem=sem))
-        nn = await asyncio.gather(*tasks)
-        n = sum(nn)
-        if n:
-            logger.info('%d files exported from %r to %r', n, self, target)
-        else:
-            logger.warning('%d files exported from %r to %r', n, self, target)
-        return n
+    #     sem = asyncio.Semaphore(concurrency)
+    #     tasks = []
+    #     async for p in self.a_riterdir():
+    #         extra = str(p.path.relative_to(self.path))
+    #         tasks.append(foo(
+    #             p, target/extra,
+    #             exist_action=exist_action, sem=sem))
+    #     nn = await asyncio.gather(*tasks)
+    #     n = sum(nn)
+    #     if n:
+    #         logger.info('%d files exported from %r to %r', n, self, target)
+    #     else:
+    #         logger.warning('%d files exported from %r to %r', n, self, target)
+    #     return n
 
-    async def a_export_file(self, target: Upath, *, exist_action: str = None) -> int:
-        if not await self.a_is_file():
-            raise FileNotFoundError(self)
+    # async def a_export_file(self, target: Upath, *, exist_action: str = None) -> int:
+    #     if not await self.a_is_file():
+    #         raise FileNotFoundError(self)
 
-        if await target.a_is_file():
-            if exist_action is None:
-                exist_action = 'raise'
-            else:
-                assert exist_action in ('raise', 'skip', 'overwrite', 'update')
+    #     if await target.a_is_file():
+    #         if exist_action is None:
+    #             exist_action = 'raise'
+    #         else:
+    #             assert exist_action in ('raise', 'skip', 'overwrite', 'update')
 
-            if exist_action == 'raise':
-                raise FileExistsError(target)
-            if exist_action == 'skip':
-                logger.info(f"target {target!r} exists; skipped")
-                return 0
-            if exist_action == 'update':
-                sourceinfo = await self.a_file_info()
-                targetinfo = await target.a_file_info()
-                if (targetinfo.size == sourceinfo.size
-                        and targetinfo.mtime >= sourceinfo.mtime):
-                    # We're assuming that this suggests
-                    # the target file was copied from the source
-                    # previously.
-                    logger.info(
-                        f"target {target!r} appears to be up-to-date; skipped")
-                    return 0
-            logger.info("copying '%s' to '%s'", self, target)
-            await self._a_export_file(target, overwrite=True)
-            return 1
+    #         if exist_action == 'raise':
+    #             raise FileExistsError(target)
+    #         if exist_action == 'skip':
+    #             logger.info(f"target {target!r} exists; skipped")
+    #             return 0
+    #         if exist_action == 'update':
+    #             sourceinfo = await self.a_file_info()
+    #             targetinfo = await target.a_file_info()
+    #             if (targetinfo.size == sourceinfo.size
+    #                     and targetinfo.mtime >= sourceinfo.mtime):
+    #                 # We're assuming that this suggests
+    #                 # the target file was copied from the source
+    #                 # previously.
+    #                 logger.info(
+    #                     f"target {target!r} appears to be up-to-date; skipped")
+    #                 return 0
+    #         logger.info("copying '%s' to '%s'", self, target)
+    #         await self._a_export_file(target, overwrite=True)
+    #         return 1
 
-        if await target.a_is_dir():
-            # Do not delete.
-            raise FileExistsError(target)
+    #     if await target.a_is_dir():
+    #         # Do not delete.
+    #         raise FileExistsError(target)
 
-        logger.info("copying '%s' to '%s'", self, target)
-        await self._a_export_file(target, overwrite=False)
-        return 1
+    #     logger.info("copying '%s' to '%s'", self, target)
+    #     await self._a_export_file(target, overwrite=False)
+    #     return 1
 
-    async def _a_export_file(self, target: Upath, *, overwrite=False) -> None:
-        await target.a_write_bytes(
-            await self.a_read_bytes(), overwrite=overwrite
-        )
+    # async def _a_export_file(self, target: Upath, *, overwrite=False) -> None:
+    #     await target.a_write_bytes(
+    #         await self.a_read_bytes(), overwrite=overwrite
+    #     )
 
-    async def a_file_info(self):
-        return await self._a_do(self.file_info)
+    # async def a_file_info(self):
+    #     return await self._a_do(self.file_info)
 
-    async def a_import_dir(self, source: Upath, *,
-                           concurrency: int = None,
-                           exist_action: str = None):
-        return await source.a_export_dir(self,
-                                         concurrency=concurrency,
-                                         exist_action=exist_action,
-                                         )
+    # async def a_import_dir(self, source: Upath, *,
+    #                        concurrency: int = None,
+    #                        exist_action: str = None):
+    #     return await source.a_export_dir(self,
+    #                                      concurrency=concurrency,
+    #                                      exist_action=exist_action,
+    #                                      )
 
-    async def a_import_file(self, source: Upath, *, exist_action=None):
-        return await source.a_export_file(self, exist_action=exist_action)
+    # async def a_import_file(self, source: Upath, *, exist_action=None):
+    #     return await source.a_export_file(self, exist_action=exist_action)
 
-    async def _a_import_file(self, source: Upath, *, overwrite=False) -> None:
-        await self.a_write_bytes(
-            await source.a_read_bytes(), overwrite=overwrite,
-        )
+    # async def _a_import_file(self, source: Upath, *, overwrite=False) -> None:
+    #     await self.a_write_bytes(
+    #         await source.a_read_bytes(), overwrite=overwrite,
+    #     )
 
-    async def a_is_dir(self):
-        return await self._a_do(self.is_dir)
+    # async def a_is_dir(self):
+    #     return await self._a_do(self.is_dir)
 
-    async def a_is_file(self):
-        return await self._a_do(self.is_file)
+    # async def a_is_file(self):
+    #     return await self._a_do(self.is_file)
 
     async def a_iterdir(self: T) -> Iterator[T]:
         # TODO: may need reimplementation.
         for p in self.iterdir():
             yield p
 
-    @ contextlib.asynccontextmanager
-    async def a_lock(self, *, wait: float = 60):
-        # TODO: may need reimplementation.
-        with self.lock(wait=wait):
-            yield
+    # @ contextlib.asynccontextmanager
+    # async def a_lock(self, *, wait: float = 60):
+    #     # TODO: may need reimplementation.
+    #     with self.lock(wait=wait):
+    #         yield
 
-    async def a_ls(self):
-        pp = [p async for p in self.a_iterdir()]
-        return sorted(pp)
+    # async def a_ls(self):
+    #     pp = [p async for p in self.a_iterdir()]
+    #     return sorted(pp)
 
-    async def a_read_bytes(self):
-        return await self._a_do(self.read_bytes)
+    # async def a_read_bytes(self):
+    #     return await self._a_do(self.read_bytes)
 
-    async def a_read_json(self, *, no_gc: bool = True, **kwargs):
-        z = await self.a_read_text(**kwargs)
-        if no_gc:
-            return nogc(json.loads, z)
-        return json.loads(z)
+    # async def a_read_json(self, *, no_gc: bool = True, **kwargs):
+    #     z = await self.a_read_text(**kwargs)
+    #     if no_gc:
+    #         return nogc(json.loads, z)
+    #     return json.loads(z)
 
-    async def a_read_pickle(self, *, no_gc: bool = True):
-        z = await self.a_read_bytes()
-        if no_gc:
-            return nogc(pickle.loads, z)
-        return pickle.loads(z)
+    # async def a_read_pickle(self, *, no_gc: bool = True):
+    #     z = await self.a_read_bytes()
+    #     if no_gc:
+    #         return nogc(pickle.loads, z)
+    #     return pickle.loads(z)
 
-    async def a_read_text(self, *,
-                          encoding: str = 'utf-8', errors: str = 'strict'):
-        return (await self.a_read_bytes()).decode(
-            encoding=encoding, errors=errors)
+    # async def a_read_text(self, *,
+    #                       encoding: str = 'utf-8', errors: str = 'strict'):
+    #     return (await self.a_read_bytes()).decode(
+    #         encoding=encoding, errors=errors)
 
-    async def a_remove_dir(self, *,
-                           missing_ok: bool = False, concurrency: int = None) -> int:
-        # TODO: may need reimplementation.
-        return await self._a_do(self.remove_dir,
-                                missing_ok=missing_ok,
-                                concurrency=concurrency)
+    # async def a_remove_dir(self, *,
+    #                        missing_ok: bool = False, concurrency: int = None) -> int:
+    #     # TODO: may need reimplementation.
+    #     return await self._a_do(self.remove_dir,
+    #                             missing_ok=missing_ok,
+    #                             concurrency=concurrency)
 
-    async def a_remove_file(self, *args, **kwargs):
-        return await self._a_do(self.remove_file, *args, **kwargs)
+    # async def a_remove_file(self, *args, **kwargs):
+    #     return await self._a_do(self.remove_file, *args, **kwargs)
 
-    async def a_rename_dir(self, target, **kwargs):
-        return await self._a_do(self.rename_dir, target, **kwargs)
+    # async def a_rename_dir(self, target, **kwargs):
+    #     return await self._a_do(self.rename_dir, target, **kwargs)
 
-    async def a_rename_file(self, target, **kwargs):
-        return await self._a_do(self.rename_file, target, **kwargs)
+    # async def a_rename_file(self, target, **kwargs):
+    #     return await self._a_do(self.rename_file, target, **kwargs)
 
     async def a_riterdir(self: T) -> Iterator[T]:
         # TODO: may need reimplementation.
         for p in self.riterdir():
             yield p
 
-    async def a_rmrf(self, *, concurrency: int = None) -> int:
-        if self._path == '/':
-            raise UnsupportedOperation(
-                "`a_rmrf` not allowed on root directory")
-        n1 = await self.a_remove_file(missing_ok=True)
-        n2 = await self.a_remove_dir(missing_ok=True, concurrency=concurrency)
-        return n1 + n2
+    # async def a_rmrf(self, *, concurrency: int = None) -> int:
+    #     if self._path == '/':
+    #         raise UnsupportedOperation(
+    #             "`a_rmrf` not allowed on root directory")
+    #     n1 = await self.a_remove_file(missing_ok=True)
+    #     n2 = await self.a_remove_dir(missing_ok=True, concurrency=concurrency)
+    #     return n1 + n2
 
-    async def a_write_bytes(self, *args, **kwargs):
-        return await self._a_do(self.write_bytes, *args, **kwargs)
+    # async def a_write_bytes(self, *args, **kwargs):
+    #     return await self._a_do(self.write_bytes, *args, **kwargs)
 
-    async def a_write_json(self, data, *, overwrite=False, **kwargs) -> int:
-        return await self.a_write_text(
-            json.dumps(data), overwrite=overwrite, **kwargs)
+    # async def a_write_json(self, data, *, overwrite=False, **kwargs) -> int:
+    #     return await self.a_write_text(
+    #         json.dumps(data), overwrite=overwrite, **kwargs)
 
-    async def a_write_pickle(self, data, *, overwrite=False) -> int:
-        return await self.a_write_bytes(
-            pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
-            overwrite=overwrite,
+    # async def a_write_pickle(self, data, *, overwrite=False) -> int:
+    #     return await self.a_write_bytes(
+    #         pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
+    #         overwrite=overwrite,
+    #     )
+
+    # async def a_write_text(
+    #         self,
+    #         data: str,
+    #         *,
+    #         overwrite: bool = False,
+    #         encoding: str = 'utf-8',
+    #         errors: str = 'strict',
+    # ) -> int:
+    #     n = len(data)
+    #     z = data.encode(encoding=encoding, errors=errors)
+    #     await self.a_write_bytes(z, overwrite=overwrite)
+    #     return n
+
+
+def make_a_method(name):
+    async def f(self, *args, **kwargs):
+        f = partial(getattr(self, name), *args, **kwargs)
+        return await asyncio.get_running_loop().run_in_executor(
+            None, f
         )
 
-    async def a_write_text(
-            self,
-            data: str,
-            *,
-            overwrite: bool = False,
-            encoding: str = 'utf-8',
-            errors: str = 'strict',
-    ) -> int:
-        n = len(data)
-        z = data.encode(encoding=encoding, errors=errors)
-        await self.a_write_bytes(z, overwrite=overwrite)
-        return n
+    f.__name__ = f'a_{name}'
+    return f
+
+
+for m in ('copy_dir', 'copy_file',
+          'export_dir', 'export_file',
+          'exists',
+          'file_info',
+          'import_dir', 'import_file',
+          'is_dir', 'is_file',
+          'ls',
+          'read_bytes', 'read_json', 'read_pickle', 'read_text',
+          'remove_dir', 'remove_file',
+          'rename_dir', 'rename_file',
+          'rmrf',
+          'write_bytes', 'write_json', 'write_pickle', 'write_text',
+          ):
+    setattr(Upath, f'a_{m}', make_a_method(m))
