@@ -1,28 +1,9 @@
 import asyncio
-import concurrent.futures
-import pathlib
-from typing import Union
 
 from ._upath import Upath
-from ._local import LocalUpath
 
 
 class BlobUpath(Upath):  # pylint: disable=abstract-method
-    def download(self,
-                 target: Union[str, pathlib.Path, LocalUpath],
-                 *,
-                 concurrency: int = None,
-                 exist_action: str = None) -> int:
-        if isinstance(target, str):
-            target = pathlib.Path(target)
-        if isinstance(target, pathlib.Path):
-            target = LocalUpath(str(target.absolute()))
-        else:
-            assert isinstance(target, LocalUpath)
-        return self.export_to(target,
-                              concurrency=concurrency,
-                              exist_action=exist_action)
-
     def is_dir(self):
         '''In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
@@ -64,35 +45,6 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
                 yield self / tail
                 subdirs.add(tail)
 
-    def upload(self,
-               source: Union[str, pathlib.Path, LocalUpath],
-               *,
-               concurrency: int = None,
-               exist_action: str = None) -> int:
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath(str(source.absolute()))
-        else:
-            assert isinstance(source, LocalUpath)
-        return self.import_from(source,
-                                concurrency=concurrency,
-                                exist_action=exist_action)
-
-    async def a_download(self,
-                         target: Union[str, pathlib.Path, LocalUpath],
-                         *,
-                         concurrency: int = None,
-                         exist_action: str = None) -> int:
-        if isinstance(target, str):
-            target = pathlib.Path(target)
-        if isinstance(target, pathlib.Path):
-            target = LocalUpath(str(target.absolute()))
-        else:
-            assert isinstance(target, LocalUpath)
-        return await self.a_export_to(
-            target, concurrency=concurrency, exist_action=exist_action)
-
     async def a_remove_dir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
         if concurrency is None:
             concurrency = 4
@@ -120,17 +72,3 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         if n == 0 and not missing_ok:
             raise FileNotFoundError(self)
         return n
-
-    async def a_upload(self,
-                       source: Union[str, pathlib.Path, LocalUpath],
-                       *,
-                       concurrency: int = None,
-                       exist_action: str = None) -> int:
-        if isinstance(source, str):
-            source = pathlib.Path(source)
-        if isinstance(source, pathlib.Path):
-            source = LocalUpath(str(source.absolute()))
-        else:
-            assert isinstance(source, LocalUpath)
-        return await self.a_import_from(
-            source, concurrency=concurrency, exist_action=exist_action)

@@ -216,28 +216,28 @@ def test_import_export(p: Upath):
     source_file = source / 'testfile'
     source_file.write_text('abc', overwrite=True)
 
-    target.import_from(source_file)
+    target.import_file(source_file)
     assert target.read_text() == 'abc'
 
     with pytest.raises(NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
-        target.joinpath('samplefile').import_from(source)
+        target.joinpath('samplefile').import_dir(source)
 
     target.rmrf()
     p2 = target.joinpath('samplefile')
-    p2.import_from(source)
+    p2.import_dir(source)
     p3 = p2 / source_file.name
     assert target.ls() == [p2]
     assert p2.ls() == [p3]
     assert p3.read_text() == 'abc'
 
     p1 = source / 'a' / 'b' / 'c'
-    assert p2.export_to(p1) == 1
+    assert p2.export_dir(p1) == 1
     p4 = p1 / source_file.name
     assert p4.read_text() == 'abc'
 
-    assert p2.export_to(source / 'a' / 'b') == 1
+    assert p2.export_dir(source / 'a' / 'b') == 1
     assert (source / 'a' / 'b' / source_file.name).read_text() == 'abc'
 
 
@@ -251,28 +251,28 @@ async def test_a_import_export(p: Upath):
     source_file = source / 'testfile'
     await source_file.a_write_text('abc', overwrite=True)
 
-    await target.a_import_from(source_file)
+    await target.a_import_file(source_file)
     assert await target.a_read_text() == 'abc'
 
     with pytest.raises(NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
-        await target.joinpath('samplefile').a_import_from(source)
+        await target.joinpath('samplefile').a_import_dir(source)
 
     await target.a_rmrf()
     p2 = target.joinpath('samplefile')
-    await p2.a_import_from(source)
+    await p2.a_import_dir(source)
     p3 = p2 / source_file.name
     assert await target.a_ls() == [p2]
     assert await p2.a_ls() == [p3]
     assert await p3.a_read_text() == 'abc'
 
     p1 = source / 'a' / 'b' / 'c'
-    assert await p2.a_export_to(p1) == 1
+    assert await p2.a_export_dir(p1) == 1
     p4 = p1 / source_file.name
     assert await p4.a_read_text() == 'abc'
 
-    assert await p2.a_export_to(source / 'a' / 'b') == 1
+    assert await p2.a_export_dir(source / 'a' / 'b') == 1
     assert await (source / 'a' / 'b' /
                   source_file.name).a_read_text() == 'abc'
 

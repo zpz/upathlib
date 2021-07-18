@@ -177,16 +177,82 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         return self.is_file() or self.is_dir()
 
-    def export_file(self, target: Upath, *, overwrite: bool = False) -> None:
-        # Subclass may customize this to perform file downloading
-        # when `target` is a `LocalUpath`.
-        target.write_bytes(self.read_bytes(), overwrite=overwrite)
+    def export_dir(self,
+                   target: Upath,
+                   *,
+                   concurrency: int = None,
+                   exist_action: str = None,
+                   ) -> int:
+        '''Copy the content of `self` to the specified `target`,
+        which is typically in another store.
 
-    def _export_file_to(self, target: Upath, *, exist_action: str) -> int:
-        if target == self:
-            return 0
+        Compare with `copy_dir`, which make copies within the same store.
+
+        `concurrency`: number of threads to use. If `None`,
+        a default value (e.g. 4) is used.
+
+        Overwriting happens file-wise. For example, if the target directory
+        contains files that do not exist in the source directory, they
+        are left untouched.
+
+        Return the number of files copied.
+        '''
+        if concurrency is None:
+            concurrency = 4
+        else:
+            assert 0 <= concurrency <= 16
+            if concurrency < 1:
+                concurrency = 1
+
+        pool = concurrent.futures.ThreadPoolExecutor(concurrency)
+        tasks = []
+        for p in self.riterdir():
+            extra = str(p.path.relative_to(self.path))
+            tasks.append(pool.submit(
+                p.export_file,
+                target=target/extra,
+                exist_action=exist_action
+            ))
+        n = 0
+        for f in concurrent.futures.as_completed(tasks):
+            n += f.result()
+        if n:
+            logger.info('%d files exported from %r to %r', n, self, target)
+        else:
+            logger.warning('%d files exported from %r to %r', n, self, target)
+        return n
+
+    def export_file(self, target: Upath, *, exist_action: str = None) -> int:
+        '''Copy the file to the specified `target`, which is typically
+        in another store.
+
+        Return the number of files copied (0 or 1).
+
+        `exist_action`: what to do when the target file already exists.
+        These are the possible values:
+
+            'raise' (default): raise `FileExistsError`.
+            'skip': skip this file; proceed to work on other files.
+            'overwrite': overwrite the existing file.
+            'update': overwrite if source `mtime` is newer than target,
+                or source and target have diff size; otherwise skip.
+
+        The `target` specifies the name corresponding the the name of `self`.
+        If `target` is an existing directory, a `FileExistsError` is raised.
+        A copy is not placed *into* the target directory. This behavior
+        differs from the Linux command `cp`.
+
+        Compare with `copy_file`, which make copies within the same store.
+        '''
+        if not self.is_file():
+            raise FileNotFoundError(self)
 
         if target.is_file():
+            if exist_action is None:
+                exist_action = 'raise'
+            else:
+                assert exist_action in ('raise', 'skip', 'overwrite', 'update')
+
             if exist_action == 'raise':
                 raise FileExistsError(target)
             if exist_action == 'skip':
@@ -204,7 +270,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                         f"target {target!r} appears to be up-to-date; skipped")
                     return 0
             logger.info("copying '%s' to '%s'", self, target)
-            self.export_file(target, overwrite=True)
+            self._export_file(target, overwrite=True)
             return 1
 
         if target.is_dir():
@@ -212,81 +278,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             raise FileExistsError(target)
 
         logger.info("copying '%s' to '%s'", self, target)
-        self.export_file(target, overwrite=False)
+        self._export_file(target, overwrite=False)
         return 1
 
-    def export_to(self,
-                  target: Upath,
-                  *,
-                  concurrency: int = None,
-                  exist_action: str = None,
-                  ) -> int:
-        '''Copy the content of `self` to the specified `target`,
-        which is typically in another store.
-        `self` may be a file or a directory.
-        In the latter case, its content will be copied recursively.
-
-        Compare with `copy_file` and `copy_dir`, which make copies
-        within the same store.
-
-        `concurrency`: number of threads to use. If `None`,
-        a default value (e.g. 4) is used.
-
-        `exist_action`: what to do when the target file already exists.
-        These are the possible values:
-
-            'raise' (default): raise `FileExistsError`.
-            'skip': skip this file; proceed to work on other files.
-            'overwrite': overwrite the existing file.
-            'update': overwrite if source `mtime` is newer than target,
-                or source and target have diff size; otherwise skip.
-
-        Overwriting happens file-wise. For example, if the target directory
-        contains files that do not exist in the source directory, they
-        are left untouched.
-
-        The `target` specifies the name corresponding the the name of `self`.
-        If `target` is an existing directory, a `FileExistsError` is raised.
-        A copy is not placed *into* the target directory. This behavior
-        differs from the Linux command `cp`.
-
-        Return the number of files copied.
-
-        Subclasses should provide more efficient implementations
-        if possible, while maintains the behavior defined in
-        this implementation.
-        '''
-        if exist_action is None:
-            exist_action = 'raise'
-        else:
-            assert exist_action in ('raise', 'skip', 'overwrite', 'update')
-
-        if self.is_file():
-            return self._export_file_to(target, exist_action=exist_action)
-
-        if self.is_dir():
-            if concurrency is None:
-                concurrency = 4
-            else:
-                assert 0 <= concurrency <= 16
-                if concurrency < 1:
-                    concurrency = 1
-
-            pool = concurrent.futures.ThreadPoolExecutor(concurrency)
-            tasks = []
-            for p in self.riterdir():
-                extra = str(p.path.relative_to(self.path))
-                tasks.append(pool.submit(
-                    p._export_file_to,
-                    target=target/extra,
-                    exist_action=exist_action
-                ))
-            n = 0
-            for f in concurrent.futures.as_completed(tasks):
-                n += f.result()
-            return n
-
-        raise FileNotFoundError(self)
+    def _export_file(self, target: Upath, *, overwrite: bool = False) -> None:
+        # Subclass may customize this to perform file download
+        # when `target` is a `LocalUpath`.
+        target.write_bytes(
+            self.read_bytes(), overwrite=overwrite
+        )
 
     @ abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
@@ -295,22 +295,27 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
-        # Subclass may customize this to perform file uploading
-        # when `source` is a `LocalUpath`.
-        self.write_bytes(source.read_bytes(), overwrite=overwrite)
-
-    def import_from(self,
-                    source: Upath,
-                    *,
-                    concurrency: int = None,
-                    exist_action: str = None,
-                    ) -> int:
-        '''Analogous to `export_to`.
+    def import_dir(self,
+                   source: Upath,
+                   *,
+                   concurrency: int = None,
+                   exist_action: str = None,
+                   ) -> int:
+        '''Analogous to `export_dir`.
         '''
-        return source.export_to(self,
-                                concurrency=concurrency,
-                                exist_action=exist_action)
+        return source.export_dir(self,
+                                 concurrency=concurrency,
+                                 exist_action=exist_action)
+
+    def import_file(self, source: Upath, *, exist_action: str = None) -> int:
+        return source.export_file(self, exist_action=exist_action)
+
+    def _import_file(self, source: Upath, *, overwrite: bool = False) -> None:
+        # Subclass may customize this to perform file upload
+        # when `target` is a `LocalUpath`.
+        self.write_bytes(
+            source.read_bytes(), overwrite=overwrite
+        )
 
     @ abc.abstractmethod
     def is_dir(self) -> bool:
@@ -671,71 +676,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     async def a_exists(self):
         return (await self.a_is_file()) or (await self.a_is_dir())
 
-    async def a_export_file(self, target: Upath, *, overwrite=False):
-        # Subclass may customize this to perform file downloading
-        # when `target` is a `LocalUpath`.
-        return await self._a_do(self.export_file, target, overwrite=overwrite)
-
-    async def _a_export_file_to(self,
-                                target: Upath, *,
-                                exist_action: str,
-                                semaphore: Optional[asyncio.Semaphore] = None,
-                                ) -> int:
-        if target == self:
-            return 0
-
-        async def foo():
-            if await target.a_is_file():
-                if exist_action == 'raise':
-                    raise FileExistsError(target)
-                if exist_action == 'skip':
-                    logger.info(f"target {target!r} exists; skipped")
-                    return 0
-                if exist_action == 'update':
-                    sourceinfo = await self.a_file_info()
-                    targetinfo = await target.a_file_info()
-                    if (targetinfo.size == sourceinfo.size
-                            and targetinfo.mtime >= sourceinfo.mtime):
-                        # We're assuming that this suggests
-                        # the target file was copied from the source
-                        # previously.
-                        return 0
-                logger.info("copying '%s' to '%s'", self, target)
-                await self.a_export_file(target, overwrite=True)
-                return 1
-
-            if await target.a_is_dir():
-                # Do not delete.
-                raise FileExistsError(target)
-
-            logger.info("copying '%s' to '%s'", self, target)
-            await self.a_export_file(target, overwrite=False)
-            return 1
-
-        if semaphore is None:
-            return await foo()
-
-        async with semaphore:
-            return await foo()
-
-    async def a_export_to(self,
-                          target: Upath,
-                          *,
-                          concurrency: int = None,
-                          exist_action: str = None,
-                          ) -> int:
-        if exist_action is None:
-            exist_action = 'raise'
-        else:
-            assert exist_action in ('raise', 'skip', 'overwrite', 'update')
-
-        if await self.a_is_file():
-            return await self._a_export_file_to(
-                target, exist_action=exist_action)
-
-        if not await self.a_is_dir():
-            raise FileNotFoundError(self)
-
+    async def a_export_dir(self,
+                           target: Upath,
+                           *,
+                           concurrency: int = None,
+                           exist_action: str = None,
+                           ) -> int:
         if concurrency is None:
             concurrency = 4
         else:
@@ -743,32 +689,87 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             if concurrency < 1:
                 concurrency = 1
 
+        async def foo(source, target, exist_action, sem):
+            async with sem:
+                return await source.a_export_file(
+                    target, exist_action=exist_action)
+
         sem = asyncio.Semaphore(concurrency)
         tasks = []
         async for p in self.a_riterdir():
             extra = str(p.path.relative_to(self.path))
-            tasks.append(p._a_export_file_to(
-                target/extra,
-                exist_action=exist_action,
-                semaphore=sem,
-            ),
-            )
+            tasks.append(foo(
+                p, target/extra,
+                exist_action=exist_action, sem=sem))
         nn = await asyncio.gather(*tasks)
-        return sum(nn)
+        n = sum(nn)
+        if n:
+            logger.info('%d files exported from %r to %r', n, self, target)
+        else:
+            logger.warning('%d files exported from %r to %r', n, self, target)
+        return n
+
+    async def a_export_file(self, target: Upath, *, exist_action: str = None) -> int:
+        if not await self.a_is_file():
+            raise FileNotFoundError(self)
+
+        if await target.a_is_file():
+            if exist_action is None:
+                exist_action = 'raise'
+            else:
+                assert exist_action in ('raise', 'skip', 'overwrite', 'update')
+
+            if exist_action == 'raise':
+                raise FileExistsError(target)
+            if exist_action == 'skip':
+                logger.info(f"target {target!r} exists; skipped")
+                return 0
+            if exist_action == 'update':
+                sourceinfo = await self.a_file_info()
+                targetinfo = await target.a_file_info()
+                if (targetinfo.size == sourceinfo.size
+                        and targetinfo.mtime >= sourceinfo.mtime):
+                    # We're assuming that this suggests
+                    # the target file was copied from the source
+                    # previously.
+                    logger.info(
+                        f"target {target!r} appears to be up-to-date; skipped")
+                    return 0
+            logger.info("copying '%s' to '%s'", self, target)
+            await self._a_export_file(target, overwrite=True)
+            return 1
+
+        if await target.a_is_dir():
+            # Do not delete.
+            raise FileExistsError(target)
+
+        logger.info("copying '%s' to '%s'", self, target)
+        await self._a_export_file(target, overwrite=False)
+        return 1
+
+    async def _a_export_file(self, target: Upath, *, overwrite=False) -> None:
+        await target.a_write_bytes(
+            await self.a_read_bytes(), overwrite=overwrite
+        )
 
     async def a_file_info(self):
         return await self._a_do(self.file_info)
 
-    async def a_import_file(self, source: Upath, *, overwrite=False):
-        return await self._a_do(self.import_file, source, overwrite=overwrite)
+    async def a_import_dir(self, source: Upath, *,
+                           concurrency: int = None,
+                           exist_action: str = None):
+        return await source.a_export_dir(self,
+                                         concurrency=concurrency,
+                                         exist_action=exist_action,
+                                         )
 
-    async def a_import_from(self, source: Upath, *,
-                            concurrency: int = None,
-                            exist_action: str = None):
-        return await source.a_export_to(self,
-                                        concurrency=concurrency,
-                                        exist_action=exist_action,
-                                        )
+    async def a_import_file(self, source: Upath, *, exist_action=None):
+        return await source.a_export_file(self, exist_action=exist_action)
+
+    async def _a_import_file(self, source: Upath, *, overwrite=False) -> None:
+        await self.a_write_bytes(
+            await source.a_read_bytes(), overwrite=overwrite,
+        )
 
     async def a_is_dir(self):
         return await self._a_do(self.is_dir)
@@ -781,7 +782,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         for p in self.iterdir():
             yield p
 
-    @contextlib.asynccontextmanager
+    @ contextlib.asynccontextmanager
     async def a_lock(self, *, wait: float = 60):
         # TODO: may need reimplementation.
         with self.lock(wait=wait):

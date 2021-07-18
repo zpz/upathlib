@@ -49,13 +49,13 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         shutil.copy(self.localpath, target.localpath)
         return target
 
-    def export_file(self, target: Upath, *, overwrite=False):
+    def _export_file(self, target: Upath, *, overwrite=False):
         if isinstance(target, LocalUpath):
             self.copy_file(str(target), overwrite=overwrite)
             return
         # Call the other side in case it implements an efficient
         # file upload.
-        target.import_file(self, overwrite=overwrite)
+        target._import_file(self, overwrite=overwrite)
 
     def file_info(self):
         if not self.is_file():
@@ -73,13 +73,13 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
 
-    def import_file(self, source: Upath, *, overwrite=False):
+    def _import_file(self, source: Upath, *, overwrite=False):
         if isinstance(source, LocalUpath):
             source.copy_file(str(self), overwrite=overwrite)
             return
         # Call the other side in case it implements an efficient
         # file download.
-        source.export_file(self, overwrite=overwrite)
+        source._export_file(self, overwrite=overwrite)
 
     def is_dir(self):
         return self.localpath.is_dir()
@@ -199,8 +199,24 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     async def a_exists(self):
         return self.exists()
 
+    async def _a_export_file(self, target: Upath, *, overwrite=False):
+        if isinstance(target, LocalUpath):
+            await self.a_copy_file(str(target), overwrite=overwrite)
+            return
+        # Call the other side in case it implements an efficient
+        # file upload.
+        await target._a_import_file(self, overwrite=overwrite)
+
     async def a_file_info(self):
         return self.file_info()
+
+    async def _a_import_file(self, source: Upath, *, overwrite=False):
+        if isinstance(source, LocalUpath):
+            await source.a_copy_file(str(self), overwrite=overwrite)
+            return
+        # Call the other side in case it implements an efficient
+        # file download.
+        await source._a_export_file(self, overwrite=overwrite)
 
     async def a_is_dir(self):
         return self.is_dir()
