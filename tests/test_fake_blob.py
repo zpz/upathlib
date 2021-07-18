@@ -28,6 +28,7 @@ class FakeBlobStore:
         }
 
     def write_bytes(self, bucket: str, name: str, data: bytes, overwrite: bool = False):
+        assert isinstance(data, bytes)
         if name in self._data[bucket] and not overwrite:
             raise ResourceExistsError
         ctime = datetime.now()
@@ -63,7 +64,10 @@ class FakeBlobStore:
             raise ResourceNotFoundError(name)
 
     def copy_blob(self, bucket: str, name: str, target: str):
-        self._data[bucket][target] = self._data[bucket][name]
+        self.write_bytes(bucket=bucket,
+                         name=target,
+                         data=self.read_bytes(bucket, name),
+                         )
 
     def exists(self, bucket: str, name: str):
         z = self._data[bucket]
@@ -97,7 +101,7 @@ class FakeBlobUpath(BlobUpath):
         return _store.exists(self._bucket, self._path)
 
     def copy_file(self, target, *, overwrite=False):
-        target = self / target
+        target = self.parent / target
         if not self.is_file():
             raise FileNotFoundError(self)
         if target.is_file() and not overwrite:

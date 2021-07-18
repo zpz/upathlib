@@ -34,7 +34,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def copy_file(self, target, *, overwrite=False):
         if not self.is_file():
             raise FileNotFoundError(self)
-        target = self / target
+        target = self.parent / target
         if self == target:
             return self
         if target.is_file():
@@ -45,8 +45,17 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             raise FileExistsError(target)
         else:
             assert not target.exists()
+        os.makedirs(target.localpath.parent, exist_ok=True)
         shutil.copy(self.localpath, target.localpath)
         return target
+
+    def export_file(self, target: Upath, *, overwrite=False):
+        if isinstance(target, LocalUpath):
+            self.copy_file(str(target), overwrite=overwrite)
+            return
+        # Call the other side in case it implements an efficient
+        # file upload.
+        target.import_file(self, overwrite=overwrite)
 
     def file_info(self):
         if not self.is_file():
@@ -63,6 +72,14 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         # If an existing file is written to again using `write_...`,
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
+
+    def import_file(self, source: Upath, *, overwrite=False):
+        if isinstance(source, LocalUpath):
+            source.copy_file(str(self), overwrite=overwrite)
+            return
+        # Call the other side in case it implements an efficient
+        # file download.
+        source.export_file(self, overwrite=overwrite)
 
     def is_dir(self):
         return self.localpath.is_dir()
@@ -128,7 +145,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def rename_dir(self, target, *, overwrite=False):
         if not self.is_dir():
             raise FileNotFoundError(self)
-        target = self / target
+        target = self.parent / target
 
         if target.is_file():
             if not overwrite:
@@ -145,7 +162,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
     def rename_file(self, target, *, overwrite=False):
         if not self.is_file():
             raise FileNotFoundError(self)
-        target = self / target
+        target = self.parent / target
         if target == self:
             return self
 
@@ -158,6 +175,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             target.remove_dir()
         else:
             assert not target.exists()
+        os.makedirs(target.localpath.parent, exist_ok=True)
         self.localpath.rename(target.localpath)
         return target
 

@@ -206,7 +206,7 @@ async def test_a_read_write_rm_navigate(p: Upath):
     assert await p.a_rmrf() == 0
 
 
-def test_copy(p: Upath):
+def test_import_export(p: Upath):
     source = p
     source.rmrf()
 
@@ -238,11 +238,10 @@ def test_copy(p: Upath):
     assert p4.read_text() == 'abc'
 
     assert p2.export_to(source / 'a' / 'b') == 1
-    assert (source / 'a' / 'b' / p2.name /
-            source_file.name).read_text() == 'abc'
+    assert (source / 'a' / 'b' / source_file.name).read_text() == 'abc'
 
 
-async def test_a_copy(p: Upath):
+async def test_a_import_export(p: Upath):
     source = p
     await source.a_rmrf()
 
@@ -274,8 +273,54 @@ async def test_a_copy(p: Upath):
     assert await p4.a_read_text() == 'abc'
 
     assert await p2.a_export_to(source / 'a' / 'b') == 1
-    assert await (source / 'a' / 'b' / p2.name /
+    assert await (source / 'a' / 'b' /
                   source_file.name).a_read_text() == 'abc'
+
+
+def test_rename(p: Upath):
+    p.rmrf()
+
+    (p / 'a/a.txt').write_text('a')
+    (p / 'b/b.txt').write_text('b')
+    (p / 'c/d/e.txt').write_text('e')
+    (p / 'c/d.txt').write_text('d')
+
+    p.joinpath('a/a.txt').rename_file('b/a.txt')
+    assert not (p / 'a/a.txt').exists()
+    assert (p / 'a/b/a.txt').read_text() == 'a'
+
+    pp = (p / 'c').rename_dir('a/c')
+
+    # print(p)
+    # for x in p.riterdir():
+    #     print(x)
+
+    assert (pp / 'd/e.txt').read_text() == 'e'
+    assert (pp / 'd.txt').read_text() == 'd'
+    assert not (p / 'c').exists()
+
+
+async def test_a_rename(p: Upath):
+    await p.a_rmrf()
+
+    await (p / 'a/a.txt').a_write_text('a')
+    await (p / 'b/b.txt').a_write_text('b')
+    await (p / 'c/d/e.txt').a_write_text('e')
+    await (p / 'c/d.txt').a_write_text('d')
+
+    await p.joinpath('a/a.txt').a_rename_file('b/a.txt')
+    assert not await (p / 'a/a.txt').a_exists()
+    assert await (p / 'a/b/a.txt').a_read_text() == 'a'
+
+    pp = await (p / 'c').a_rename_dir('a/c')
+
+    # print(p)
+    # async for x in p.a_riterdir():
+    #     print(x)
+
+    assert await (pp / 'd/e.txt').a_read_text() == 'e'
+    assert await (pp / 'd.txt').a_read_text() == 'd'
+    assert not await (p / 'c').a_exists()
 
 
 def test_lock(p: Upath):
@@ -291,13 +336,14 @@ def test_all(p: Upath):
     test_joinpath(p)
     test_compare(p)
 
-    test_copy(p)
     test_read_write_rm_navigate(p)
-    test_copy(p)
+    test_import_export(p)
+    test_rename(p)
     test_lock(p)
 
 
 async def test_all_a(p: Upath):
     await test_a_read_write_rm_navigate(p)
-    await test_a_copy(p)
+    await test_a_import_export(p)
+    await test_a_rename(p)
     await test_a_lock(p)
