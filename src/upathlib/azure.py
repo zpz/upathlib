@@ -54,7 +54,7 @@ class AzureBlobUpath(BlobUpath):
         self._blob_client: Optional[BlobClient] = None
         # self._a_container_client: Optional[aContainerClient] = None
         # self._a_blob_client: Optional[aBlobClient] = None
-        self._lease_id: str = None
+        self._lease_id: Optional[str] = None
         self._lock_count: int = 0
         self._t_renew_lease: Optional[Union[threading.Thread,
                                             asyncio.Task]] = None
