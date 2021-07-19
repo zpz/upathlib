@@ -1,5 +1,3 @@
-import asyncio
-
 from ._upath import Upath
 
 
@@ -44,31 +42,3 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             if tail not in subdirs:
                 yield self / tail
                 subdirs.add(tail)
-
-    # async def a_remove_dir(self, *, missing_ok: bool = False, concurrency: int = None) -> int:
-    #     if concurrency is None:
-    #         concurrency = 4
-    #     else:
-    #         0 <= concurrency <= 16
-
-    #     if concurrency <= 1:
-    #         n = 0
-    #         async for p in self.a_riterdir():
-    #             n += await p.a_remove_file(missing_ok=False)
-    #         if n == 0 and not missing_ok:
-    #             raise FileNotFoundError(self)
-    #         return n
-
-    #     async def _remove_file(path, sem):
-    #         async with sem:
-    #             return await path.a_remove_file(missing_ok=False)
-
-    #     sema = asyncio.Semaphore(concurrency)
-    #     tasks = []
-    #     async for p in self.a_riterdir():
-    #         tasks.append(_remove_file(p, sema))
-    #     nn = await asyncio.gather(*tasks)
-    #     n = sum(nn)
-    #     if n == 0 and not missing_ok:
-    #         raise FileNotFoundError(self)
-    #     return n

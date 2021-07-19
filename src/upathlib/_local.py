@@ -6,7 +6,7 @@ import os.path
 import pathlib
 import shutil
 
-import filelock
+import filelock  # type: ignore
 # `filelock` is also called `py-filelock`.
 # Tried `fasteners` also. In one use case,
 # `filelock` worked whereas `fasteners.InterprocessLock` failed.
@@ -31,31 +31,17 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             parts = [str(pathlib.Path.cwd().absolute())]
         super().__init__(*parts)
 
-    def copy_file(self, target, *, overwrite=False):
-        if not self.is_file():
-            raise FileNotFoundError(self)
-        target = self.parent / target
-        if self == target:
-            return self
-        if target.is_file():
-            if not overwrite:
-                raise FileExistsError(target)
-            target.remove_file()
-        elif target.is_dir():
-            raise FileExistsError(target)
-        else:
-            assert not target.exists()
+    def _copy_file(self, target):
         os.makedirs(target.localpath.parent, exist_ok=True)
-        shutil.copy(self.localpath, target.localpath)
-        return target
+        shutil.copyfile(self.localpath, target.localpath)
 
-    def _export_file(self, target: Upath, *, overwrite=False):
+    def _export_file(self, target: Upath):
         if isinstance(target, LocalUpath):
-            self.copy_file(str(target), overwrite=overwrite)
+            self._copy_file(target)
             return
         # Call the other side in case it implements an efficient
         # file upload.
-        target._import_file(self, overwrite=overwrite)
+        target._import_file(self)
 
     def file_info(self):
         if not self.is_file():
@@ -73,13 +59,13 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
 
-    def _import_file(self, source: Upath, *, overwrite=False):
+    def _import_file(self, source: Upath):
         if isinstance(source, LocalUpath):
-            source.copy_file(str(self), overwrite=overwrite)
+            source._copy_file(self)
             return
         # Call the other side in case it implements an efficient
         # file download.
-        source._export_file(self, overwrite=overwrite)
+        source._export_file(self)
 
     def is_dir(self):
         return self.localpath.is_dir()
@@ -115,69 +101,52 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         except (IsADirectoryError, FileNotFoundError) as e:
             raise FileNotFoundError(self) from e
 
-    def remove_dir(self, *, missing_ok=False, concurrency=None):
-        n = super().remove_dir(missing_ok=True, concurrency=concurrency)
+    def remove_dir(self, *, concurrency=None):
+        n = super().remove_dir(concurrency=concurrency)
 
-        def _remove_dir(path):
+        def _remove_empty_dir(path):
             for p in path.iterdir():
                 assert p.is_dir()
-                _remove_dir(p)
+                _remove_empty_dir(p)
             path.rmdir()
 
         if self.is_dir():
-            _remove_dir(self.localpath)
-        elif not missing_ok:
-            raise FileNotFoundError(self)
-
+            _remove_empty_dir(self.localpath)
         return n
 
-    def remove_file(self, *, missing_ok=False):
-        if self.is_file():
-            logger.info('deleting %s', self.localpath)
-            self.localpath.unlink()
-            return 1
+    def _remove_file(self):
+        self.localpath.unlink()
 
-        if missing_ok:
-            return 0
+    def rename_dir(self,
+                   target,
+                   *,
+                   concurrency=None,
+                   exist_action=None,
+                   update_filter=None):
+        _ = super().rename_dir(target,
+                               concurrency=concurrency,
+                               exist_action=exist_action,
+                               update_filter=update_filter)
 
-        raise FileNotFoundError(self)
+        def _remove_empty_dir(path):
+            k = 0
+            for p in path.iterdir():
+                if p.is_dir():
+                    k += _remove_empty_dir(p)
+                else:
+                    k += 1
+            if k == 0:
+                path.rmdir()
+            return k
 
-    def rename_dir(self, target, *, overwrite=False):
-        if not self.is_dir():
-            raise FileNotFoundError(self)
-        target = self.parent / target
+        if self.is_dir():
+            _remove_empty_dir(self.localpath)
 
-        if target.is_file():
-            if not overwrite:
-                raise FileExistsError(target)
-        elif target.is_dir():
-            if list(target.iterdir()):  # dir not empty
-                raise FileExistsError(target)
-            target.remove_dir()
-        else:
-            assert not target.exists()
-        self.localpath.rename(target.localpath)
-        return target
+        return self.parent / target
 
-    def rename_file(self, target, *, overwrite=False):
-        if not self.is_file():
-            raise FileNotFoundError(self)
-        target = self.parent / target
-        if target == self:
-            return self
-
-        if target.is_file():
-            if not overwrite:
-                raise FileExistsError(target)
-        elif target.is_dir():
-            if list(target.iterdir()):  # dir not empty
-                raise FileExistsError(target)
-            target.remove_dir()
-        else:
-            assert not target.exists()
+    def _rename_file(self, target):
         os.makedirs(target.localpath.parent, exist_ok=True)
         self.localpath.rename(target.localpath)
-        return target
 
     def riterdir(self):
         for p in self.iterdir():

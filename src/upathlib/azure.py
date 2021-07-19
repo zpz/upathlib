@@ -8,22 +8,25 @@ from datetime import datetime
 from io import UnsupportedOperation
 from typing import Optional, Union
 
-from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
-from azure.storage.blob.aio import (
-    ContainerClient as aContainerClient,
-    BlobClient as aBlobClient,
-    # BlobLeaseClient as aBlobLeaseClient,
-)
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
+from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient  # type: ignore
+# from azure.storage.blob.aio import (
+# ContainerClient as aContainerClient,
+# BlobClient as aBlobClient,
+# BlobLeaseClient as aBlobLeaseClient,
+# )
+from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError  # type: ignore
 
-from ._upath import LockAcquisitionTimeoutError, FileInfo
+from ._upath import LockAcquisitionTimeoutError, FileInfo, Upath
 from ._blob import BlobUpath
+from ._local import LocalUpath
 
 logging.getLogger('azure.storage').setLevel(logging.WARNING)
 logging.getLogger('azure.core.pipeline.policies').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
+
+# TODO: async lock
 
 class AzureBlobUpath(BlobUpath):
     def __init__(self,
@@ -49,8 +52,8 @@ class AzureBlobUpath(BlobUpath):
 
         self._container_client: Optional[ContainerClient] = None
         self._blob_client: Optional[BlobClient] = None
-        self._a_container_client: Optional[aContainerClient] = None
-        self._a_blob_client: Optional[aBlobClient] = None
+        # self._a_container_client: Optional[aContainerClient] = None
+        # self._a_blob_client: Optional[aBlobClient] = None
         self._lease_id: str = None
         self._lock_count: int = 0
         self._t_renew_lease: Optional[Union[threading.Thread,
@@ -100,6 +103,25 @@ class AzureBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
+    def _copy_file_from(self, source):
+        with self._provide_blob_client():
+            copy = self._blob_client.start_copy_from_url(
+                f"{self._account_url}/{self._container_name}/{source._path.lstrip('/')}",
+                requires_sync=True,
+            )
+            assert copy['copy_status'] == 'success'
+
+    def _copy_file(self, target):
+        target._copy_file_from(self)
+
+    def _export_file(self, target: Upath):
+        if not isinstance(target, LocalUpath):
+            return super()._export_file(target)
+        with self._provide_blob_client():
+            with open(str(target), 'wb') as f:
+                data = self._blob_client.download_blob()  # type: ignore
+                data.readinto(f)
+
     def file_info(self):
         try:
             with self._provide_blob_client():
@@ -118,6 +140,13 @@ class AzureBlobUpath(BlobUpath):
                 # will be updated.
         except ResourceNotFoundError:
             return None
+
+    def _import_file(self, source: Upath):
+        if not isinstance(source, LocalUpath):
+            return super()._import_file(source)
+        with self._provide_blob_client():
+            with open(str(source), 'rb') as data:
+                self._blob_client.upload_blob(data)  # type: ignore
 
     def is_file(self):
         with self._provide_blob_client():
@@ -247,19 +276,11 @@ class AzureBlobUpath(BlobUpath):
                     name_starts_with=prefix):
                 yield self / p.name[k:]
 
-    def remove_file(self, *, missing_ok=False):
+    def _remove_file(self):
         with self._provide_blob_client():
-            try:
-                self._blob_client.delete_blob(
-                    delete_snapshots='include',
-                    lease=self._lease_id)
-                logger.info('deleting %s', self.path)
-                # log this after successful deletion.
-                return 1
-            except ResourceNotFoundError as e:
-                if missing_ok:
-                    return 0
-                raise FileNotFoundError(self) from e
+            self._blob_client.delete_blob(
+                delete_snapshots='include',
+                lease=self._lease_id)
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':

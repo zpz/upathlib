@@ -1,9 +1,9 @@
 import contextlib
 import logging
 from io import BufferedReader, UnsupportedOperation
-from google.oauth2 import service_account
-from google.cloud import storage
-from google.api_core.exceptions import NotFound
+from google.oauth2 import service_account  # type: ignore
+from google.cloud import storage  # type: ignore
+from google.api_core.exceptions import NotFound  # type: ignore
 
 from ._upath import FileInfo
 from ._blob import BlobUpath
@@ -111,19 +111,11 @@ class GcpBlobUpath(BlobUpath):
             yield self / p.name[k:]
 
     # TODO:
-    # `remove_dir` could be more efficient if using
+    # `remove_dir` might be more efficient if using
     # `p.delete()` on the elements returned by `self._client.list_blobs`.
 
-    def remove_file(self, *, missing_ok=False):
-        try:
-            self._blob.delete()
-            logger.info('deleting %s', self.path)
-            # log this after successful deletion.
-            return 1
-        except NotFound as e:
-            if missing_ok:
-                return 0
-            raise FileNotFoundError(self) from e
+    def _remove_file(self):
+        self._blob.delete()
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':

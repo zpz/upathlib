@@ -1,3 +1,5 @@
+# type: ignore
+
 import asyncio
 import pathlib
 import time
@@ -112,15 +114,11 @@ def test_read_write_rm_navigate(p: Upath):
     assert not p3.exists()
     assert not p2.exists()
 
-    with pytest.raises(FileNotFoundError):
-        p3.remove_dir()
-
-    assert p3.remove_dir(missing_ok=True) == 0
+    assert p3.remove_dir() == 0
 
     assert p.ls() == [p1]
 
-    with pytest.raises(FileNotFoundError):
-        p1.remove_dir()
+    assert p1.remove_dir() == 0
 
     assert p1.remove_file() == 1
 
@@ -187,15 +185,11 @@ async def test_a_read_write_rm_navigate(p: Upath):
     assert not await p3.a_exists()
     assert not await p2.a_exists()
 
-    with pytest.raises(FileNotFoundError):
-        await p3.a_remove_dir()
-
-    assert await p3.a_remove_dir(missing_ok=True) == 0
+    assert await p3.a_remove_dir() == 0
 
     assert await p.a_ls() == [p1]
 
-    with pytest.raises(FileNotFoundError):
-        await p1.a_remove_dir()
+    assert await p1.a_remove_dir() == 0
 
     assert await p1.a_remove_file() == 1
 

@@ -1,3 +1,12 @@
+Release 0.4.9
+=============
+
+- Another round of API fine tuning. There are some improvements to naming,
+  consistency, and simplicity.
+- `AzureBlobUpath` has custom blob copying, uploading, downloading.
+- Improvements to tests.
+
+
 Release 0.4.5
 =============
 
