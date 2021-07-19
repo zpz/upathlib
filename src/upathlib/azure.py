@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import time
 import threading
 # from contextlib import contextmanager, asynccontextmanager
@@ -118,6 +119,7 @@ class AzureBlobUpath(BlobUpath):
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
         with self._provide_blob_client():
+            os.makedirs(str(target.parent), exist_ok=True)
             with open(str(target), 'wb') as f:
                 data = self._blob_client.download_blob()  # type: ignore
                 data.readinto(f)
