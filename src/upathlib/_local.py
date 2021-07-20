@@ -114,8 +114,12 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             _remove_empty_dir(self.localpath)
         return n
 
-    def _remove_file(self):
-        self.localpath.unlink()
+    def remove_file(self):
+        try:
+            self.localpath.unlink()
+            return 1
+        except (FileNotFoundError, IsADirectoryError):
+            return 0
 
     def rename_dir(self,
                    target,
@@ -165,23 +169,14 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
             self.localpath.parent.mkdir(exist_ok=True, parents=True)
         return self.localpath.write_bytes(data)
 
-    # async def a_exists(self):
-    #     return self.exists()
+    async def a_exists(self):
+        return self.exists()
 
-    # async def a_file_info(self):
-    #     return self.file_info()
+    async def a_file_info(self):
+        return self.file_info()
 
-    # async def a_is_dir(self):
-    #     return self.is_dir()
+    async def a_is_dir(self):
+        return self.is_dir()
 
-    # async def a_is_file(self):
-    #     return self.is_file()
-
-    # async def a_remove_file(self, *, missing_ok=False):
-    #     return self.remove_file(missing_ok=missing_ok)
-
-    # async def a_rename_dir(self, target, *, overwrite=False):
-    #     return self.rename_dir(target, overwrite=overwrite)
-
-    # async def a_rename_file(self, target, *, overwrite=False):
-    #     return self.rename_file(target, overwrite=overwrite)
+    async def a_is_file(self):
+        return self.is_file()

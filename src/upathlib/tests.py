@@ -122,9 +122,7 @@ def test_read_write_rm_navigate(p: Upath):
 
     assert p1.remove_file() == 1
 
-    with pytest.raises(FileNotFoundError):
-        p1.remove_file()
-    assert p1.remove_file(missing_ok=True) == 0
+    assert p1.remove_file() == 0
 
     assert p.rmrf() == 0
 
@@ -193,9 +191,7 @@ async def test_a_read_write_rm_navigate(p: Upath):
 
     assert await p1.a_remove_file() == 1
 
-    with pytest.raises(FileNotFoundError):
-        await p1.a_remove_file()
-    assert await p1.a_remove_file(missing_ok=True) == 0
+    assert await p1.a_remove_file() == 0
 
     assert await p.a_rmrf() == 0
 

@@ -16,6 +16,7 @@ import os
 import os.path
 import pathlib
 import pickle
+import warnings
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
@@ -77,6 +78,11 @@ def _should_update(source: Upath, target: Upath) -> bool:
     # Otherwise, we're assuming that
     # the target file was copied from the source
     # previously.
+
+
+def _deprecate(oldname, newname):
+    msg = f"`{oldname}` is deprecated; please use `{newname}` instead"
+    warnings.warn(msg, DeprecationWarning)
 
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
@@ -192,19 +198,21 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         Return the number of files copied.
         '''
-        target: T = self.parent / target  # type: ignore
+        target_ = self.parent / target
+        if target_ == self:
+            return 0
 
         def foo():
             for p in self.riterdir():
                 extra = str(p.path.relative_to(self.path))
                 yield (
                     p.copy_file,
-                    [(target / extra)._path],
+                    [(target_ / extra)._path],
                     {'exist_action': exist_action, 'update_filter': update_filter},
                 )
 
-        results = _execute_in_thread_pool(foo(), concurrency)
-        return sum(results)
+        nn = _execute_in_thread_pool(foo(), concurrency)
+        return sum(nn)
 
     def _copy_file(self: T, target: T) -> None:
         # `target` is a path in the same store, but does not exist.
@@ -235,7 +243,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             'update': overwrite if source `mtime` is newer than target,
                 or source and target have diff size; otherwise skip.
 
-        If `target` is an existing directory, raise `FileExistsError`.
+        If `target` is an existing directory, raise `IsADirectoryError`.
         Note: this behavior is different from the Unix command `cp`
         in this situation---it does not *copy into* the target directory.
 
@@ -259,7 +267,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             return 0
 
         if target_.is_dir():
-            raise FileExistsError(target_)
+            raise IsADirectoryError(target_)
 
         self._copy_file(target_)
         return 1
@@ -551,33 +559,21 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         def foo():
             for p in self.riterdir():
-                yield p.remove_file, [], {'missing_ok': False}
+                yield p.remove_file, [], {}
 
         nn = _execute_in_thread_pool(foo(), concurrency)
         return sum(nn)
 
-    @ abc.abstractmethod
-    def _remove_file(self) -> None:
-        # Remove an existing file.
-        raise NotImplementedError
-
-    def remove_file(self, *, missing_ok: bool = False) -> int:
+    @abc.abstractmethod
+    def remove_file(self) -> int:
         '''Remove the file pointed to by `self`.
 
         Return the number of files removed (0 or 1).
 
-        If `self` is not an existing file, then raise `FileNotFoundError`
-        if `missing_ok` is `False`, or return 0 otherwise.
+        If `self` is not an existing file, return 0.
+        If the file exists but can't be removed, raise an exception.
         '''
-        if self.is_file():
-            logger.info('deleting %s', self)
-            self._remove_file()
-            return 1
-
-        if missing_ok:
-            return 0
-
-        raise FileNotFoundError(self)
+        raise NotImplementedError
 
     def rename_dir(self: T,
                    target: str,
@@ -635,6 +631,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if target_ == self:
             return self
 
+        # TODO: rethink this logic.
         if target_.is_file():
             if self._should_overwrite(self, target_,
                                       exist_action=exist_action,
@@ -642,7 +639,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 target_.remove_file()
                 self._rename_file(target_)
                 return target_
-            return None
+            return None  # TODO: rethink
 
         if target_.is_dir():
             raise FileExistsError(target_)
@@ -684,7 +681,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
-        n1 = self.remove_file(missing_ok=True)
+        n1 = self.remove_file()
         n2 = self.remove_dir(concurrency=concurrency)
         return n1 + n2
 
@@ -765,6 +762,52 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # TODO: may need reimplementation.
         for p in self.riterdir():
             yield p
+
+    # deprecated on 7/19
+
+    def isdir(self):
+        _deprecate('isdir', 'is_dir')
+        return self.is_dir()
+
+    def isfile(self):
+        _deprecate('isfile', 'is_file')
+        return self.is_file()
+
+    async def a_isdir(self):
+        _deprecate('a_isdir', 'a_is_dir')
+        return await self.a_is_dir()
+
+    async def a_isfile(self):
+        _deprecate('a_isfile', 'a_is_file')
+        return await self.a_is_file()
+
+    def rmdir(self, *, missing_ok=False, concurrency=None):
+        _deprecate('rmdir', 'remove_dir')
+        n = self.remove_dir(concurrency=concurrency)
+        if n == 0 and not missing_ok:
+            raise FileNotFoundError(self)
+        return n
+
+    def rmfile(self, *, missing_ok=False):
+        _deprecate('rmfile', 'remove_file')
+        n = self.remove_file()
+        if n == 0 and not missing_ok:
+            raise FileNotFoundError(self)
+        return n
+
+    async def a_rmdir(self, *, missing_ok=False, concurrency=None):
+        _deprecate('a_rmdir', 'a_remove_dir')
+        n = await self.a_remove_dir(concurrency=concurrency)
+        if n == 0 and not missing_ok:
+            raise FileNotFoundError(self)
+        return n
+
+    async def a_rmfile(self, *, missing_ok=False):
+        _deprecate('a_rmfile', 'a_remove_file')
+        n = await self.a_remove_file()
+        if n == 0 and not missing_ok:
+            raise FileNotFoundError(self)
+        return n
 
 
 def make_a_method(name):

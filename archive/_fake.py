@@ -88,14 +88,12 @@ class FakeBlobUpath(BlobUpath):
         for pp in _store.list_blobs(self._bucket, p):
             yield self / pp[len(p):]
 
-    def remove_file(self, *, missing_ok=False):
+    def remove_file(self):
         try:
             _store.delete_blob(self._bucket, self._path)
             return 1
         except ResourceNotFoundError as e:
-            if missing_ok:
-                return 0
-            raise FileNotFoundError(self) from e
+            return 0
 
     def write_bytes(self, data, *, overwrite=False):
         try:

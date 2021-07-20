@@ -1,7 +1,31 @@
-from ._upath import Upath
+import pathlib
+from ._upath import Upath, make_a_method
+from ._local import LocalUpath
+
+
+def _resolve_local_path(p):
+    if isinstance(p, str):
+        p = pathlib.Path(p)
+    if isinstance(p, pathlib.Path):
+        p = LocalUpath(str(p.absolute()))
+    else:
+        assert isinstance(p, LocalUpath)
+    return p
 
 
 class BlobUpath(Upath):  # pylint: disable=abstract-method
+    @property
+    def _blob_name(self) -> str:
+        return self._path.lstrip('/')
+
+    def download_dir(self, target, **kwargs) -> int:
+        target_ = _resolve_local_path(target)
+        return self.export_dir(target_, **kwargs)
+
+    def download_file(self, target, **kwargs) -> int:
+        target_ = _resolve_local_path(target)
+        return self.export_file(target_, **kwargs)
+
     def is_dir(self):
         '''In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
@@ -42,3 +66,17 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             if tail not in subdirs:
                 yield self / tail
                 subdirs.add(tail)
+
+    def upload_dir(self, source, **kwargs) -> int:
+        s = _resolve_local_path(source)
+        return self.import_dir(s, **kwargs)
+
+    def upload_file(self, source, **kwargs) -> int:
+        s = _resolve_local_path(source)
+        return self.import_file(s, **kwargs)
+
+
+for m in ('download_dir', 'download_file',
+          'upload_dir', 'upload_file',
+          ):
+    setattr(BlobUpath, f'a_{m}', make_a_method(m))

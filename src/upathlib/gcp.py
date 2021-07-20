@@ -1,3 +1,9 @@
+from __future__ import annotations
+# Enable using `Upath` in type annotations in the code
+# that defines this class.
+# https://stackoverflow.com/a/49872353
+# Will no longer be needed in Python 3.10.
+
 import contextlib
 import logging
 from io import BufferedReader, UnsupportedOperation
@@ -5,8 +11,9 @@ from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
 from google.api_core.exceptions import NotFound  # type: ignore
 
-from ._upath import FileInfo
+from ._upath import FileInfo, Upath
 from ._blob import BlobUpath
+from ._local import LocalUpath
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +30,8 @@ class GcpBlobUpath(BlobUpath):
             credentials=gcp_cred,
         )
         self._bucket_name = bucket_name
-        self._bucket = self._client.get_bucket(bucket_name)
+        # self._bucket = self._client.get_bucket(bucket_name)
+        self._bucket = self._client.bucket(bucket_name)
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
@@ -70,11 +78,22 @@ class GcpBlobUpath(BlobUpath):
 
     @property
     def _blob(self):
-        return self._bucket.blob(self._path.lstrip('/'))
+        return self._bucket.blob(self._blob_name)
 
     def _get_blob(self):
-        return self._bucket.get_blob(self._path.lstrip('/'))
+        return self._bucket.get_blob(self._blob_name)
         # This is `None` if the blob does not exist.
+
+    def _copy_file(self, target):
+        # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
+        self._bucket.copy_blob(
+            self._blob, target._bucket, target._blob_name
+        )
+
+    def _export_file(self, target: Upath):
+        if not isinstance(target, LocalUpath):
+            return super()._export_file(target)
+        self._blob.download_to_filename(str(target))
 
     def file_info(self):
         b = self._get_blob()
@@ -91,6 +110,11 @@ class GcpBlobUpath(BlobUpath):
             # then its `ctime` and `mtime` are both updated.
             # My experiments showed that `ctime` and `mtime` are equal.
 
+    def _import_file(self, source: Upath):
+        if not isinstance(source, LocalUpath):
+            return super()._import_file(source)
+        self._blob.upload_from_filename(str(source))
+
     def is_file(self) -> bool:
         return self._blob.exists()
 
@@ -104,18 +128,25 @@ class GcpBlobUpath(BlobUpath):
         except NotFound as e:
             raise FileNotFoundError(self) from e
 
-    def riterdir(self):
-        prefix = self._path.lstrip('/') + '/'
-        k = len(prefix)
-        for p in self._client.list_blobs(self._bucket, prefix=prefix):
-            yield self / p.name[k:]
-
     # TODO:
     # `remove_dir` might be more efficient if using
     # `p.delete()` on the elements returned by `self._client.list_blobs`.
 
-    def _remove_file(self):
-        self._blob.delete()
+    def remove_file(self):
+        try:
+            self._blob.delete()
+            return 1
+        except NotFound:
+            return 0
+
+    def _rename_file(self, target: GcpBlobUpath):
+        self._bucket.rename_blob(self._blob, target._blob_name)
+
+    def riterdir(self):
+        prefix = self._blob_name + '/'
+        k = len(prefix)
+        for p in self._client.list_blobs(self._bucket, prefix=prefix):
+            yield self / p.name[k:]
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':

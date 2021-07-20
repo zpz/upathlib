@@ -106,11 +106,12 @@ class AzureBlobUpath(BlobUpath):
 
     def _copy_file_from(self, source):
         with self._provide_blob_client():
-            copy = self._blob_client.start_copy_from_url(
-                f"{self._account_url}/{self._container_name}/{source._path.lstrip('/')}",
-                requires_sync=True,
-            )
-            assert copy['copy_status'] == 'success'
+            with source._provide_blob_client():
+                copy = self._blob_client.start_copy_from_url(
+                    source._blob_client.url,
+                    requires_sync=True,
+                )
+                assert copy['copy_status'] == 'success'
 
     def _copy_file(self, target):
         target._copy_file_from(self)
@@ -156,7 +157,7 @@ class AzureBlobUpath(BlobUpath):
 
     def iterdir(self):
         with self._provide_container_client():
-            prefix = self._path.lstrip('/') + '/'
+            prefix = self._blob_name + '/'
             k = len(prefix)
             for p in self._container_client.walk_blobs(
                     name_starts_with=prefix):
@@ -221,7 +222,7 @@ class AzureBlobUpath(BlobUpath):
             bc = BlobClient(
                 account_url=self._account_url,
                 container_name=self._container_name,
-                blob_name=self._path.lstrip('/'),
+                blob_name=self._blob_name,
                 credential=self._sas_token or self._account_key,
             )
             self._blob_client = bc
@@ -257,6 +258,16 @@ class AzureBlobUpath(BlobUpath):
             except ResourceNotFoundError as e:
                 raise FileNotFoundError(self) from e
 
+    def remove_file(self):
+        with self._provide_blob_client():
+            try:
+                self._blob_client.delete_blob(
+                    delete_snapshots='include',
+                    lease=self._lease_id)
+                return 1
+            except ResourceNotFoundError:
+                return 0
+
     def _renew_lease(self):
         t0 = time.perf_counter()
         while True:
@@ -272,17 +283,11 @@ class AzureBlobUpath(BlobUpath):
 
     def riterdir(self):
         with self._provide_container_client():
-            prefix = self._path.lstrip('/') + '/'
+            prefix = self._blob_name + '/'
             k = len(prefix)
             for p in self._container_client.list_blobs(
                     name_starts_with=prefix):
                 yield self / p.name[k:]
-
-    def _remove_file(self):
-        with self._provide_blob_client():
-            self._blob_client.delete_blob(
-                delete_snapshots='include',
-                lease=self._lease_id)
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':
@@ -299,33 +304,6 @@ class AzureBlobUpath(BlobUpath):
             except ResourceExistsError as e:
                 raise FileExistsError(self) from e
             return nbytes
-
-    # async def a_file_info(self):
-    #     try:
-    #         async with self._a_provide_blob_client():
-    #             info = await self._a_blob_client.get_blob_properties()
-    #             return FileInfo(
-    #                 ctime=info.creation_time.timestamp(),
-    #                 mtime=info.last_modified.timestamp(),
-    #                 time_created=info.creation_time,
-    #                 time_modified=info.last_modified,
-    #                 size=info.size,
-    #                 details=info,
-    #             )
-    #     except ResourceNotFoundError as e:
-    #         raise FileNotFoundError(self) from e
-
-    # async def a_is_file(self):
-    #     async with self._a_provide_blob_client():
-    #         return await self._a_blob_client.exists()
-
-    # async def a_iterdir(self):
-    #     async with self._a_provide_container_client():
-    #         prefix = self._path.lstrip('/') + '/'
-    #         k = len(prefix)
-    #         async for p in self._a_container_client.walk_blobs(
-    #                 name_starts_with=prefix):
-    #             yield self / p.name[k:]
 
     # @ asynccontextmanager
     # async def a_lock(self, *, wait=60):
@@ -376,7 +354,7 @@ class AzureBlobUpath(BlobUpath):
     #                 self._t_renew_lease_stopped = True
     #                 await self._t_renew_lease
     #                 self._t_renew_lease = None
-    #                 await self.a_remove_file(missing_ok=True)
+    #                 await self.a_remove_file()
     #                 # still holding the lease; this should succeed.
     #                 self._lease_id = None
     #                 self._lock_count = 0
@@ -387,7 +365,7 @@ class AzureBlobUpath(BlobUpath):
     #         bc = aBlobClient(
     #             account_url=self._account_url,
     #             container_name=self._container_name,
-    #             blob_name=self._path.lstrip('/'),
+    #             blob_name=self._blob_name,
     #             credential=self._sas_token or self._account_key,
     #         )
     #         self._a_blob_client = bc
@@ -416,13 +394,6 @@ class AzureBlobUpath(BlobUpath):
     #     else:
     #         yield
 
-    # async def a_read_bytes(self):
-    #     async with self._a_provide_blob_client():
-    #         try:
-    #             return await (await self._a_blob_client.download_blob()).readall()
-    #         except ResourceNotFoundError as e:
-    #             raise FileNotFoundError(self) from e
-
     # async def _a_renew_lease(self):
     #     loop = asyncio.get_running_loop()
     #     t0 = loop.time()
@@ -439,38 +410,8 @@ class AzureBlobUpath(BlobUpath):
 
     # async def a_riterdir(self):
     #     async with self._a_provide_container_client():
-    #         prefix = self._path.lstrip('/') + '/'
+    #         prefix = self._blob_name + '/'
     #         k = len(prefix)
     #         async for p in self._a_container_client.list_blobs(
     #                 name_starts_with=prefix):
     #             yield self / p.name[k:]
-
-    # async def a_remove_file(self, *, missing_ok=False):
-    #     async with self._a_provide_blob_client():
-    #         try:
-    #             await self._a_blob_client.delete_blob(
-    #                 delete_snapshots='include',
-    #                 lease=self._lease_id)
-    #             logger.info('deleting %s', self.path)
-    #             # log this after successful deletion.
-    #             return 1
-    #         except ResourceNotFoundError as e:
-    #             if missing_ok:
-    #                 return 0
-    #             raise FileNotFoundError(self) from e
-
-    # async def a_write_bytes(self, data, *, overwrite=False):
-    #     if self._path == '/':
-    #         raise UnsupportedOperation(
-    #             "can not write to root as a blob", self)
-
-    #     async with self._a_provide_blob_client():
-    #         nbytes = len(data)
-    #         try:
-    #             await self._a_blob_client.upload_blob(
-    #                 data,
-    #                 overwrite=overwrite,
-    #                 lease=self._lease_id)
-    #         except ResourceExistsError as e:
-    #             raise FileExistsError(self) from e
-    #         return nbytes
