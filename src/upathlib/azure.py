@@ -1,3 +1,9 @@
+from __future__ import annotations
+# Enable using `Upath` in type annotations in the code
+# that defines this class.
+# https://stackoverflow.com/a/49872353
+# Will no longer be needed in Python 3.10.
+
 import asyncio
 import logging
 import os
@@ -70,37 +76,37 @@ class AzureBlobUpath(BlobUpath):
         return f"{self._container_name}://{self._path}"
 
     def __eq__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._container_name != self._container_name):
+        if other._container_name != self._container_name:
             return NotImplemented
         return self._path == other._path
 
     def __lt__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._container_name != self._container_name):
+        if other._container_name != self._container_name:
             return NotImplemented
         return self._path < other._path
 
     def __le__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._container_name != self._container_name):
+        if other._container_name != self._container_name:
             return NotImplemented
         return self._path <= other._path
 
     def __gt__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._container_name != self._container_name):
+        if other._container_name != self._container_name:
             return NotImplemented
         return self._path > other._path
 
     def __ge__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._container_name != self._container_name):
+        if other._container_name != self._container_name:
             return NotImplemented
         return self._path >= other._path
 
@@ -113,7 +119,7 @@ class AzureBlobUpath(BlobUpath):
                 )
                 assert copy['copy_status'] == 'success'
 
-    def _copy_file(self, target):
+    def _copy_file(self, target: AzureBlobUpath):
         target._copy_file_from(self)
 
     def _export_file(self, target: Upath):

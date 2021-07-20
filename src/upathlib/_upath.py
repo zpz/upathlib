@@ -157,27 +157,27 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self._path
 
     def __eq__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
         return self._path == other._path
 
     def __lt__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
         return self._path < other._path
 
     def __le__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
         return self._path <= other._path
 
     def __gt__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
         return self._path > other._path
 
     def __ge__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
         return self._path >= other._path
 
@@ -603,7 +603,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         _ = _execute_in_thread_pool(foo(), concurrency)
         return target_
 
-    def _rename_file(self, target: Upath):
+    def _rename_file(self: T, target: T):
         '''Rename `self` to `target`, which is a non-existent path
         in the same store.
         '''

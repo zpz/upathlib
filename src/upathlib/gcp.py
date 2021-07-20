@@ -42,37 +42,37 @@ class GcpBlobUpath(BlobUpath):
         return f"{self._bucket_name}://{self._path}"
 
     def __eq__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._bucket_name != self._bucket_name):
+        if other._bucket_name != self._bucket_name:
             return NotImplemented
         return self._path == other._path
 
     def __lt__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._bucket_name != self._bucket_name):
+        if other._bucket_name != self._bucket_name:
             return NotImplemented
         return self._path < other._path
 
     def __le__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._bucket_name != self._bucket_name):
+        if other._bucket_name != self._bucket_name:
             return NotImplemented
         return self._path <= other._path
 
     def __gt__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._bucket_name != self._bucket_name):
+        if other._bucket_name != self._bucket_name:
             return NotImplemented
         return self._path > other._path
 
     def __ge__(self, other) -> bool:
-        if (other.__class__ is not self.__class__):
+        if other.__class__ is not self.__class__:
             return NotImplemented
-        if (other._bucket_name != self._bucket_name):
+        if other._bucket_name != self._bucket_name:
             return NotImplemented
         return self._path >= other._path
 
@@ -84,7 +84,7 @@ class GcpBlobUpath(BlobUpath):
         return self._bucket.get_blob(self._blob_name)
         # This is `None` if the blob does not exist.
 
-    def _copy_file(self, target):
+    def _copy_file(self, target: GcpBlobUpath):
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         self._bucket.copy_blob(
             self._blob, target._bucket, target._blob_name

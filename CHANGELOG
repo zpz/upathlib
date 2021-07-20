@@ -1,3 +1,12 @@
+Release 0.5.0
+=============
+
+- `remove_file` loses argument `missing_ok`. Return 0 if file is not found.
+- `GcpBlobUpath` copy, download, upload, rename.
+- `BlobUpath` gets more methods for download and upload, which are thin wrappers
+  around export and import methods.
+
+
 Release 0.4.9
 =============
 
