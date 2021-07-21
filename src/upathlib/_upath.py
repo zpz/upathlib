@@ -579,17 +579,21 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    target: str,
                    *,
                    concurrency: int = None,
-                   exist_action: str = None,
-                   update_filter: Callable[[Upath, Upath], bool] = None,
                    ) -> T:
         '''Analogous to `rename_file`.
 
         Local upath needs to customize this implementation, because
         it needs to take care to delete empty subdirectories under `self`.
         '''
+        if not self.is_dir():
+            raise FileNotFoundError(self)
+
         target_ = self.parent / target
         if target_ == self:
             return self
+
+        if target_.exists():
+            raise FileExistsError(target_)
 
         def foo():
             for p in self.riterdir():
@@ -597,7 +601,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 yield (
                     p.rename_file,
                     [(target_ / extra)._path],
-                    {'exist_action': exist_action, 'update_filter': update_filter},
+                    {},
                 )
 
         _ = _execute_in_thread_pool(foo(), concurrency)
@@ -610,20 +614,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         self._copy_file(target)
         self.remove_file()
 
-    def rename_file(self: T,
-                    target: str,
-                    *,
-                    exist_action: str = None,
-                    update_filter: Callable[[Upath, Upath], bool] = None,
-                    ) -> Optional[T]:
+    def rename_file(self: T, target: str) -> T:
         '''Rename the current file to `target` in the same store.
 
-        `target` is relative to `self.parent`. For example, if `self`
-        is '/a/b/c/d.txt', then `target='e.txt'` means '/a/b/c/e.txt'.
+        `target` is either absolute or relative to `self.parent`.
+        For example, if `self` is '/a/b/c/d.txt', then
+        `target='e.txt'` means '/a/b/c/e.txt'.
 
-        Return an object pointing to the new path if renaming happened.
-
-        If `self` is not an existing file, raise `FileNotFoundError`.
+        Return an object pointing to the new path.
         '''
         if not self.is_file():
             raise FileNotFoundError(self)
@@ -631,17 +629,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if target_ == self:
             return self
 
-        # TODO: rethink this logic.
-        if target_.is_file():
-            if self._should_overwrite(self, target_,
-                                      exist_action=exist_action,
-                                      update_filter=update_filter):
-                target_.remove_file()
-                self._rename_file(target_)
-                return target_
-            return None  # TODO: rethink
-
-        if target_.is_dir():
+        if target_.exists():
             raise FileExistsError(target_)
 
         self._rename_file(target_)
@@ -757,6 +745,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # TODO: may need reimplementation.
         for p in self.iterdir():
             yield p
+
+    @ contextlib.asynccontextmanager
+    async def a_lock(self, *, wait: float = 60):
+        # TODO: a naive implementation.
+        with self.lock(wait=wait):
+            yield
 
     async def a_riterdir(self: T) -> AsyncIterator[T]:
         # TODO: may need reimplementation.

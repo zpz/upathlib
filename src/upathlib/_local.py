@@ -121,16 +121,8 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         except (FileNotFoundError, IsADirectoryError):
             return 0
 
-    def rename_dir(self,
-                   target,
-                   *,
-                   concurrency=None,
-                   exist_action=None,
-                   update_filter=None):
-        _ = super().rename_dir(target,
-                               concurrency=concurrency,
-                               exist_action=exist_action,
-                               update_filter=update_filter)
+    def rename_dir(self, target, *, concurrency=None):
+        target_ = super().rename_dir(target, concurrency=concurrency)
 
         def _remove_empty_dir(path):
             k = 0
@@ -143,10 +135,9 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
                 path.rmdir()
             return k
 
-        if self.is_dir():
-            _remove_empty_dir(self.localpath)
+        _remove_empty_dir(self.localpath)
 
-        return self.parent / target
+        return target_
 
     def _rename_file(self, target):
         os.makedirs(target.localpath.parent, exist_ok=True)

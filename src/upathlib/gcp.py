@@ -139,9 +139,6 @@ class GcpBlobUpath(BlobUpath):
         except NotFound:
             return 0
 
-    def _rename_file(self, target: GcpBlobUpath):
-        self._bucket.rename_blob(self._blob, target._blob_name)
-
     def riterdir(self):
         prefix = self._blob_name + '/'
         k = len(prefix)
