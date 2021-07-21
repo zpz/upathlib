@@ -1,10 +1,11 @@
 # type: ignore
 
 import asyncio
+import concurrent.futures
 import pathlib
 import time
 import pytest
-from upathlib import Upath, LocalUpath
+from upathlib import Upath, LocalUpath, LockAcquisitionTimeoutError
 
 # User runs these tests with a `Upath` object of their subclass,
 # in a path that is safe for testing.
@@ -313,8 +314,26 @@ async def test_a_rename(p: Upath):
     assert not await (p / 'c').a_exists()
 
 
+def _access_in_mp(root: Upath, path: str, wait):
+    p = root / path
+    t0 = time.perf_counter()
+    try:
+        with p.lock(wait=wait):
+            return time.perf_counter() - t0
+    except LockAcquisitionTimeoutError:
+        return t0 - time.perf_counter()
+
+
 def test_lock(p: Upath):
-    pass
+    p.rmrf()
+    pp = p / 'testlock'
+    with pp.lock(wait=0.1):
+        with concurrent.futures.ProcessPoolExecutor(1) as pool:
+            wait = 3
+            t = pool.submit(_access_in_mp, p / '/', pp._path, wait)
+            z = t.result()
+            print('mp returned after', z, 'seconds')
+            assert z <= -wait
 
 
 async def test_a_lock(p: Upath):
