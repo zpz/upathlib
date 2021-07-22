@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import os
 from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
@@ -93,6 +94,7 @@ class GcpBlobUpath(BlobUpath):
     def _export_file(self, target: Upath):
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
+        os.makedirs(str(target.parent), exist_ok=True)
         self._blob.download_to_filename(str(target))
 
     def file_info(self):
