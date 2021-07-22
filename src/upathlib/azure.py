@@ -5,12 +5,14 @@ from __future__ import annotations
 # Will no longer be needed in Python 3.10.
 
 import asyncio
+import concurrent.futures
+import functools
 import logging
 import os
 import time
 import threading
 # from contextlib import contextmanager, asynccontextmanager
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime
 from io import UnsupportedOperation
 from typing import Optional, Union
@@ -65,7 +67,6 @@ class AzureBlobUpath(BlobUpath):
         self._lock_count: int = 0
         self._t_renew_lease: Optional[Union[threading.Thread,
                                             asyncio.Task]] = None
-        self._t_renew_lease_stopped: bool = False
 
     def __repr__(self) -> str:
         return "{}('{}', container_name='{}')".format(
@@ -169,55 +170,99 @@ class AzureBlobUpath(BlobUpath):
                     name_starts_with=prefix):
                 yield self / p.name[k:]
 
+    def _acquire_lease(self, wait: float):
+        t0 = time.perf_counter()
+        while True:
+            try:
+                self.write_text(
+                    datetime.utcnow().isoformat(), overwrite=True)
+                try:
+                    self._lease_id = self._blob_client.acquire_lease(
+                        lease_duration=60,
+                        timeout=1).id
+                    break
+                except ResourceNotFoundError:
+                    continue  # go to the outer looper to write the file again
+                except HttpResponseError as e:
+                    if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':
+                        # Having a lease held by others. Continue to wait.
+                        pass
+                    else:
+                        raise
+            except HttpResponseError as e:
+                if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
+                    # Blob exists and has a lease on it. Wait and try again.
+                    pass
+                else:
+                    raise
+
+            t1 = time.perf_counter()
+            if t1 - t0 >= wait:
+                raise LockAcquisitionTimeoutError(self, t1 - t0)
+            time.sleep(0.011)
+
+    def _renew_lease(self, stop_lease: threading.Event):
+        t0 = time.perf_counter()
+        while True:
+            time.sleep(0.002)
+            if stop_lease.is_set():
+                return
+            if time.perf_counter() - t0 >= 13:
+                # Renew ahead of the lease duration of 60 seconds.
+                BlobLeaseClient(self._blob_client,
+                                lease_id=self._lease_id).renew()
+                t0 = time.perf_counter()
+
     @contextmanager
     def lock(self, *, wait=60):
         with self._provide_blob_client():
             if self._lease_id is None:
-                t0 = time.perf_counter()
-                while True:
-                    try:
-                        self.write_text(
-                            datetime.utcnow().isoformat(), overwrite=True)
-                        try:
-                            self._lease_id = self._blob_client.acquire_lease(
-                                lease_duration=60,
-                                timeout=1).id
-                            break
-                        except ResourceNotFoundError:
-                            continue  # go to the outer looper to write the file again
-                        except HttpResponseError as e:
-                            if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':
-                                # Having a lease held by others. Continue to wait.
-                                pass
-                            else:
-                                raise
-                    except HttpResponseError as e:
-                        if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
-                            # Blob exists and has a lease on it. Wait and try again.
-                            pass
-                        else:
-                            raise
+                self._acquire_lease(wait)
 
-                    t1 = time.perf_counter()
-                    if t1 - t0 >= wait:
-                        raise LockAcquisitionTimeoutError(self, t1 - t0)
-                    time.sleep(0.011)
-
-                self._t_renew_lease = threading.Thread(
-                    target=self._renew_lease)
-                self._t_renew_lease_stopped = False
-                self._t_renew_lease.start()
-
-            self._lock_count += 1
+                stop_lease = threading.Event()
+                t_renew_lease = threading.Thread(
+                    target=self._renew_lease, args=(stop_lease,))
+                t_renew_lease.start()
+                self._lock_count = 1
+            else:
+                self._lock_count += 1
             try:
                 yield
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
-                    self._t_renew_lease_stopped = True
-                    self._t_renew_lease.join()
-                    self._t_renew_lease = None
+                    stop_lease.set()
+                    t_renew_lease.join()
                     self.remove_file()
+                    # still holding the lease; this should succeed.
+                    self._lease_id = None
+                    self._lock_count = 0
+
+    @asynccontextmanager
+    async def a_lock(self, *, wait=60):
+        with self._provide_blob_client():
+            # TODO: this context manager is sync
+
+            if self._lease_id is None:
+                loop = asyncio.get_running_loop()
+                ff = functools.partial(self._acquire_lease, wait=wait)
+                await loop.run_in_executor(None, ff)
+
+                stop_lease = threading.Event()
+                ff = functools.partial(
+                    self._renew_lease, stop_lease=stop_lease)
+                t_renew_lease = loop.run_in_executor(None, ff)
+                self._lock_count = 1
+            else:
+                self._lock_count += 1
+            try:
+                yield
+            finally:
+                self._lock_count -= 1
+                if self._lock_count <= 0:
+                    stop_lease.set()
+                    await t_renew_lease
+                    await loop.run_in_executor(None, self.remove_file)
                     # still holding the lease; this should succeed.
                     self._lease_id = None
                     self._lock_count = 0
@@ -273,19 +318,6 @@ class AzureBlobUpath(BlobUpath):
                 return 1
             except ResourceNotFoundError:
                 return 0
-
-    def _renew_lease(self):
-        t0 = time.perf_counter()
-        while True:
-            time.sleep(0.002)
-            if self._t_renew_lease_stopped:
-                self._t_renew_lease_stopped = False
-                return
-            if time.perf_counter() - t0 >= 13:
-                # Renew ahead of the lease duration of 60 seconds.
-                BlobLeaseClient(self._blob_client,
-                                lease_id=self._lease_id).renew()
-                t0 = time.perf_counter()
 
     def riterdir(self):
         with self._provide_container_client():

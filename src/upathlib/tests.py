@@ -2,6 +2,7 @@
 
 import asyncio
 import concurrent.futures
+import functools
 import pathlib
 import time
 import pytest
@@ -337,7 +338,15 @@ def test_lock(p: Upath):
 
 
 async def test_a_lock(p: Upath):
-    pass
+    await p.a_rmrf()
+    pp = p / 'testlock'
+    async with pp.a_lock(wait=0.1):
+        with concurrent.futures.ProcessPoolExecutor(1) as pool:
+            wait = 3
+            ff = functools.partial(_access_in_mp, p / '/', pp._path, wait)
+            z = await asyncio.get_running_loop().run_in_executor(pool, ff)
+            print('mp returned after', z, 'seconds')
+            assert z <= -wait
 
 
 def test_all(p: Upath):
@@ -348,11 +357,9 @@ def test_all(p: Upath):
     test_read_write_rm_navigate(p)
     test_import_export(p)
     test_rename(p)
-    test_lock(p)
 
 
 async def test_all_a(p: Upath):
     await test_a_read_write_rm_navigate(p)
     await test_a_import_export(p)
     await test_a_rename(p)
-    await test_a_lock(p)

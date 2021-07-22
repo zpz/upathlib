@@ -1,3 +1,9 @@
+Release 0.5.1
+=============
+
+- Reworked `AzureBlobUpath.lock` and `AzureBlobUpath.a_lock`.
+
+
 Release 0.5.0
 =============
 
