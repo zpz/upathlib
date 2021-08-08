@@ -9,18 +9,20 @@ import asyncio
 import concurrent.futures
 import contextlib
 import datetime
-import gc
-import json
 import logging
 import os
 import os.path
 import pathlib
-import pickle
-import warnings
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
 from typing import List, Iterator, TypeVar, Any, Optional, Callable, AsyncIterator
+
+from .serializer import (
+    ByteSerializer, TextSerializer,
+    JsonSerializer, PickleSerializer, CompressedPickleSerializer,
+    OrjsonSerializer, CompressedOrjsonSerializer,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -41,15 +43,15 @@ class FileInfo:
     details: Any   # platform-dependent
 
 
-def nogc(func, *args, **kwargs):
-    isgc = gc.isenabled()
-    if isgc:
-        gc.disable()
-    try:
-        return func(*args, **kwargs)
-    finally:
-        if isgc:
-            gc.enable()
+# def nogc(func, *args, **kwargs):
+#     isgc = gc.isenabled()
+#     if isgc:
+#         gc.disable()
+#     try:
+#         return func(*args, **kwargs)
+#     finally:
+#         if isgc:
+#             gc.enable()
 
 
 def _execute_in_thread_pool(jobs, concurrency: int = None):
@@ -78,11 +80,6 @@ def _should_update(source: Upath, target: Upath) -> bool:
     # Otherwise, we're assuming that
     # the target file was copied from the source
     # previously.
-
-
-def _deprecate(oldname, newname):
-    msg = f"`{oldname}` is deprecated; please use `{newname}` instead"
-    warnings.warn(msg, DeprecationWarning)
 
 
 class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
@@ -114,6 +111,58 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     f"target {target!r} appears to be up-to-date; skipped")
                 return False
         return True
+
+    @classmethod
+    def register_read_write_byte_format(cls, serde: ByteSerializer, name: str):
+        def _write(self, data, *, overwrite: bool = False):
+            return self.write_bytes(serde.serialize(data), overwrite=overwrite)
+
+        async def _a_write(self, data, *, overwrite: bool = False):
+            return await asyncio.get_running_loop().run_in_executor(
+                None,
+                _write(self, data, overwrite=overwrite),
+            )
+
+        def _read(self):
+            z = self.read_bytes()
+            return serde.deserialize(z)
+
+        async def _a_read(self):
+            return await asyncio.get_running_loop().run_in_executor(
+                None,
+                _read(self),
+            )
+
+        setattr(cls, f'write_{name}', _write)
+        setattr(cls, f'a_write_{name}', _a_write)
+        setattr(cls, f'read_{name}', _read)
+        setattr(cls, f'a_read_{name}', _a_read)
+
+    @classmethod
+    def register_read_write_text_format(cls, serde: TextSerializer, name: str):
+        def _write(self, data, *, overwrite: bool = False):
+            return self.write_text(serde.serialize(data), overwrite=overwrite)
+
+        async def _a_write(self, data, *, overwrite: bool = False):
+            return await asyncio.get_running_loop().run_in_executor(
+                None,
+                _write(self, data, overwrite=overwrite),
+            )
+
+        def _read(self):
+            z = self.read_text()
+            return serde.deserialize(z)
+
+        async def _a_read(self):
+            return await asyncio.get_running_loop().run_in_executor(
+                None,
+                _read(self),
+            )
+
+        setattr(cls, f'write_{name}', _write)
+        setattr(cls, f'a_write_{name}', _a_write)
+        setattr(cls, f'read_{name}', _read)
+        setattr(cls, f'a_read_{name}', _a_read)
 
     def __init__(self, *pathsegments: str, **kwargs):
         '''`Upath` is the base class for a client to a blob store,
@@ -529,17 +578,17 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def read_json(self, *, no_gc: bool = True, **kwargs):
-        z = self.read_text(**kwargs)
-        if no_gc:
-            return nogc(json.loads, z)
-        return json.loads(z)
+    # def read_json(self, *, no_gc: bool = True, **kwargs):
+    #     z = self.read_text(**kwargs)
+    #     if no_gc:
+    #         return nogc(json.loads, z)
+    #     return json.loads(z)
 
-    def read_pickle(self, *, no_gc: bool = True):
-        z = self.read_bytes()
-        if no_gc:
-            return nogc(pickle.loads, z)
-        return pickle.loads(z)
+    # def read_pickle(self, *, no_gc: bool = True):
+    #     z = self.read_bytes()
+    #     if no_gc:
+    #         return nogc(pickle.loads, z)
+    #     return pickle.loads(z)
 
     def read_text(self, *, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
@@ -715,16 +764,16 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    def write_json(self, data, *, overwrite=False, **kwargs) -> int:
-        return self.write_text(json.dumps(data),
-                               overwrite=overwrite,
-                               **kwargs)
+    # def write_json(self, data, *, overwrite=False, **kwargs) -> int:
+    #     return self.write_text(json.dumps(data),
+    #                            overwrite=overwrite,
+    #                            **kwargs)
 
-    def write_pickle(self, data, *, overwrite=False) -> int:
-        return self.write_bytes(
-            pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
-            overwrite=overwrite,
-        )
+    # def write_pickle(self, data, *, overwrite=False) -> int:
+    #     return self.write_bytes(
+    #         pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
+    #         overwrite=overwrite,
+    #     )
 
     def write_text(self,
                    data: str,
@@ -757,51 +806,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         for p in self.riterdir():
             yield p
 
-    # deprecated on 7/19
 
-    def isdir(self):
-        _deprecate('isdir', 'is_dir')
-        return self.is_dir()
-
-    def isfile(self):
-        _deprecate('isfile', 'is_file')
-        return self.is_file()
-
-    async def a_isdir(self):
-        _deprecate('a_isdir', 'a_is_dir')
-        return await self.a_is_dir()
-
-    async def a_isfile(self):
-        _deprecate('a_isfile', 'a_is_file')
-        return await self.a_is_file()
-
-    def rmdir(self, *, missing_ok=False, concurrency=None):
-        _deprecate('rmdir', 'remove_dir')
-        n = self.remove_dir(concurrency=concurrency)
-        if n == 0 and not missing_ok:
-            raise FileNotFoundError(self)
-        return n
-
-    def rmfile(self, *, missing_ok=False):
-        _deprecate('rmfile', 'remove_file')
-        n = self.remove_file()
-        if n == 0 and not missing_ok:
-            raise FileNotFoundError(self)
-        return n
-
-    async def a_rmdir(self, *, missing_ok=False, concurrency=None):
-        _deprecate('a_rmdir', 'a_remove_dir')
-        n = await self.a_remove_dir(concurrency=concurrency)
-        if n == 0 and not missing_ok:
-            raise FileNotFoundError(self)
-        return n
-
-    async def a_rmfile(self, *, missing_ok=False):
-        _deprecate('a_rmfile', 'a_remove_file')
-        n = await self.a_remove_file()
-        if n == 0 and not missing_ok:
-            raise FileNotFoundError(self)
-        return n
+Upath.register_read_write_text_format(JsonSerializer, 'json')
+Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
+Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
+Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
+Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')
 
 
 def make_a_method(name):
@@ -822,10 +832,12 @@ for m in ('copy_dir', 'copy_file',
           'import_dir', 'import_file',
           'is_dir', 'is_file',
           'ls',
-          'read_bytes', 'read_json', 'read_pickle', 'read_text',
+          'read_bytes', 'read_text',
+          #   'read_json', 'read_pickle',
           'remove_dir', 'remove_file',
           'rename_dir', 'rename_file',
           'rmrf',
-          'write_bytes', 'write_json', 'write_pickle', 'write_text',
+          'write_bytes', 'write_text',
+          #   'write_json', 'write_pickle',
           ):
     setattr(Upath, f'a_{m}', make_a_method(m))
