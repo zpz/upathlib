@@ -833,11 +833,9 @@ for m in ('copy_dir', 'copy_file',
           'is_dir', 'is_file',
           'ls',
           'read_bytes', 'read_text',
-          #   'read_json', 'read_pickle',
           'remove_dir', 'remove_file',
           'rename_dir', 'rename_file',
           'rmrf',
           'write_bytes', 'write_text',
-          #   'write_json', 'write_pickle',
           ):
     setattr(Upath, f'a_{m}', make_a_method(m))
