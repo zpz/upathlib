@@ -1,3 +1,10 @@
+Release 0.5.2
+=============
+
+- Skip thread pool when `concurrency <= 1`.
+- Support extra dependencies via `options.extras_require` in `setup.cfg`.
+
+
 Release 0.5.1
 =============
 

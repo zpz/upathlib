@@ -122,6 +122,10 @@ class GcpBlobUpath(BlobUpath):
 
     @contextlib.contextmanager
     def lock(self, *, wait=60):
+        # References:
+        # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
+        # https://cloud.google.com/storage/docs/generations-preconditions
+        # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
         raise NotImplementedError
 
     def read_bytes(self):
