@@ -77,8 +77,8 @@ def test_read_write_rm_navigate(p: Upath):
     with pytest.raises(FileExistsError):
         p1.write_text('abcd')
 
-    p1.write_text('abcd', overwrite=True)
-    assert p1.read_text() == 'abcd'
+    p1.write_json({'data': 'abcd'}, overwrite=True)
+    assert p1.read_json() == {'data': 'abcd'}
 
     p /= 'a'
     assert p._path == f'{init_path}/a'
@@ -109,6 +109,8 @@ def test_read_write_rm_navigate(p: Upath):
     print('p2:', fi2)
     print('')
     assert fi1.mtime < fi2.mtime
+    print('file 1 size:', fi1.size)
+    print('file 2 size:', fi2.size)
     assert fi1.size > fi2.size
 
     assert p3.is_dir()
@@ -144,8 +146,8 @@ async def test_a_read_write_rm_navigate(p: Upath):
     with pytest.raises(FileExistsError):
         await p1.a_write_text('abcd')
 
-    await p1.a_write_text('abcd', overwrite=True)
-    assert await p1.a_read_text() == 'abcd'
+    await p1.a_write_json({'data': 'abcd'}, overwrite=True)
+    assert await p1.a_read_json() == {'data': 'abcd'}
 
     p /= 'a'
     assert p._path == f'{init_path}/a'
@@ -158,11 +160,11 @@ async def test_a_read_write_rm_navigate(p: Upath):
     # from the first file.
 
     p2 = p.joinpath('x.data')
-    await p2.a_write_bytes(b'x')
+    await p2.a_write_orjson_z(['x', 'y', 13])
     p /= '..'
     assert p._path == init_path
     assert p2 == p.joinpath('a', 'x.data')
-    assert await p2.a_read_bytes() == b'x'
+    assert await p2.a_read_orjson_z() == ['x', 'y', 13]
 
     p3 = p / 'a'
 
@@ -178,7 +180,9 @@ async def test_a_read_write_rm_navigate(p: Upath):
     print('p2:', fi2)
     print('')
     assert fi1.mtime < fi2.mtime
-    assert fi1.size > fi2.size
+    print('file 1 size:', fi1.size)
+    print('file 2 size:', fi2.size)
+    assert fi1.size < fi2.size
 
     assert await p3.a_is_dir()
     assert await p3.a_remove_dir() == 1

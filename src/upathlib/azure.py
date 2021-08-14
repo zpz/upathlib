@@ -5,13 +5,11 @@ from __future__ import annotations
 # Will no longer be needed in Python 3.10.
 
 import asyncio
-import concurrent.futures
 import functools
 import logging
 import os
 import time
 import threading
-# from contextlib import contextmanager, asynccontextmanager
 from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime
 from io import UnsupportedOperation
@@ -34,8 +32,6 @@ logging.getLogger('azure.core.pipeline.policies').setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-
-# TODO: async lock
 
 class AzureBlobUpath(BlobUpath):
     def __init__(self,
@@ -215,6 +211,8 @@ class AzureBlobUpath(BlobUpath):
 
     @contextmanager
     def lock(self, *, wait=60):
+        # References:
+        # https://docs.microsoft.com/en-us/azure/storage/blobs/concurrency-manage?tabs=dotnet
         with self._provide_blob_client():
             if self._lease_id is None:
                 self._acquire_lease(wait)
