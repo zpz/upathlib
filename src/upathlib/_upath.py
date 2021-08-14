@@ -9,6 +9,7 @@ import asyncio
 import concurrent.futures
 import contextlib
 import datetime
+import functools
 import logging
 import os
 import os.path
@@ -113,7 +114,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         async def _a_write(self, data, *, overwrite: bool = False):
             return await asyncio.get_running_loop().run_in_executor(
                 None,
-                _write(self, data, overwrite=overwrite),
+                functools.partial(_write, overwrite=overwrite), self, data,
             )
 
         def _read(self):
@@ -122,8 +123,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         async def _a_read(self):
             return await asyncio.get_running_loop().run_in_executor(
-                None,
-                _read(self),
+                None, _read, self,
             )
 
         setattr(cls, f'write_{name}', _write)
@@ -139,7 +139,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         async def _a_write(self, data, *, overwrite: bool = False):
             return await asyncio.get_running_loop().run_in_executor(
                 None,
-                _write(self, data, overwrite=overwrite),
+                functools.partial(_write, overwrite=overwrite), self, data,
             )
 
         def _read(self):
@@ -148,8 +148,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         async def _a_read(self):
             return await asyncio.get_running_loop().run_in_executor(
-                None,
-                _read(self),
+                None, _read, self,
             )
 
         setattr(cls, f'write_{name}', _write)

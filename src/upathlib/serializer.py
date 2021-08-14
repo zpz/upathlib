@@ -86,6 +86,7 @@ class JsonSerializer(TextSerializer):
     def serialize(cls, x):
         return json.dumps(x)
 
+    @classmethod
     def deserialize(cls, y):
         with no_gc():
             return json.loads(y)
