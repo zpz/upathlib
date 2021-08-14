@@ -43,24 +43,17 @@ class FileInfo:
     details: Any   # platform-dependent
 
 
-# def nogc(func, *args, **kwargs):
-#     isgc = gc.isenabled()
-#     if isgc:
-#         gc.disable()
-#     try:
-#         return func(*args, **kwargs)
-#     finally:
-#         if isgc:
-#             gc.enable()
-
-
 def _execute_in_thread_pool(jobs, concurrency: int = None):
     if concurrency is None:
         concurrency = 4
     else:
-        assert 0 <= concurrency <= 16
-        if concurrency < 1:
-            concurrency = 1
+        assert 0 <= concurrency <= 32
+
+    if concurrency <= 1:
+        results = []
+        for f, args, kwargs in jobs:
+            results.append(f(*args, **kwargs))
+        return results
 
     pool = concurrent.futures.ThreadPoolExecutor(concurrency)
     tasks = []
