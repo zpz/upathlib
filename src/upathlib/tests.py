@@ -329,7 +329,7 @@ def _access_in_mp(root: Upath, path: str, timeout):
         return t0 - time.perf_counter()
 
 
-def test_lock(p: Upath, timeout=1, wait=3):
+def test_lock(p: Upath, timeout=None, wait=3):
     p.rmrf()
     pp = p / 'testlock'
     with pp.lock(timeout=timeout):
@@ -340,7 +340,7 @@ def test_lock(p: Upath, timeout=1, wait=3):
             assert z <= -wait
 
 
-async def test_a_lock(p: Upath, timeout=1, wait=3):
+async def test_a_lock(p: Upath, timeout=None, wait=3):
     await p.a_rmrf()
     pp = p / 'testlock'
     async with pp.a_lock(timeout=timeout):

@@ -164,7 +164,9 @@ class AzureBlobUpath(BlobUpath):
                     name_starts_with=prefix):
                 yield self / p.name[k:]
 
-    def _acquire_lease(self, timeout: int = -1):
+    def _acquire_lease(self, timeout: int = None):
+        if timeout is None:
+            timeout = -1
         t0 = time.perf_counter()
         while True:
             try:
@@ -200,7 +202,7 @@ class AzureBlobUpath(BlobUpath):
             time.sleep(0.078)
 
     @contextmanager
-    def lock(self, *, timeout=-1):
+    def lock(self, *, timeout=None):
         '''
         References:
         https://docs.microsoft.com/en-us/azure/storage/blobs/concurrency-manage?tabs=dotnet
@@ -221,7 +223,7 @@ class AzureBlobUpath(BlobUpath):
                     self._lock_count = 0
 
     @asynccontextmanager
-    async def a_lock(self, *, timeout=-1):
+    async def a_lock(self, *, timeout=None):
         loop = asyncio.get_running_loop()
         with self._provide_blob_client():
             # TODO: this context manager is sync

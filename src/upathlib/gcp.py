@@ -121,7 +121,7 @@ class GcpBlobUpath(BlobUpath):
         return self._blob.exists()
 
     @contextlib.contextmanager
-    def lock(self, *, timeout=-1):
+    def lock(self, *, timeout=None):
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions

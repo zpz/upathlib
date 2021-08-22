@@ -511,11 +511,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @ contextlib.contextmanager
     @ abc.abstractmethod
-    def lock(self, *, timeout: int = -1):
+    def lock(self, *, timeout: int = None):
         '''Lock the file pointed to, in order to have exclusive access.
 
         `timeout`: if the lock can't be acquired within *timeout* seconds,
-        raise `LockAcquisitionTimeoutError`. Default is -1, waiting for ever.
+        raise `LockAcquisitionTimeoutError`. Default is waiting for ever.
         Once a lease is acquired, it will not expire until this contexmanager
         exits. In other word, this is timeout for the "wait", not for the 
         lease itself. Actual waiting time may be slightly longer.
@@ -791,7 +791,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             yield p
 
     @ contextlib.asynccontextmanager
-    async def a_lock(self, *, timeout: int = -1):
+    async def a_lock(self, *, timeout: int = None):
         # TODO: a naive implementation.
         with self.lock(timeout=timeout):
             yield

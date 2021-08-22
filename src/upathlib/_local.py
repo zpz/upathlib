@@ -85,7 +85,7 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         return pathlib.Path(self._path)
 
     @contextlib.contextmanager
-    def lock(self, *, timeout=-1):
+    def lock(self, *, timeout=None):
         os.makedirs(self.localpath.parent, exist_ok=True)
         lock = filelock.FileLock(str(self.localpath))
         try:
