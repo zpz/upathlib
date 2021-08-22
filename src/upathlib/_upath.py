@@ -511,11 +511,14 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @ contextlib.contextmanager
     @ abc.abstractmethod
-    def lock(self, *, wait: float = 60):
+    def lock(self, *, timeout: int = -1):
         '''Lock the file pointed to, in order to have exclusive access.
 
-        `wait`: if the lock can't be acquired within *wait* seconds,
-        raise `LockAcquisitionTimeoutError`.
+        `timeout`: if the lock can't be acquired within *timeout* seconds,
+        raise `LockAcquisitionTimeoutError`. Default is -1, waiting for ever.
+        Once a lease is acquired, it will not expire until this contexmanager
+        exits. In other word, this is timeout for the "wait", not for the 
+        lease itself. Actual waiting time may be slightly longer.
 
         This is a "mandatory lock", as opposed to an "advisory lock".
         However, this API does not specify that the locked file
@@ -788,9 +791,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             yield p
 
     @ contextlib.asynccontextmanager
-    async def a_lock(self, *, wait: float = 60):
+    async def a_lock(self, *, timeout: int = -1):
         # TODO: a naive implementation.
-        with self.lock(wait=wait):
+        with self.lock(timeout=timeout):
             yield
 
     async def a_riterdir(self: T) -> AsyncIterator[T]:

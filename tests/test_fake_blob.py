@@ -103,7 +103,7 @@ class FakeBlobUpath(BlobUpath):
         _store.copy_blob(self._bucket, self._path, target._path)
 
     @contextlib.contextmanager
-    def lock(self, *, wait=60):
+    def lock(self, *, timeout=-1):
         # place holder
         yield self
 

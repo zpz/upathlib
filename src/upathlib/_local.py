@@ -85,11 +85,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         return pathlib.Path(self._path)
 
     @contextlib.contextmanager
-    def lock(self, *, wait=60):
+    def lock(self, *, timeout=-1):
         os.makedirs(self.localpath.parent, exist_ok=True)
         lock = filelock.FileLock(str(self.localpath))
         try:
-            lock.acquire(timeout=wait)
+            lock.acquire(timeout=timeout)
             yield
         except filelock.Timeout as e:
             raise LockAcquisitionTimeoutError(str(self)) from e

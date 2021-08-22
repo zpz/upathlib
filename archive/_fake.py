@@ -71,7 +71,7 @@ class FakeBlobUpath(BlobUpath):
         return _store.exists(self._bucket, self._path)
 
     @contextlib.contextmanager
-    def lock(self, *, wait=60):
+    def lock(self, *, timeout=-1):
         # place holder
         yield self
 
