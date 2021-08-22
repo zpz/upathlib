@@ -802,6 +802,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             yield p
 
 
+# Add methods 'read_json', 'write_json', 'a_read_json', 'a_write_json', etc.
 Upath.register_read_write_text_format(JsonSerializer, 'json')
 Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
 Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
@@ -810,6 +811,11 @@ Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')
 
 
 def make_a_method(name):
+    '''
+    Create an async method named f'a_{name}' based on
+    the sync method 'name'. The async method has the same
+    interface as the sync one, i.e. they take the same parameters.
+    '''
     async def f(self, *args, **kwargs):
         f = partial(getattr(self, name), *args, **kwargs)
         return await asyncio.get_running_loop().run_in_executor(
@@ -820,6 +826,7 @@ def make_a_method(name):
     return f
 
 
+# Add async methods 'a_copy_dir', 'a_copy_file', etc.
 for m in ('copy_dir', 'copy_file',
           'export_dir', 'export_file',
           'exists',
