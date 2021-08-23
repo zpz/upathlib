@@ -319,34 +319,32 @@ async def test_a_rename(p: Upath):
     assert not await (p / 'c').a_exists()
 
 
-def _access_in_mp(root: Upath, path: str, wait):
+def _access_in_mp(root: Upath, path: str, timeout):
     p = root / path
     t0 = time.perf_counter()
     try:
-        with p.lock(wait=wait):
+        with p.lock(timeout=timeout):
             return time.perf_counter() - t0
     except LockAcquisitionTimeoutError:
         return t0 - time.perf_counter()
 
 
-def test_lock(p: Upath):
+def test_lock(p: Upath, timeout=None, wait=3):
     p.rmrf()
     pp = p / 'testlock'
-    with pp.lock(wait=0.1):
+    with pp.lock(timeout=timeout):
         with concurrent.futures.ProcessPoolExecutor(1) as pool:
-            wait = 3
             t = pool.submit(_access_in_mp, p / '/', pp._path, wait)
             z = t.result()
             print('mp returned after', z, 'seconds')
             assert z <= -wait
 
 
-async def test_a_lock(p: Upath):
+async def test_a_lock(p: Upath, timeout=None, wait=3):
     await p.a_rmrf()
     pp = p / 'testlock'
-    async with pp.a_lock(wait=0.1):
+    async with pp.a_lock(timeout=timeout):
         with concurrent.futures.ProcessPoolExecutor(1) as pool:
-            wait = 3
             ff = functools.partial(_access_in_mp, p / '/', pp._path, wait)
             z = await asyncio.get_running_loop().run_in_executor(pool, ff)
             print('mp returned after', z, 'seconds')
