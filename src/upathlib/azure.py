@@ -239,7 +239,7 @@ class AzureBlobUpath(BlobUpath):
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
-                    await loop.run_in_executor(None, self._release_lease)
+                    await loop.run_in_executor(None, self._lease._release)
                     self._lease = None
                     self._lock_count = 0
 
