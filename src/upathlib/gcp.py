@@ -7,12 +7,15 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import random
+import time
 from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
-from google.api_core.exceptions import NotFound  # type: ignore
+from google.api_core.exceptions import NotFound, PreconditionFailed
+# type: ignore
 
-from ._upath import FileInfo, Upath
+from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
 from ._blob import BlobUpath
 from ._local import LocalUpath
 
@@ -20,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 class GcpBlobUpath(BlobUpath):
+    BLOB_DEFAULT_GENERATION: int = 1
+
     def __init__(self, *parts: str, bucket_name: str, account_info: dict):
         super().__init__(*parts,
                          bucket_name=bucket_name,
@@ -33,6 +38,9 @@ class GcpBlobUpath(BlobUpath):
         self._bucket_name = bucket_name
         # self._bucket = self._client.get_bucket(bucket_name)
         self._bucket = self._client.bucket(bucket_name)
+        self._lease = None
+        self._lock_count: int = 0
+        self._generation: int = self.BLOB_DEFAULT_GENERATION
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
@@ -78,8 +86,10 @@ class GcpBlobUpath(BlobUpath):
         return self._path >= other._path
 
     @property
-    def _blob(self):
-        return self._bucket.blob(self._blob_name)
+    def _blob(self, generation: int = None):
+        if not generation:
+            generation = self.BLOB_DEFAULT_GENERATION
+        return self._bucket.blob(self._blob_name, generation=generation)
 
     def _get_blob(self):
         return self._bucket.get_blob(self._blob_name)
@@ -120,13 +130,49 @@ class GcpBlobUpath(BlobUpath):
     def is_file(self) -> bool:
         return self._blob.exists()
 
+    def _acquire_lease(self, timeout: int = None):
+        if self._path == '/':
+            raise UnsupportedOperation("can not write to root as a blob", self)
+        if timeout is None:
+            timeout = 3600
+        generation = self.BLOB_DEFAULT_GENERATION + random.randint(1, 10)
+        b = self._blob(generation=generation)
+        t0 = time.perf_counter()
+        while True:
+            try:
+                b.upload_from_string(
+                    b'0', if_generation_match=0, timeout=10, retry=None)
+                self._generation = generation
+                break
+            except PreconditionFailed:
+                t1 = time.perf_counter()
+                if t1 - t0 >= timeout:
+                    raise LockAcquisitionTimeoutError(self, t1 - t0)
+                time.sleep(random.uniform(0.05, 1.0))
+
     @contextlib.contextmanager
     def lock(self, *, timeout=None):
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
-        raise NotImplementedError
+
+        if self._generation == self.BLOB_DEFAULT_GENERATION:
+            self._acquire_lease(timeout)
+            self._lock_count = 1
+        else:
+            self._lock_count += 1
+        try:
+            yield
+        finally:
+            self._lock_count -= 1
+            if self._lock_count <= 0:
+                self._blob.delete()
+                self._generation = None
+                self._lock_count = 0
+
+        # TODO: `if_generation_match` does not seem to work except
+        # for value `0`.
 
     def read_bytes(self):
         try:
