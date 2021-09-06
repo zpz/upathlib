@@ -29,17 +29,30 @@ class GcpBlobUpath(BlobUpath):
         super().__init__(*parts,
                          bucket_name=bucket_name,
                          account_info=account_info)
-        gcp_cred = service_account.Credentials.from_service_account_info(
-            account_info)
-        self._client = storage.Client(
-            project=account_info['project_id'],
-            credentials=gcp_cred,
-        )
+        self._account_info = account_info
         self._bucket_name = bucket_name
-        # self._bucket = self._client.get_bucket(bucket_name)
-        self._bucket = self._client.bucket(bucket_name)
+        self._client_ = None
+        self._bucket_ = None
         self._lock_count: int = 0
         self._generation: int = self.BLOB_DEFAULT_GENERATION
+
+    @property
+    def _client(self):
+        if self._client_ is None:
+            gcp_cred = service_account.Credentials.from_service_account_info(
+                self._account_info)
+            self._client_ = storage.Client(
+                project=self._account_info['project_id'],
+                credentials=gcp_cred,
+            )
+        return self._client_
+
+    @property
+    def _bucket(self):
+        if self._bucket_ is None:
+            self._bucket_ = self._client.bucket(self._bucket_name)
+            # self._bucket = self._client.get_bucket(self._bucket_name)
+        return self._bucket_
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
