@@ -38,7 +38,6 @@ class GcpBlobUpath(BlobUpath):
         self._bucket_name = bucket_name
         # self._bucket = self._client.get_bucket(bucket_name)
         self._bucket = self._client.bucket(bucket_name)
-        self._lease = None
         self._lock_count: int = 0
         self._generation: int = self.BLOB_DEFAULT_GENERATION
 
@@ -85,7 +84,6 @@ class GcpBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
-    @property
     def _blob(self, generation: int = None):
         if not generation:
             generation = self.BLOB_DEFAULT_GENERATION
@@ -98,14 +96,14 @@ class GcpBlobUpath(BlobUpath):
     def _copy_file(self, target: GcpBlobUpath):
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         self._bucket.copy_blob(
-            self._blob, target._bucket, target._blob_name
+            self._blob(), target._bucket, target._blob_name
         )
 
     def _export_file(self, target: Upath):
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
         os.makedirs(str(target.parent), exist_ok=True)
-        self._blob.download_to_filename(str(target))
+        self._blob().download_to_filename(str(target))
 
     def file_info(self):
         b = self._get_blob()
@@ -125,10 +123,10 @@ class GcpBlobUpath(BlobUpath):
     def _import_file(self, source: Upath):
         if not isinstance(source, LocalUpath):
             return super()._import_file(source)
-        self._blob.upload_from_filename(str(source))
+        self._blob().upload_from_filename(str(source))
 
     def is_file(self) -> bool:
-        return self._blob.exists()
+        return self._blob().exists()
 
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
@@ -167,7 +165,7 @@ class GcpBlobUpath(BlobUpath):
         finally:
             self._lock_count -= 1
             if self._lock_count <= 0:
-                self._blob.delete()
+                self._blob().delete()
                 self._generation = None
                 self._lock_count = 0
 
@@ -176,7 +174,7 @@ class GcpBlobUpath(BlobUpath):
 
     def read_bytes(self):
         try:
-            return self._blob.download_as_bytes()
+            return self._blob().download_as_bytes()
         except NotFound as e:
             raise FileNotFoundError(self) from e
 
@@ -186,7 +184,7 @@ class GcpBlobUpath(BlobUpath):
 
     def remove_file(self):
         try:
-            self._blob.delete()
+            self._blob().delete()
             return 1
         except NotFound:
             return 0
@@ -203,7 +201,7 @@ class GcpBlobUpath(BlobUpath):
         if isinstance(data, BufferedReader):
             data = data.read()
         nbytes = len(data)
-        b = self._blob
+        b = self._blob()
         if not overwrite and b.exists():
             raise FileExistsError(self)
         b.upload_from_string(data)  # this will overwrite existing content.
