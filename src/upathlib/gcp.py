@@ -34,7 +34,6 @@ class GcpBlobUpath(BlobUpath):
         self._client_ = None
         self._bucket_ = None
         self._lock_count: int = 0
-        self._generation: int = self.BLOB_DEFAULT_GENERATION
 
     @property
     def _client(self):
@@ -97,13 +96,11 @@ class GcpBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
-    def _blob(self, generation: int = None):
-        if not generation:
-            generation = self.BLOB_DEFAULT_GENERATION
-        return self._bucket.blob(self._blob_name, generation=generation)
+    def _blob(self, **kwargs):
+        return self._bucket.blob(self._blob_name, **kwargs)
 
-    def _get_blob(self):
-        return self._bucket.get_blob(self._blob_name)
+    def _get_blob(self, **kwargs):
+        return self._bucket.get_blob(self._blob_name, **kwargs)
         # This is `None` if the blob does not exist.
 
     def _copy_file(self, target: GcpBlobUpath):
@@ -146,20 +143,20 @@ class GcpBlobUpath(BlobUpath):
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
             timeout = 3600
-        generation = self.BLOB_DEFAULT_GENERATION + random.randint(1, 10)
-        b = self._blob(generation=generation)
+        b = self._blob()
         t0 = time.perf_counter()
         while True:
-            try:
-                b.upload_from_string(
-                    b'0', if_generation_match=0, timeout=10, retry=None)
-                self._generation = generation
-                break
-            except PreconditionFailed:
-                t1 = time.perf_counter()
-                if t1 - t0 >= timeout:
-                    raise LockAcquisitionTimeoutError(self, t1 - t0)
-                time.sleep(random.uniform(0.05, 1.0))
+            if not b.exists():
+                try:
+                    b.upload_from_string(
+                        b'0', if_generation_match=0, timeout=10, retry=None)
+                    return
+                except PreconditionFailed:
+                    break
+            t1 = time.perf_counter()
+            if t1 - t0 >= timeout:
+                raise LockAcquisitionTimeoutError(self, t1 - t0)
+            time.sleep(random.uniform(0.05, 1.0))
 
     @contextlib.contextmanager
     def lock(self, *, timeout=None):
@@ -168,22 +165,21 @@ class GcpBlobUpath(BlobUpath):
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
 
-        if self._generation == self.BLOB_DEFAULT_GENERATION:
+        # TODO: this implementation needs enhancements.
+        # I did not get the `generation`, `if-generation-match` work.
+        # This implementation does not prevent the file from being deleted
+        # by other workers. It relies on the assumption that this blob
+        # is used solely in this locking logic.
+
+        if self._lock_count == 0:
             self._acquire_lease(timeout)
-            self._lock_count = 1
-        else:
-            self._lock_count += 1
+        self._lock_count += 1
         try:
             yield
         finally:
             self._lock_count -= 1
-            if self._lock_count <= 0:
+            if self._lock_count == 0:
                 self._blob().delete()
-                self._generation = None
-                self._lock_count = 0
-
-        # TODO: `if_generation_match` does not seem to work except
-        # for value `0`.
 
     def read_bytes(self):
         try:
@@ -215,7 +211,12 @@ class GcpBlobUpath(BlobUpath):
             data = data.read()
         nbytes = len(data)
         b = self._blob()
-        if not overwrite and b.exists():
-            raise FileExistsError(self)
-        b.upload_from_string(data)  # this will overwrite existing content.
+        if overwrite:
+            b.upload_from_string(data, retry=None)
+            # this will overwrite existing content.
+        else:
+            try:
+                b.upload_from_string(data, if_generation_match=0, retry=None)
+            except PreconditionFailed:
+                raise FileExistsError(self)
         return nbytes
