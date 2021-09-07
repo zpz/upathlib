@@ -8,12 +8,12 @@ import asyncio
 import functools
 import logging
 import os
+import random
 import time
-import threading
 from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime
 from io import UnsupportedOperation
-from typing import Optional, Union
+from typing import Optional
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient  # type: ignore
 # from azure.storage.blob.aio import (
@@ -166,7 +166,7 @@ class AzureBlobUpath(BlobUpath):
 
     def _acquire_lease(self, timeout: int = None):
         if timeout is None:
-            timeout = -1
+            timeout = 3600
         t0 = time.perf_counter()
         while True:
             try:
@@ -195,11 +195,10 @@ class AzureBlobUpath(BlobUpath):
                 else:
                     raise
 
-            if timeout >= 1:
-                t1 = time.perf_counter()
-                if t1 - t0 >= timeout:
-                    raise LockAcquisitionTimeoutError(self, t1 - t0)
-            time.sleep(0.078)
+            t1 = time.perf_counter()
+            if t1 - t0 >= timeout:
+                raise LockAcquisitionTimeoutError(self, t1 - t0)
+            time.sleep(random.uniform(0.05, 1.0))
 
     @contextmanager
     def lock(self, *, timeout=None):
@@ -239,7 +238,7 @@ class AzureBlobUpath(BlobUpath):
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
-                    await loop.run_in_executor(None, self._release_lease)
+                    await loop.run_in_executor(None, self._lease._release)
                     self._lease = None
                     self._lock_count = 0
 

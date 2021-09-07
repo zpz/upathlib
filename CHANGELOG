@@ -1,3 +1,15 @@
+Release 0.5.5
+=============
+
+- Bug fix related to GCP.
+
+
+Release 0.5.4
+=============
+
+- Implement blob locking for GCP.
+
+
 Release 0.5.3
 =============
 

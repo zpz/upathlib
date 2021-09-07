@@ -709,7 +709,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             /a/b/c/kk.data
             /a/b/c
 
-        then `Upath('/a/b/c')` would remove all of them.
+        then `Upath('/a/b/c').rmrf()` would remove all of them.
         '''
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
