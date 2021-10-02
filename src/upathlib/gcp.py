@@ -12,7 +12,7 @@ import time
 from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
-from google.api_core.exceptions import NotFound, PreconditionFailed
+from google.api_core.exceptions import NotFound, PreconditionFailed, TooManyRequests
 # type: ignore
 
 from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
@@ -138,6 +138,14 @@ class GcpBlobUpath(BlobUpath):
     def is_file(self) -> bool:
         return self._blob().exists()
 
+    def _rate_limit(self, func, *args, **kwargs):
+        # `func` is a create/update/delete function.
+        while True:
+            try:
+                return func(*args, **kwargs)
+            except TooManyRequests:
+                time.sleep(random.uniform(0.1, 0.3))
+
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
@@ -151,8 +159,8 @@ class GcpBlobUpath(BlobUpath):
                     b.upload_from_string(
                         b'0', if_generation_match=0, timeout=10, retry=None)
                     return
-                except PreconditionFailed:
-                    break
+                except (PreconditionFailed, TooManyRequests):
+                    pass
             t1 = time.perf_counter()
             if t1 - t0 >= timeout:
                 raise LockAcquisitionTimeoutError(self, t1 - t0)
@@ -179,7 +187,7 @@ class GcpBlobUpath(BlobUpath):
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
-                self._blob().delete()
+                self._rate_limit(self._blob().delete)
 
     def read_bytes(self):
         try:
@@ -193,7 +201,7 @@ class GcpBlobUpath(BlobUpath):
 
     def remove_file(self):
         try:
-            self._blob().delete()
+            self._rate_limit(self._blob().delete)
             return 1
         except NotFound:
             return 0
@@ -212,7 +220,7 @@ class GcpBlobUpath(BlobUpath):
         nbytes = len(data)
         b = self._blob()
         if overwrite:
-            b.upload_from_string(data, retry=None)
+            self._rate_limit(b.upload_from_string, data, retry=None)
             # this will overwrite existing content.
         else:
             try:
