@@ -52,6 +52,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
             return False
 
     def iterdir(self):
+        # A naive, inefficient implementation.
         p0 = self._path  # this could be '/'.
         if not p0.endswith('/'):
             p0 += '/'
