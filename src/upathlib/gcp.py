@@ -138,6 +138,15 @@ class GcpBlobUpath(BlobUpath):
     def is_file(self) -> bool:
         return self._blob().exists()
 
+    def iterdir(self):
+        prefix = self._blob_name + '/'
+        k = len(prefix)
+        for p in self._client.list_blobs(self._bucket, prefix=prefix, delimiter='/'):
+            yield self / p.name[k:]  # "files"
+        for page in self._client.list_blobs(self._bucket, prefix=prefix, delimiter='/').pages:
+            for p in page.prefixes:
+                yield self / p[k:].rstrip('/')  # "subdirectories"
+
     def _rate_limit(self, func, *args, **kwargs):
         # `func` is a create/update/delete function.
         while True:

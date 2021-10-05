@@ -56,14 +56,15 @@ def _execute_in_thread_pool(jobs, concurrency: int = None):
             results.append(f(*args, **kwargs))
         return results
 
-    pool = concurrent.futures.ThreadPoolExecutor(concurrency)
-    tasks = []
-    for f, args, kwargs in jobs:
-        tasks.append(pool.submit(f, *args, **kwargs))
-    results = []
-    for f in concurrent.futures.as_completed(tasks):
-        results.append(f.result())
-    return results
+    with concurrent.futures.ThreadPoolExecutor(concurrency) as pool:
+        tasks = []
+        for f, args, kwargs in jobs:
+            tasks.append(pool.submit(f, *args, **kwargs))
+        results = []
+        for f in concurrent.futures.as_completed(tasks):
+            results.append(f.result())
+
+        return results
 
 
 def _should_update(source: Upath, target: Upath) -> bool:
