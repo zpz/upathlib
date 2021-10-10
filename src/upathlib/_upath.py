@@ -14,6 +14,8 @@ import logging
 import os
 import os.path
 import pathlib
+import sys
+import time
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
@@ -55,9 +57,9 @@ def _execute_in_thread_pool(jobs,
     use `retries=0`.
     '''
     if concurrency is None:
-        concurrency = 4
+        concurrency = 16
     else:
-        assert 0 <= concurrency <= 32
+        assert 0 <= concurrency <= 64
         if concurrency < 1:
             concurrency = 1
 
@@ -76,26 +78,42 @@ def _execute_in_thread_pool(jobs,
 
     with concurrent.futures.ThreadPoolExecutor(concurrency) as pool:
         results = []
-        for _ in range(retries + 1):
-            tasks = []
-            bad = []
-            for args in jobs:
-                tasks.append(pool.submit(ff, *args))
-            for f in concurrent.futures.as_completed(tasks):
-                z = f.result()
-                if isinstance(z, MyExc):
-                    bad.append(z.args)
-                else:
-                    results.append(z)
+        tasks = []
+        bad = []
+        for args in jobs:
+            tasks.append(pool.submit(ff, *args))
+        for f in concurrent.futures.as_completed(tasks):
+            z = f.result()
+            if isinstance(z, MyExc):
+                bad.append(z.args)
+            else:
+                results.append(z)
+        jobs = bad
 
-            if not bad:
-                break
-            jobs = bad
-
-        if bad:
-            logger.error('failed on these entries:\n%s', bad)
-
+    if not jobs:
         return results
+
+    # Switch to sequential retry.
+    # Some issues could be due to large files.
+    for _ in range(retry_on_exceptions):
+        logger.warning('failed on %d items; retrying', len(jobs))
+        time.sleep(0.6)
+        bad = []
+        for args in jobs:
+            z = ff(*args)
+            if isinstance(z, MyExc):
+                bad.append(z.args)
+            else:
+                results.append(z)
+        if not bad:
+            break
+        jobs = bad
+
+    if not jobs:
+        return results
+
+    print(f'failed on {len(jobs)} items: {jobs}', file=sys.stderr)
+    raise RuntimeError(f'failed on {len(jobs)} items')
 
 
 def _should_update(source: Upath, target: Upath) -> bool:
