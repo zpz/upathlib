@@ -50,6 +50,10 @@ def _execute_in_thread_pool(jobs,
                             retry_on_exceptions: Sequence[Type[Exception]] = None,
                             retries: int = 3,
                             ):
+    '''
+    If you want to skip certain errors and don't retry on them,
+    use `retries=0`.
+    '''
     if concurrency is None:
         concurrency = 4
     else:
@@ -57,17 +61,18 @@ def _execute_in_thread_pool(jobs,
         if concurrency < 1:
             concurrency = 1
 
-    if retry_on_exceptions is None:
-        retry_on_exceptions = []
-
     class MyExc(Exception):
         pass
 
-    def ff(f, args, kwargs):
-        try:
+    if retry_on_exceptions is None:
+        def ff(f, args, kwargs):
             return f(*args, **kwargs)
-        except retry_on_exceptions:
-            return MyExc(f, args, kwargs)
+    else:
+        def ff(f, args, kwargs):
+            try:
+                return f(*args, **kwargs)
+            except retry_on_exceptions:
+                return MyExc(f, args, kwargs)
 
     with concurrent.futures.ThreadPoolExecutor(concurrency) as pool:
         results = []
@@ -77,7 +82,7 @@ def _execute_in_thread_pool(jobs,
             for f, args, kwargs in jobs:
                 tasks.append(pool.submit(ff, f, args, kwargs))
             for f in concurrent.futures.as_completed(tasks):
-                z = f.results()
+                z = f.result()
                 if isinstance(z, MyExc):
                     bad.append(z.args)
                 else:
