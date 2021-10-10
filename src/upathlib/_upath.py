@@ -17,7 +17,7 @@ import pathlib
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Iterator, TypeVar, Any, Optional, Callable, AsyncIterator
+from typing import List, Iterator, Sequence, Type, TypeVar, Any, Optional, Callable, AsyncIterator
 
 from .serializer import (
     ByteSerializer, TextSerializer,
@@ -44,25 +44,51 @@ class FileInfo:
     details: Any   # platform-dependent
 
 
-def _execute_in_thread_pool(jobs, concurrency: int = None):
+def _execute_in_thread_pool(jobs,
+                            concurrency: int = None,
+                            *,
+                            retry_on_exceptions: Sequence[Type[Exception]] = None,
+                            retries: int = 3,
+                            ):
     if concurrency is None:
         concurrency = 4
     else:
         assert 0 <= concurrency <= 32
+        if concurrency < 1:
+            concurrency = 1
 
-    if concurrency <= 1:
-        results = []
-        for f, args, kwargs in jobs:
-            results.append(f(*args, **kwargs))
-        return results
+    if retry_on_exceptions is None:
+        retry_on_exceptions = []
+
+    class MyExc(Exception):
+        pass
+
+    def ff(f, args, kwargs):
+        try:
+            return f(*args, **kwargs)
+        except retry_on_exceptions:
+            return MyExc(f, args, kwargs)
 
     with concurrent.futures.ThreadPoolExecutor(concurrency) as pool:
-        tasks = []
-        for f, args, kwargs in jobs:
-            tasks.append(pool.submit(f, *args, **kwargs))
         results = []
-        for f in concurrent.futures.as_completed(tasks):
-            results.append(f.result())
+        for _ in range(retries + 1):
+            tasks = []
+            bad = []
+            for f, args, kwargs in jobs:
+                tasks.append(pool.submit(ff, f, args, kwargs))
+            for f in concurrent.futures.as_completed(tasks):
+                z = f.results()
+                if isinstance(z, MyExc):
+                    bad.append(z.args)
+                else:
+                    results.append(z)
+
+            if not bad:
+                break
+            jobs = bad
+
+        if bad:
+            logger.error('failed on these entries:\n%s', bad)
 
         return results
 
@@ -235,6 +261,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                  concurrency: int = None,
                  exist_action: str = None,
                  update_filter: Callable[[Upath, Upath], bool] = None,
+                 **kwargs,
                  ) -> int:
         '''Analogous to `copy_file`.
 
@@ -253,7 +280,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     {'exist_action': exist_action, 'update_filter': update_filter},
                 )
 
-        nn = _execute_in_thread_pool(foo(), concurrency)
+        nn = _execute_in_thread_pool(foo(), concurrency, **kwargs)
         return sum(nn)
 
     def _copy_file(self: T, target: T) -> None:
@@ -336,6 +363,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    concurrency: int = None,
                    exist_action: str = None,
                    update_filter: Callable[[Upath, Upath], bool] = None,
+                   **kwargs,
                    ) -> int:
         '''Copy the content of `self` to the specified `target`,
         which is typically in another store.
@@ -360,7 +388,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     {'exist_action': exist_action, 'update_filter': update_filter},
                 )
 
-        nn = _execute_in_thread_pool(foo(), concurrency)
+        nn = _execute_in_thread_pool(foo(), concurrency, **kwargs)
         return sum(nn)
 
     def _export_file(self, target: Upath) -> None:
@@ -422,13 +450,15 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    concurrency: int = None,
                    exist_action: str = None,
                    update_filter: Callable[[Upath, Upath], bool] = None,
+                   **kwargs,
                    ) -> int:
         '''Analogous to `export_dir`.
         '''
         return source.export_dir(self,
                                  concurrency=concurrency,
                                  exist_action=exist_action,
-                                 update_filter=update_filter)
+                                 update_filter=update_filter,
+                                 **kwargs)
 
     def _import_file(self, source: Upath) -> None:
         # `self` does not exist, hence no concern about overwriting.
@@ -590,7 +620,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
 
-    def remove_dir(self, *, concurrency: int = None) -> int:
+    def remove_dir(self, *, concurrency: int = None, **kwargs) -> int:
         '''Remove the directory pointed to by `self`,
         along with all its contents, recursively.
 
@@ -606,7 +636,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             for p in self.riterdir():
                 yield p.remove_file, [], {}
 
-        nn = _execute_in_thread_pool(foo(), concurrency)
+        nn = _execute_in_thread_pool(foo(), concurrency, **kwargs)
         return sum(nn)
 
     @abc.abstractmethod
@@ -624,6 +654,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    target: str,
                    *,
                    concurrency: int = None,
+                   **kwargs,
                    ) -> T:
         '''Analogous to `rename_file`.
 
@@ -649,7 +680,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     {},
                 )
 
-        _ = _execute_in_thread_pool(foo(), concurrency)
+        _ = _execute_in_thread_pool(foo(), concurrency, **kwargs)
         return target_
 
     def _rename_file(self: T, target: T):
