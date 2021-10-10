@@ -79,8 +79,8 @@ def _execute_in_thread_pool(jobs,
         for _ in range(retries + 1):
             tasks = []
             bad = []
-            for f, args, kwargs in jobs:
-                tasks.append(pool.submit(ff, f, args, kwargs))
+            for args in jobs:
+                tasks.append(pool.submit(ff, *args))
             for f in concurrent.futures.as_completed(tasks):
                 z = f.result()
                 if isinstance(z, MyExc):
