@@ -25,33 +25,29 @@ logger = logging.getLogger(__name__)
 class GcpBlobUpath(BlobUpath):
     BLOB_DEFAULT_GENERATION: int = 1
 
-    def __init__(self, *parts: str, bucket_name: str, account_info: dict):
-        super().__init__(*parts,
-                         bucket_name=bucket_name,
-                         account_info=account_info)
-        self._account_info = account_info
-        self._bucket_name = bucket_name
-        self._client_ = None
-        self._bucket_ = None
-        self._lock_count: int = 0
-
-    @property
-    def _client(self):
-        if self._client_ is None:
+    def __init__(self, *parts: str, bucket_name: str, account_info: dict,
+                 client=None, bucket=None):
+        if client is None:
             gcp_cred = service_account.Credentials.from_service_account_info(
-                self._account_info)
-            self._client_ = storage.Client(
-                project=self._account_info['project_id'],
+                account_info)
+            client = storage.Client(
+                project=account_info['project_id'],
                 credentials=gcp_cred,
             )
-        return self._client_
+        if bucket is None:
+            bucket = client.bucket(bucket_name)
+            # bucket = client.get_bucket(bucket_name)
 
-    @property
-    def _bucket(self):
-        if self._bucket_ is None:
-            self._bucket_ = self._client.bucket(self._bucket_name)
-            # self._bucket = self._client.get_bucket(self._bucket_name)
-        return self._bucket_
+        super().__init__(*parts,
+                         bucket_name=bucket_name,
+                         account_info=account_info,
+                         client=client,
+                         bucket=bucket)
+        self._account_info = account_info
+        self._bucket_name = bucket_name
+        self._client = client
+        self._bucket = bucket
+        self._lock_count: int = 0
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
