@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Iterator, Sequence, Type, TypeVar, Any, Optional, Callable, AsyncIterator
+from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Callable, AsyncIterator
 
 from .serializer import (
     ByteSerializer, TextSerializer,
@@ -49,7 +49,8 @@ class FileInfo:
 def _execute_in_thread_pool(jobs,
                             concurrency: int = None,
                             *,
-                            retry_on_exceptions: Sequence[Type[Exception]] = None,
+                            retry_on_exceptions: Optional[Type[Exception],
+                                                          Tuple[Type[Exception]]] = None,
                             retries: int = 3,
                             ):
     '''
@@ -95,7 +96,7 @@ def _execute_in_thread_pool(jobs,
 
     # Switch to sequential retry.
     # Some issues could be due to large files.
-    for _ in range(retry_on_exceptions):
+    for _ in range(retries):
         logger.warning('failed on %d items; retrying', len(jobs))
         time.sleep(0.6)
         bad = []
@@ -677,6 +678,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    target: str,
                    *,
                    concurrency: int = None,
+                   exist_ok: bool = False,
                    **kwargs,
                    ) -> T:
         '''Analogous to `rename_file`.
@@ -691,8 +693,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if target_ == self:
             return self
 
-        if target_.exists():
-            raise FileExistsError(target_)
+        if not exist_ok:
+            if target_.exists():
+                raise FileExistsError(target_)
 
         def foo():
             for p in self.riterdir():
