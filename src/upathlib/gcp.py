@@ -12,8 +12,8 @@ import time
 from io import BufferedReader, UnsupportedOperation
 from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
-from google.api_core.exceptions import NotFound, PreconditionFailed, TooManyRequests
-# type: ignore
+from google.api_core.exceptions import (  # type: ignore
+    NotFound, PreconditionFailed, TooManyRequests)  # type: ignore
 
 from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
 from ._blob import BlobUpath
@@ -25,33 +25,15 @@ logger = logging.getLogger(__name__)
 class GcpBlobUpath(BlobUpath):
     BLOB_DEFAULT_GENERATION: int = 1
 
-    def __init__(self, *parts: str, bucket_name: str, account_info: dict):
-        super().__init__(*parts,
-                         bucket_name=bucket_name,
-                         account_info=account_info)
-        self._account_info = account_info
+    def __init__(self, *paths: str, bucket_name: str, account_info: dict):
+        super().__init__(*paths)
         self._bucket_name = bucket_name
-        self._client_ = None
-        self._bucket_ = None
+        self._account_info = account_info
+        self._client = None
+        self._bucket = None
         self._lock_count: int = 0
 
-    @property
-    def _client(self):
-        if self._client_ is None:
-            gcp_cred = service_account.Credentials.from_service_account_info(
-                self._account_info)
-            self._client_ = storage.Client(
-                project=self._account_info['project_id'],
-                credentials=gcp_cred,
-            )
-        return self._client_
-
-    @property
-    def _bucket(self):
-        if self._bucket_ is None:
-            self._bucket_ = self._client.bucket(self._bucket_name)
-            # self._bucket = self._client.get_bucket(self._bucket_name)
-        return self._bucket_
+        self._is_file: bool = None  # type: ignore
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
@@ -96,27 +78,73 @@ class GcpBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
-    def _blob(self, **kwargs):
-        return self._bucket.blob(self._blob_name, **kwargs)
+    def __getstate__(self):
+        # Customize pickle because `self._client` and `self._bucket`
+        # (when not None) can't be pickled.
+        return {
+            '_path': self._path,
+            '_bucket_name': self._bucket_name,
+            '_account_info': self._account_info,
+        }
 
-    def _get_blob(self, **kwargs):
-        return self._bucket.get_blob(self._blob_name, **kwargs)
-        # This is `None` if the blob does not exist.
+    def __setstate__(self, data):
+        self._path = data['_path']
+        self._bucket_name = data['_bucket_name']
+        self._account_info = data['_account_info']
+        self._client = None
+        self._bucket = None
+        self._blob = None
+        self._lock_count = 0
+
+    @property
+    def client(self):
+        if self._client is None:
+            gcp_cred = service_account.Credentials.from_service_account_info(
+                self._account_info)
+            self._client = storage.Client(
+                project=self._account_info['project_id'],
+                credentials=gcp_cred,
+            )
+        return self._client
+
+    @property
+    def bucket(self):
+        if self._bucket is None:
+            self._bucket = self.client.bucket(self._bucket_name)
+            # self._bucket = self.client.get_bucket(self._bucket_name)
+        return self._bucket
+
+    @property
+    def bucket_name(self):
+        return self._bucket_name
+
+    def blob(self, **kwargs):
+        if not kwargs:
+            if self._blob is None:
+                self._blob = self.bucket.blob(self.blob_name)
+            return self._blob
+        return self.bucket.blob(self.blob_name, **kwargs)
 
     def _copy_file(self, target: GcpBlobUpath):
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
-        self._bucket.copy_blob(
-            self._blob(), target._bucket, target._blob_name
+        self.bucket.copy_blob(
+            self.blob(), target.bucket, target.blob_name
         )
+
+    def export_dir(self, target, **kwargs):
+        _ = self.client
+        _ = self.bucket
+        return super().export_dir(target, **kwargs)
 
     def _export_file(self, target: Upath):
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
         os.makedirs(str(target.parent), exist_ok=True)
-        self._blob().download_to_filename(str(target))
+        self.blob().download_to_filename(str(target))
+        # TODO: look into `retry`.
 
     def file_info(self):
-        b = self._get_blob()
+        b = self.bucket.get_blob(self.blob_name)
         if b is not None:
             return FileInfo(
                 ctime=b.time_created.timestamp(),
@@ -130,20 +158,31 @@ class GcpBlobUpath(BlobUpath):
             # then its `ctime` and `mtime` are both updated.
             # My experiments showed that `ctime` and `mtime` are equal.
 
+    def import_dir(self, source, **kwargs):
+        _ = self.client
+        _ = self.bucket
+        return super().import_dir(source, **kwargs)
+
     def _import_file(self, source: Upath):
         if not isinstance(source, LocalUpath):
             return super()._import_file(source)
-        self._blob().upload_from_filename(str(source))
+        self.blob().upload_from_filename(str(source))
+        # TODO: look into `retry`.
 
-    def is_file(self) -> bool:
-        return self._blob().exists()
+    def is_file(self, use_cache: bool = True) -> bool:
+        if (not use_cache) or (self._is_file is None):
+            self._is_file = self.blob().exists()
+        return self._is_file
 
     def iterdir(self):
-        prefix = self._blob_name + '/'
+        prefix = self.blob_name + '/'
         k = len(prefix)
-        for p in self._client.list_blobs(self._bucket, prefix=prefix, delimiter='/'):
-            yield self / p.name[k:]  # "files"
-        for page in self._client.list_blobs(self._bucket, prefix=prefix, delimiter='/').pages:
+        for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
+            obj = self / p.name[k:]  # "files"
+            obj._blob = p
+            obj._is_file = True
+            yield obj
+        for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
             for p in page.prefixes:
                 yield self / p[k:].rstrip('/')  # "subdirectories"
 
@@ -153,14 +192,14 @@ class GcpBlobUpath(BlobUpath):
             try:
                 return func(*args, **kwargs)
             except TooManyRequests:
-                time.sleep(random.uniform(0.1, 0.3))
+                time.sleep(random.uniform(0.05, 0.3))
 
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
             timeout = 3600
-        b = self._blob()
+        b = self.blob()
         t0 = time.perf_counter()
         while True:
             if not b.exists():
@@ -173,7 +212,7 @@ class GcpBlobUpath(BlobUpath):
             t1 = time.perf_counter()
             if t1 - t0 >= timeout:
                 raise LockAcquisitionTimeoutError(self, t1 - t0)
-            time.sleep(random.uniform(0.05, 1.0))
+            time.sleep(random.uniform(0.05, 0.5))
 
     @contextlib.contextmanager
     def lock(self, *, timeout=None):
@@ -196,30 +235,41 @@ class GcpBlobUpath(BlobUpath):
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
-                self._rate_limit(self._blob().delete)
+                self._rate_limit(self.blob().delete)
 
     def read_bytes(self):
         try:
-            return self._blob().download_as_bytes()
+            return self.blob().download_as_bytes()
+            # TODO: look into `retry`.
         except NotFound as e:
             raise FileNotFoundError(self) from e
 
-    # TODO:
-    # `remove_dir` might be more efficient if using
-    # `p.delete()` on the elements returned by `self._client.list_blobs`.
-
     def remove_file(self):
         try:
-            self._rate_limit(self._blob().delete)
+            self._rate_limit(self.blob().delete)
+            self._blob = None
             return 1
         except NotFound:
+            self._blob = None
             return 0
 
     def riterdir(self):
-        prefix = self._blob_name + '/'
+        prefix = self.blob_name + '/'
         k = len(prefix)
-        for p in self._client.list_blobs(self._bucket, prefix=prefix):
-            yield self / p.name[k:]
+        for p in self.client.list_blobs(self.bucket, prefix=prefix):
+            obj = self / p.name[k:]
+            obj._blob = p
+            obj._is_file = True
+            yield obj
+
+    def with_path(self, *paths: str):
+        obj = self.__class__(*paths, bucket_name=self._bucket_name,
+                             account_info=self._account_info)
+        obj._client = self._client
+        obj._bucket = self._bucket
+        obj._is_file = None  # type: ignore
+        obj._blob = None
+        return obj
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':
@@ -227,7 +277,10 @@ class GcpBlobUpath(BlobUpath):
         if isinstance(data, BufferedReader):
             data = data.read()
         nbytes = len(data)
-        b = self._blob()
+        b = self.blob()
+
+        # TODO: look into `retry`.
+
         if overwrite:
             self._rate_limit(b.upload_from_string, data, retry=None)
             # this will overwrite existing content.

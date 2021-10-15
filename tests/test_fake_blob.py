@@ -90,7 +90,7 @@ class FakeBlobUpath(BlobUpath):
     a concrete subclass of BlobUpath needs to implement.'''
 
     def __init__(self, *parts: str, bucket: str):
-        super().__init__(*parts, bucket=bucket)
+        super().__init__(*parts)
         self._bucket = bucket
 
     def file_info(self):
@@ -126,6 +126,9 @@ class FakeBlobUpath(BlobUpath):
             return 1
         except ResourceNotFoundError:
             return 0
+
+    def with_path(self, *paths):
+        return self.__class__(*paths, bucket=self._bucket)
 
     def write_bytes(self, data, *, overwrite=False):
         try:
