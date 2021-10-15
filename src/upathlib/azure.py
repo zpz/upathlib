@@ -13,7 +13,6 @@ import time
 from contextlib import contextmanager, asynccontextmanager
 from datetime import datetime
 from io import UnsupportedOperation
-from typing import Optional
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient  # type: ignore
 # from azure.storage.blob.aio import (
@@ -35,19 +34,13 @@ logger = logging.getLogger(__name__)
 
 class AzureBlobUpath(BlobUpath):
     def __init__(self,
-                 *parts: str,
+                 *paths: str,
                  account_name: str,
                  account_key: str,
                  sas_token: str,
                  container_name: str,
                  ):
-        super().__init__(
-            *parts,
-            account_name=account_name,
-            account_key=account_key,
-            sas_token=sas_token,
-            container_name=container_name
-        )
+        super().__init__(*paths)
 
         self._account_name = account_name
         self._account_key = account_key
@@ -55,11 +48,11 @@ class AzureBlobUpath(BlobUpath):
         self._account_url = f"https://{account_name}.blob.core.windows.net"
         self._container_name = container_name
 
-        self._container_client: Optional[ContainerClient] = None
-        self._blob_client: Optional[BlobClient] = None
+        self._container_client: ContainerClient = None
+        self._blob_client: BlobClient = None
         # self._a_container_client: Optional[aContainerClient] = None
         # self._a_blob_client: Optional[aBlobClient] = None
-        self._lease: Optional[BlobLeaseClient] = None
+        self._lease: BlobLeaseClient = None
         self._lock_count: int = 0
 
     def __repr__(self) -> str:
@@ -104,6 +97,10 @@ class AzureBlobUpath(BlobUpath):
         if other._container_name != self._container_name:
             return NotImplemented
         return self._path >= other._path
+
+    @property
+    def container_name(self):
+        return self._container_name
 
     def _copy_file_from(self, source):
         with self._provide_blob_client():
@@ -158,7 +155,7 @@ class AzureBlobUpath(BlobUpath):
 
     def iterdir(self):
         with self._provide_container_client():
-            prefix = self._blob_name + '/'
+            prefix = self.blob_name + '/'
             k = len(prefix)
             for p in self._container_client.walk_blobs(
                     name_starts_with=prefix):
@@ -248,7 +245,7 @@ class AzureBlobUpath(BlobUpath):
             bc = BlobClient(
                 account_url=self._account_url,
                 container_name=self._container_name,
-                blob_name=self._blob_name,
+                blob_name=self.blob_name,
                 credential=self._sas_token or self._account_key,
             )
             self._blob_client = bc
@@ -259,6 +256,9 @@ class AzureBlobUpath(BlobUpath):
                 self._blob_client = None
         else:
             yield
+
+    # TODO: how to optimize this part so that
+    # new objects can reuse the ContainerClient?
 
     @ contextmanager
     def _provide_container_client(self):
@@ -297,11 +297,20 @@ class AzureBlobUpath(BlobUpath):
 
     def riterdir(self):
         with self._provide_container_client():
-            prefix = self._blob_name + '/'
+            prefix = self.blob_name + '/'
             k = len(prefix)
             for p in self._container_client.list_blobs(
                     name_starts_with=prefix):
                 yield self / p.name[k:]
+
+    def with_path(self, *paths):
+        return self.__class__(
+            *paths,
+            account_name=self._account_name,
+            account_key=self._account_key,
+            sas_token=self._sas_token,
+            container_name=self._container_name,
+        )
 
     def write_bytes(self, data, *, overwrite=False):
         if self._path == '/':

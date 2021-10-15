@@ -35,6 +35,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         os.makedirs(target.localpath.parent, exist_ok=True)
         shutil.copyfile(self.localpath, target.localpath)
 
+    def export_dir(self, target: Upath, **kwargs):
+        if isinstance(target, LocalUpath):
+            return super().export_dir(target, **kwargs)
+        return target.import_dir(self, **kwargs)
+
     def _export_file(self, target: Upath):
         if isinstance(target, LocalUpath):
             self._copy_file(target)
@@ -58,6 +63,11 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         # If an existing file is written to again using `write_...`,
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
+
+    def import_dir(self, source: Upath, **kwargs):
+        if isinstance(source, LocalUpath):
+            return super().import_dir(source, **kwargs)
+        return source.export_dir(self, **kwargs)
 
     def _import_file(self, source: Upath):
         if isinstance(source, LocalUpath):

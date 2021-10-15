@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from functools import partial
 from io import UnsupportedOperation
-from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Callable, AsyncIterator
+from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Union, Callable, AsyncIterator
 
 from .serializer import (
     ByteSerializer, TextSerializer,
@@ -46,13 +46,14 @@ class FileInfo:
     details: Any   # platform-dependent
 
 
-def _execute_in_thread_pool(jobs,
-                            concurrency: int = None,
-                            *,
-                            retry_on_exceptions: Optional[Type[Exception],
-                                                          Tuple[Type[Exception]]] = None,
-                            retries: int = 3,
-                            ):
+def _execute_in_thread_pool(
+        jobs,
+        concurrency: int = None,
+        *,
+        retry_on_exceptions: Optional[Union[Type[Exception],
+                                            Tuple[Type[Exception]]]] = None,
+        retries: int = 3,
+):
     '''
     If you want to skip certain errors and don't retry on them,
     use `retries=0`.
@@ -158,7 +159,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return True
 
     @classmethod
-    def register_read_write_byte_format(cls, serde: ByteSerializer, name: str):
+    def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
         def _write(self, data, *, overwrite: bool = False):
             return self.write_bytes(serde.serialize(data), overwrite=overwrite)
 
@@ -183,7 +184,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         setattr(cls, f'a_read_{name}', _a_read)
 
     @classmethod
-    def register_read_write_text_format(cls, serde: TextSerializer, name: str):
+    def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
         def _write(self, data, *, overwrite: bool = False):
             return self.write_text(serde.serialize(data), overwrite=overwrite)
 
@@ -207,7 +208,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         setattr(cls, f'read_{name}', _read)
         setattr(cls, f'a_read_{name}', _a_read)
 
-    def __init__(self, *pathsegments: str, **kwargs):
+    def __init__(self, *pathsegments: str):
         '''`Upath` is the base class for a client to a blob store,
         including local file system as a special case.
 
@@ -219,28 +220,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         For a local POSIX file system, the root is the regular `/`.
         For Azure blob store, the root is that of a "container".
         For AWS and GCP blob stores, the root is that of a "bucket".
-
-        `**kwargs`: additional arguments. This usually concerns
-        credentials and top-level "divisions" for a blob store.
-        (For example, "container" for Azure, "bucket" for AWS or GCP.)
-        In general, these arguments should be read-only
-        and remain unchanged during the lifetime of the object.
-        For local file system, this is not needed (refer to class `LocalUpath`).
         '''
 
         self._path = os.path.normpath(os.path.join(
             '/', *pathsegments))  # pylint: disable=no-value-for-parameter
         # The path is always "absolute" starting with '/'.
         # Unless it is `/`, it does not have a trailing `/`.
-
-        self._kwargs = kwargs
-        # The extra `kwargs` is handled this way so that
-        # the few functions that calls `self.__class__(...)`
-        # work with subclasses that take additional arguments
-        # in their `__init__`.
-        # A subclass that uses such extra arguments may need to
-        # redefine the "comparison" special methods to take
-        # into account some of these parameters as needed.
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self._path}')"
@@ -404,8 +389,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Return the number of files copied.
         '''
         def foo():
+            self_path = self.path
             for p in self.riterdir():
-                extra = str(p.path.relative_to(self.path))
+                extra = str(p.path.relative_to(self_path))
                 yield (
                     p.export_file,
                     [target / extra],
@@ -448,10 +434,8 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                                       exist_action=exist_action,
                                       update_filter=update_filter):
                 target.remove_file()
-                logger.info("copying '%s' to '%s'", self, target)
-                self._export_file(target)
-                return 1
-            return 0
+            else:
+                return 0
 
         if target.is_dir():
             # Do not delete.
@@ -478,11 +462,18 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                    ) -> int:
         '''Analogous to `export_dir`.
         '''
-        return source.export_dir(self,
-                                 concurrency=concurrency,
-                                 exist_action=exist_action,
-                                 update_filter=update_filter,
-                                 **kwargs)
+        def foo():
+            source_path = source.path
+            for p in source.riterdir():
+                extra = str(p.path.relative_to(source_path))
+                yield (
+                    (self / extra).import_file,
+                    [p],
+                    {'exist_action': exist_action, 'update_filter': update_filter},
+                )
+
+        nn = _execute_in_thread_pool(foo(), concurrency, **kwargs)
+        return sum(nn)
 
     def _import_file(self, source: Upath) -> None:
         # `self` does not exist, hence no concern about overwriting.
@@ -497,10 +488,24 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     exist_action: str = None,
                     update_filter: Callable[[Upath, Upath], bool] = None,
                     ) -> int:
-        return source.export_file(self,
-                                  exist_action=exist_action,
-                                  update_filter=update_filter,
-                                  )
+        if not source.is_file():
+            raise FileNotFoundError(source)
+
+        if self.is_file():
+            if self._should_overwrite(source, self,
+                                      exist_action=exist_action,
+                                      update_filter=update_filter):
+                self.remove_file()
+            else:
+                return 0
+
+        if self.is_dir():
+            # Do not delete.
+            raise FileExistsError(self)
+
+        logger.info("copying '%s' to '%s'", source, self)
+        self._import_file(source)
+        return 1
 
     @ abc.abstractmethod
     def is_dir(self) -> bool:
@@ -562,7 +567,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     def joinpath(self: T, *other: str) -> T:
         '''Join this path with more segments, return the new path object.'''
-        return self.__class__(self._path, *other, **self._kwargs)
+        return self.with_path(self._path, *other)
 
     @ contextlib.contextmanager
     @ abc.abstractmethod
@@ -613,7 +618,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
     @ property
     def parent(self: T) -> T:
-        return self.__class__(str(self.path.parent), **self._kwargs)
+        return self.with_path(str(self.path.parent))
 
     @ property
     def path(self) -> pathlib.PurePosixPath:
@@ -788,18 +793,30 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         return self.path.suffixes
 
     def with_name(self: T, name: str) -> T:
-        return self.__class__(str(self.path.with_name(name)), **self._kwargs)
+        return self.with_path(str(self.path.with_name(name)))
+
+    def with_path(self: T, *paths) -> T:
+        '''
+        Returns a new object of the same class at the specified path.
+        The new path is unrelated to the current path; in other words,
+        the new path is not "relative" to the current path.
+
+        Meta data such as account info remains the same.
+
+        Subclass needs to reimplement this method
+        if its `__init__` expects additional args.
+        '''
+        return self.__class__(*paths)
 
     # def with_stem(self: T, stem: str) -> T:
     #     # Available in Python 3.9+.
-    #     return self.__class__(str(self.path.with_stem(stem)), **self._kwargs)
+    #     return self.with_path(str(self.path.with_stem(stem)))
 
     def with_suffix(self: T, suffix: str) -> T:
         '''`suffix` should include a dot, like '.txt'.
         If `suffix` is '', the effect is to remove the existing suffix.
         '''
-        return self.__class__(str(self.path.with_suffix(suffix)),
-                              **self._kwargs)
+        return self.with_path(str(self.path.with_suffix(suffix)))
 
     @ abc.abstractmethod
     def write_bytes(self,

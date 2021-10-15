@@ -15,7 +15,7 @@ def _resolve_local_path(p):
 
 class BlobUpath(Upath):  # pylint: disable=abstract-method
     @property
-    def _blob_name(self) -> str:
+    def blob_name(self) -> str:
         return self._path.lstrip('/')
 
     def download_dir(self, target, **kwargs) -> int:
@@ -46,7 +46,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         an "empty directory" in blob stores.
         '''
         try:
-            next(self.riterdir())
+            next(self.iterdir())
             return True
         except StopIteration:
             return False
