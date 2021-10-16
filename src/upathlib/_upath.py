@@ -5,11 +5,9 @@ from __future__ import annotations
 # Will no longer be needed in Python 3.10.
 
 import abc
-import asyncio
 import concurrent.futures
 import contextlib
 import datetime
-import functools
 import logging
 import os
 import os.path
@@ -17,9 +15,8 @@ import pathlib
 import sys
 import time
 from dataclasses import dataclass
-from functools import partial
 from io import UnsupportedOperation
-from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Union, Callable, AsyncIterator
+from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Union, Callable
 
 from .serializer import (
     ByteSerializer, TextSerializer,
@@ -163,50 +160,24 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         def _write(self, data, *, overwrite: bool = False):
             return self.write_bytes(serde.serialize(data), overwrite=overwrite)
 
-        async def _a_write(self, data, *, overwrite: bool = False):
-            return await asyncio.get_running_loop().run_in_executor(
-                None,
-                functools.partial(_write, overwrite=overwrite), self, data,
-            )
-
         def _read(self):
             z = self.read_bytes()
             return serde.deserialize(z)
 
-        async def _a_read(self):
-            return await asyncio.get_running_loop().run_in_executor(
-                None, _read, self,
-            )
-
         setattr(cls, f'write_{name}', _write)
-        setattr(cls, f'a_write_{name}', _a_write)
         setattr(cls, f'read_{name}', _read)
-        setattr(cls, f'a_read_{name}', _a_read)
 
     @classmethod
     def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
         def _write(self, data, *, overwrite: bool = False):
             return self.write_text(serde.serialize(data), overwrite=overwrite)
 
-        async def _a_write(self, data, *, overwrite: bool = False):
-            return await asyncio.get_running_loop().run_in_executor(
-                None,
-                functools.partial(_write, overwrite=overwrite), self, data,
-            )
-
         def _read(self):
             z = self.read_text()
             return serde.deserialize(z)
 
-        async def _a_read(self):
-            return await asyncio.get_running_loop().run_in_executor(
-                None, _read, self,
-            )
-
         setattr(cls, f'write_{name}', _write)
-        setattr(cls, f'a_write_{name}', _a_write)
         setattr(cls, f'read_{name}', _read)
-        setattr(cls, f'a_read_{name}', _a_read)
 
     def __init__(self, *pathsegments: str):
         '''`Upath` is the base class for a client to a blob store,
@@ -395,7 +366,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 yield (
                     p.export_file,
                     [target / extra],
-                    {'exist_action': exist_action, 'update_filter': update_filter},
+                    {'exist_action': exist_action,
+                     'check_source_exist': False,
+                     'update_filter': update_filter},
                 )
 
         nn = _execute_in_thread_pool(foo(), concurrency, **kwargs)
@@ -413,6 +386,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                     *,
                     exist_action: str = None,
                     update_filter: Callable[[Upath, Upath], bool] = None,
+                    check_source_exist: bool = True,
                     ) -> int:
         '''Copy the file to the specified `target`, which is typically
         in another store.
@@ -426,7 +400,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         Compare with `copy_file`, which make copies within the same store.
         '''
-        if not self.is_file():
+        if check_source_exist and not self.is_file():
             raise FileNotFoundError(self)
 
         if target.is_file():
@@ -469,7 +443,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
                 yield (
                     (self / extra).import_file,
                     [p],
-                    {'exist_action': exist_action, 'update_filter': update_filter},
+                    {'exist_action': exist_action,
+                     'check_source_exist': False,
+                     'update_filter': update_filter},
                 )
 
         nn = _execute_in_thread_pool(foo(), concurrency, **kwargs)
@@ -487,8 +463,9 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
     def import_file(self, source: Upath, *,
                     exist_action: str = None,
                     update_filter: Callable[[Upath, Upath], bool] = None,
+                    check_source_exist: bool = True,
                     ) -> int:
-        if not source.is_file():
+        if check_source_exist and not source.is_file():
             raise FileNotFoundError(source)
 
         if self.is_file():
@@ -860,59 +837,10 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         self.write_bytes(z, overwrite=overwrite)
         return n
 
-    async def a_iterdir(self: T) -> AsyncIterator[T]:
-        # TODO: may need reimplementation.
-        for p in self.iterdir():
-            yield p
 
-    @ contextlib.asynccontextmanager
-    async def a_lock(self, *, timeout: int = None):
-        # TODO: a naive implementation.
-        with self.lock(timeout=timeout):
-            yield
-
-    async def a_riterdir(self: T) -> AsyncIterator[T]:
-        # TODO: may need reimplementation.
-        for p in self.riterdir():
-            yield p
-
-
-# Add methods 'read_json', 'write_json', 'a_read_json', 'a_write_json', etc.
+# Add methods 'read_json', 'write_json', 'read_pickle', 'write_pickle', etc.
 Upath.register_read_write_text_format(JsonSerializer, 'json')
 Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
 Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
 Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
 Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')
-
-
-def make_a_method(name):
-    '''
-    Create an async method named f'a_{name}' based on
-    the sync method 'name'. The async method has the same
-    interface as the sync one, i.e. they take the same parameters.
-    '''
-    async def f(self, *args, **kwargs):
-        f = partial(getattr(self, name), *args, **kwargs)
-        return await asyncio.get_running_loop().run_in_executor(
-            None, f
-        )
-
-    f.__name__ = f'a_{name}'
-    return f
-
-
-# Add async methods 'a_copy_dir', 'a_copy_file', etc.
-for m in ('copy_dir', 'copy_file',
-          'export_dir', 'export_file',
-          'exists',
-          'file_info',
-          'import_dir', 'import_file',
-          'is_dir', 'is_file',
-          'ls',
-          'read_bytes', 'read_text',
-          'remove_dir', 'remove_file',
-          'rename_dir', 'rename_file',
-          'rmrf',
-          'write_bytes', 'write_text',
-          ):
-    setattr(Upath, f'a_{m}', make_a_method(m))

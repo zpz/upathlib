@@ -28,5 +28,6 @@ python -m mypy ${SRC}
 echo
 echo --- running pylint ---
 echo
-python -m pylint --disable=C0103,C0114,C0115,C0116,C0301,C0303,C0305,R0903 ${SRC}
+# python -m pylint --disable=C0103,C0114,C0115,C0116,C0301,C0303,C0305,R0903 ${SRC}
+python -m pylint --disable=all ${SRC}
 

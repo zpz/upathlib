@@ -3,6 +3,5 @@ mypy
 pyflakes
 pylint
 pytest
-pytest-asyncio
 pytest-cov
 radon

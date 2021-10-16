@@ -4,13 +4,11 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
-import asyncio
-import functools
 import logging
 import os
 import random
 import time
-from contextlib import contextmanager, asynccontextmanager
+from contextlib import contextmanager
 from datetime import datetime
 from io import UnsupportedOperation
 
@@ -218,26 +216,26 @@ class AzureBlobUpath(BlobUpath):
                     self._lease = None
                     self._lock_count = 0
 
-    @asynccontextmanager
-    async def a_lock(self, *, timeout=None):
-        loop = asyncio.get_running_loop()
-        with self._provide_blob_client():
-            # TODO: this context manager is sync
+    # @asynccontextmanager
+    # async def a_lock(self, *, timeout=None):
+    #     loop = asyncio.get_running_loop()
+    #     with self._provide_blob_client():
+    #         # TODO: this context manager is sync
 
-            if self._lease is None:
-                ff = functools.partial(self._acquire_lease, timeout=timeout)
-                await loop.run_in_executor(None, ff)
-                self._lock_count = 1
-            else:
-                self._lock_count += 1
-            try:
-                yield
-            finally:
-                self._lock_count -= 1
-                if self._lock_count <= 0:
-                    await loop.run_in_executor(None, self._lease.release)
-                    self._lease = None
-                    self._lock_count = 0
+    #         if self._lease is None:
+    #             ff = functools.partial(self._acquire_lease, timeout=timeout)
+    #             await loop.run_in_executor(None, ff)
+    #             self._lock_count = 1
+    #         else:
+    #             self._lock_count += 1
+    #         try:
+    #             yield
+    #         finally:
+    #             self._lock_count -= 1
+    #             if self._lock_count <= 0:
+    #                 await loop.run_in_executor(None, self._lease.release)
+    #                 self._lease = None
+    #                 self._lock_count = 0
 
     @ contextmanager
     def _provide_blob_client(self):

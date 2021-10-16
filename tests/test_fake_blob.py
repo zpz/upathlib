@@ -2,7 +2,6 @@ import contextlib
 from datetime import datetime
 import upathlib.tests
 from upathlib import BlobUpath, FileInfo
-import pytest
 
 
 class ResourceNotFoundError(Exception):
@@ -141,9 +140,3 @@ class FakeBlobUpath(BlobUpath):
 def test_all():
     p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
     upathlib.tests.test_all(p)
-
-
-@pytest.mark.asyncio
-async def test_all_a():
-    p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
-    await upathlib.tests.test_all_a(p)

@@ -1,3 +1,9 @@
+Release 0.5.9
+=============
+
+- Removed async methods, since the current simplementations are simply wrappers around thread-pool executions.
+
+
 Release 0.5.8
 =============
 
