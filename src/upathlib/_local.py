@@ -170,15 +170,3 @@ class LocalUpath(Upath):  # pylint: disable=abstract-method
         else:
             self.localpath.parent.mkdir(exist_ok=True, parents=True)
         return self.localpath.write_bytes(data)
-
-    async def a_exists(self):
-        return self.exists()
-
-    async def a_file_info(self):
-        return self.file_info()
-
-    async def a_is_dir(self):
-        return self.is_dir()
-
-    async def a_is_file(self):
-        return self.is_file()

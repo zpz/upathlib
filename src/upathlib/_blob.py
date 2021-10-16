@@ -1,5 +1,5 @@
 import pathlib
-from ._upath import Upath, make_a_method
+from ._upath import Upath
 from ._local import LocalUpath
 
 
@@ -75,9 +75,3 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
     def upload_file(self, source, **kwargs) -> int:
         s = _resolve_local_path(source)
         return self.import_file(s, **kwargs)
-
-
-for m in ('download_dir', 'download_file',
-          'upload_dir', 'upload_file',
-          ):
-    setattr(BlobUpath, f'a_{m}', make_a_method(m))

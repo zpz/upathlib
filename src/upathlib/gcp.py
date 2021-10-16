@@ -4,6 +4,7 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -31,9 +32,8 @@ class GcpBlobUpath(BlobUpath):
         self._account_info = account_info
         self._client = None
         self._bucket = None
+        self._blob = None
         self._lock_count: int = 0
-
-        self._is_file: bool = None  # type: ignore
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
@@ -169,10 +169,8 @@ class GcpBlobUpath(BlobUpath):
         self.blob().upload_from_filename(str(source))
         # TODO: look into `retry`.
 
-    def is_file(self, use_cache: bool = True) -> bool:
-        if (not use_cache) or (self._is_file is None):
-            self._is_file = self.blob().exists()
-        return self._is_file
+    def is_file(self) -> bool:
+        return self.blob().exists()
 
     def iterdir(self):
         prefix = self.blob_name + '/'
@@ -180,7 +178,6 @@ class GcpBlobUpath(BlobUpath):
         for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
             obj = self / p.name[k:]  # "files"
             obj._blob = p
-            obj._is_file = True
             yield obj
         for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
             for p in page.prefixes:
@@ -259,7 +256,6 @@ class GcpBlobUpath(BlobUpath):
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
             obj = self / p.name[k:]
             obj._blob = p
-            obj._is_file = True
             yield obj
 
     def with_path(self, *paths: str):
@@ -267,7 +263,6 @@ class GcpBlobUpath(BlobUpath):
                              account_info=self._account_info)
         obj._client = self._client
         obj._bucket = self._bucket
-        obj._is_file = None  # type: ignore
         obj._blob = None
         return obj
 
