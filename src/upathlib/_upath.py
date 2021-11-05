@@ -610,18 +610,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         '''
         raise NotImplementedError
 
-    # def read_json(self, *, no_gc: bool = True, **kwargs):
-    #     z = self.read_text(**kwargs)
-    #     if no_gc:
-    #         return nogc(json.loads, z)
-    #     return json.loads(z)
-
-    # def read_pickle(self, *, no_gc: bool = True):
-    #     z = self.read_bytes()
-    #     if no_gc:
-    #         return nogc(pickle.loads, z)
-    #     return pickle.loads(z)
-
     def read_text(self, *, encoding: str = 'utf-8', errors: str = 'strict'):
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
@@ -810,17 +798,6 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
             If `False`, and file exists, raises `FileExistsError`.
         '''
         raise NotImplementedError
-
-    # def write_json(self, data, *, overwrite=False, **kwargs) -> int:
-    #     return self.write_text(json.dumps(data),
-    #                            overwrite=overwrite,
-    #                            **kwargs)
-
-    # def write_pickle(self, data, *, overwrite=False) -> int:
-    #     return self.write_bytes(
-    #         pickle.dumps(data, protocol=pickle.HIGHEST_PROTOCOL),
-    #         overwrite=overwrite,
-    #     )
 
     def write_text(self,
                    data: str,

@@ -4,13 +4,16 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
-import asyncio
 import contextlib
 import logging
 import os
 import random
 import time
+import urllib3
 from io import BufferedReader, UnsupportedOperation
+
+import requests
+from google.auth.transport import requests
 from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
 from google.api_core.exceptions import (  # type: ignore
@@ -24,8 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 class GcpBlobUpath(BlobUpath):
-    BLOB_DEFAULT_GENERATION: int = 1
-
     def __init__(self, *paths: str, bucket_name: str, account_info: dict):
         super().__init__(*paths)
         self._bucket_name = bucket_name
@@ -34,6 +35,8 @@ class GcpBlobUpath(BlobUpath):
         self._bucket = None
         self._blob = None
         self._lock_count: int = 0
+        self._generation = -1
+        self._metageneration = -1
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
@@ -185,31 +188,54 @@ class GcpBlobUpath(BlobUpath):
 
     def _rate_limit(self, func, *args, **kwargs):
         # `func` is a create/update/delete function.
+        n = 0
         while True:
             try:
                 return func(*args, **kwargs)
-            except TooManyRequests:
-                time.sleep(random.uniform(0.05, 0.3))
+            except (TooManyRequests,
+                    urllib3.exceptions.SSLError,
+                    requests.exceptions.SSLError) as e:
+                n += 1
+                if n % 10 == 0:
+                    logger.warning('%d attempts on %r: %r', n, func, e)
+                time.sleep(random.uniform(0.03, 0.3))
 
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
-            timeout = 3600
+            timeout = 600
         b = self.blob()
         t0 = time.perf_counter()
+        n = 0
         while True:
-            if not b.exists():
-                try:
-                    b.upload_from_string(
-                        b'0', if_generation_match=0, timeout=10, retry=None)
-                    return
-                except (PreconditionFailed, TooManyRequests):
-                    pass
+            try:
+                b.upload_from_string(
+                    b'0', if_generation_match=0, timeout=10, retry=None)
+                b.cache_control = 'no-store'
+                b.patch()
+                self._generation = b.generation
+                self._metageneration = b.metageneration
+                return
+            except (PreconditionFailed, TooManyRequests):
+                pass
+            except (urllib3.exceptions.SSLError,
+                    requests.exceptions.SSLError,
+                    requests.exceptions.ConnectionError) as e:
+                n += 1
+                if n % 10 == 0:
+                    logger.warning('trying to acquire lock on %s: %s', self, e)
+            except Exception as e:
+                print('\n\nin GcpBlobUpath lock acquire', flush=True)
+                print(e, flush=True)
+                print(e.__class__, flush=True)
+                print('\n\n', flush=True)
+                raise
+
             t1 = time.perf_counter()
             if t1 - t0 >= timeout:
                 raise LockAcquisitionTimeoutError(self, t1 - t0)
-            time.sleep(random.uniform(0.05, 0.5))
+            time.sleep(random.uniform(0.02, 0.2))
 
     @contextlib.contextmanager
     def lock(self, *, timeout=None):
@@ -232,7 +258,13 @@ class GcpBlobUpath(BlobUpath):
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
-                self._rate_limit(self.blob().delete)
+                try:
+                    self._rate_limit(self.blob().delete,
+                                     if_generation_match=self._generation,
+                                     if_metageneration_match=self._metageneration,
+                                     )
+                except Exception as e:
+                    logger.error(e)
 
     def read_bytes(self):
         try:
@@ -281,7 +313,9 @@ class GcpBlobUpath(BlobUpath):
             # this will overwrite existing content.
         else:
             try:
-                b.upload_from_string(data, if_generation_match=0, retry=None)
+                self._rate_limit(b.upload_from_string,
+                                 data,
+                                 if_generation_match=0)
             except PreconditionFailed:
                 raise FileExistsError(self)
         return nbytes
