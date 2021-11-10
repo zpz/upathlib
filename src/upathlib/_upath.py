@@ -626,6 +626,12 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Local upath needs to customize this implementation, because
         it needs to take care of deleting "empty" subdirectories.
         '''
+        if concurrency == 0:
+            n = 0
+            for p in self.riterdir():
+                n += p.remove_file()
+            return n
+
         def foo():
             for p in self.riterdir():
                 yield p.remove_file, [], {}
