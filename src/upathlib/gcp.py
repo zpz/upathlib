@@ -13,7 +13,6 @@ import urllib3
 from io import BufferedReader, UnsupportedOperation
 
 import requests
-from google.auth.transport import requests
 from google.oauth2 import service_account  # type: ignore
 from google.cloud import storage  # type: ignore
 from google.api_core.exceptions import (  # type: ignore

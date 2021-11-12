@@ -60,25 +60,27 @@ class PickleSerializer(ByteSerializer):
 class CompressedPickleSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x):
-        return zlib.compress(
-            pickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL),
-            level=3)
+        y = pickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+        return zlib.compress(y, level=3)
 
     @classmethod
     def deserialize(cls, y):
         with no_gc():
-            return pickle.loads(zlib.decompress(y))
+            z = zlib.decompress(y)
+            return pickle.loads(z)
 
 
 class JsonByteSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x):
-        return json.dumps(x).encode()
+        y = json.dumps(x)
+        return y.encode()
 
     @classmethod
     def deserialize(cls, y):
         with no_gc():
-            return json.loads(y.decode())
+            z = y.decode()
+            return json.loads(z)
 
 
 class JsonSerializer(TextSerializer):
@@ -106,11 +108,11 @@ class OrjsonSerializer(ByteSerializer):
 class CompressedOrjsonSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x):
-        return zlib.compress(
-            orjson.dumps(x),
-            level=3)
+        y = orjson.dumps(x)
+        return zlib.compress(y, level=3)
 
     @classmethod
     def deserialize(cls, y):
         with no_gc():
-            return orjson.loads(zlib.decompress(y))
+            z = zlib.decompress(y)
+            return orjson.loads(z)
