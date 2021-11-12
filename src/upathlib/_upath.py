@@ -59,8 +59,14 @@ def _execute_in_thread_pool(
         concurrency = 16
     else:
         assert 0 <= concurrency <= 64
-        if concurrency < 1:
-            concurrency = 1
+
+    if concurrency == 0:
+        # TODO: retry on error.
+        results = []
+        for f, args, kwargs in jobs:
+            z = f(*args, **kwargs)
+            results.append(z)
+        return results
 
     class MyExc(Exception):
         pass
@@ -111,7 +117,7 @@ def _execute_in_thread_pool(
     if not jobs:
         return results
 
-    print(f'failed on {len(jobs)} items: {jobs}', file=sys.stderr)
+    logger.error(f'failed on {len(jobs)} items: {jobs}')
     raise RuntimeError(f'failed on {len(jobs)} items')
 
 
@@ -621,17 +627,11 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         Return the number of files removed.
 
         `concurrency`: number of threads to use. If `None`,
-        a default value (e.g. 4) is used.
+        a default value is used.
 
         Local upath needs to customize this implementation, because
         it needs to take care of deleting "empty" subdirectories.
         '''
-        if concurrency == 0:
-            n = 0
-            for p in self.riterdir():
-                n += p.remove_file()
-            return n
-
         def foo():
             for p in self.riterdir():
                 yield p.remove_file, [], {}
@@ -728,7 +728,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
 
         raise NotImplementedError
 
-    def rmrf(self, *, concurrency: int = None) -> int:
+    def rmrf(self, *, concurrency: int = None, **kwargs) -> int:
         '''Analogous to `rm -rf`. Remove the file or dir pointed to
         by `self`.
 
@@ -748,7 +748,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
         n1 = self.remove_file()
-        n2 = self.remove_dir(concurrency=concurrency)
+        n2 = self.remove_dir(concurrency=concurrency, **kwargs)
         return n1 + n2
 
     @ property

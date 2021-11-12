@@ -11,7 +11,7 @@ import filelock  # type: ignore
 # Tried `fasteners` also. In one use case,
 # `filelock` worked whereas `fasteners.InterprocessLock` failed.
 #
-# Other options to lock into include
+# Other options to look into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
 
 from ._upath import Upath, LockAcquisitionTimeoutError, FileInfo
