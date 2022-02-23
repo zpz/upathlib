@@ -8,6 +8,7 @@ import contextlib
 import logging
 import os
 import random
+import socket
 import time
 import urllib3
 from io import BufferedReader, UnsupportedOperation
@@ -23,6 +24,17 @@ from ._blob import BlobUpath
 from ._local import LocalUpath
 
 logger = logging.getLogger(__name__)
+
+
+class Backoff:
+    def __init__(self, basetime=1):
+        self._basetime = basetime
+        self.retries = 0
+
+    def sleep(self):
+        t = self._basetime * 2 ** self.retries + random.uniform(0, 1)
+        time.sleep(t)
+        self.retries += 1
 
 
 class GcpBlobUpath(BlobUpath):
@@ -187,17 +199,17 @@ class GcpBlobUpath(BlobUpath):
 
     def _rate_limit(self, func, *args, **kwargs):
         # `func` is a create/update/delete function.
-        n = 0
+        sleeper = Backoff()
         while True:
             try:
                 return func(*args, **kwargs)
             except (TooManyRequests,
                     urllib3.exceptions.SSLError,
                     requests.exceptions.SSLError) as e:
-                n += 1
-                if n % 10 == 0:
-                    logger.warning('%d attempts on %r: %r', n, func, e)
-                time.sleep(random.uniform(0.03, 0.3))
+                sleeper.sleep()
+                if sleeper.retries >= 5:
+                    raise
+                logger.info('retrying %r: %r', func, e)
 
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
@@ -266,11 +278,25 @@ class GcpBlobUpath(BlobUpath):
                     logger.error(e)
 
     def read_bytes(self):
-        try:
-            return self.blob().download_as_bytes()
-            # TODO: look into `retry`.
-        except NotFound as e:
-            raise FileNotFoundError(self) from e
+        sleeper = Backoff()
+        while True:
+            try:
+                return self.blob().download_as_bytes()
+            except (requests.exceptions.ReadTimeout,
+                    urllib3.exceptions.ReadTimeoutError,
+                    socket.timeout,
+                    ):
+                if sleeper.retries > 3:
+                    raise
+                sleeper.sleep()
+                # My hypothesis is that sometimes timeout happens
+                # because the cached `client`, `bucket`, `blob`
+                # have become stale, hence should be recreated.
+                self._client = None
+                self._bucket = None
+                self._blob = None
+            except NotFound as e:
+                raise FileNotFoundError(self) from e
 
     def remove_file(self):
         try:
