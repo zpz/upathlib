@@ -1,5 +1,3 @@
-# type: ignore
-
 import concurrent.futures
 import pathlib
 import time
@@ -45,7 +43,7 @@ def test_joinpath(path: Upath):
 
         pp = p.joinpath('a', '.', 'b/c.data')
         assert str(pp.path) == '/abc/def/x/y/a/b.txt/a/b/c.data'
-    except:
+    except Exception:
         print('')
         print('repr:  ', repr(pp))
         print('str:   ', str(pp))
@@ -75,8 +73,8 @@ def test_read_write_rm_navigate(p: Upath):
     with pytest.raises(FileExistsError):
         p1.write_text('abcd')
 
-    p1.write_json({'data': 'abcd'}, overwrite=True)
-    assert p1.read_json() == {'data': 'abcd'}
+    p1.write_json({'data': 'abcd'}, overwrite=True)  # type: ignore
+    assert p1.read_json() == {'data': 'abcd'}  # type: ignore
 
     p /= 'a'
     assert p._path == f'{init_path}/a'
@@ -106,10 +104,10 @@ def test_read_write_rm_navigate(p: Upath):
     print('p1:', fi1)
     print('p2:', fi2)
     print('')
-    assert fi1.mtime < fi2.mtime
-    print('file 1 size:', fi1.size)
-    print('file 2 size:', fi2.size)
-    assert fi1.size > fi2.size
+    assert fi1.mtime < fi2.mtime  # type: ignore
+    print('file 1 size:', fi1.size)  # type: ignore
+    print('file 2 size:', fi2.size)  # type: ignore
+    assert fi1.size > fi2.size  # type: ignore
 
     assert p3.is_dir()
     assert p3.remove_dir() == 1

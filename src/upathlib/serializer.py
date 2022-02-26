@@ -6,7 +6,7 @@ import zlib
 from contextlib import contextmanager
 from typing import TypeVar
 
-import orjson  # type: ignore
+import orjson
 
 
 T = TypeVar('T')

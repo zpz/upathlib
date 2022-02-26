@@ -1,7 +1,9 @@
 import contextlib
 from datetime import datetime
+
 import upathlib.tests
 from upathlib import BlobUpath, FileInfo
+from overrides import overrides
 
 
 class ResourceNotFoundError(Exception):
@@ -92,26 +94,32 @@ class FakeBlobUpath(BlobUpath):
         super().__init__(*parts)
         self._bucket = bucket
 
+    @overrides
     def file_info(self):
         return _store.file_info(self._bucket, self._path)
 
-    def is_file(self):
+    @overrides
+    def is_file(self) -> bool:
         return _store.exists(self._bucket, self._path)
 
+    @overrides
     def _copy_file(self, target):
         _store.copy_blob(self._bucket, self._path, target._path)
 
     @contextlib.contextmanager
+    @overrides
     def lock(self, *, timeout=None):
         # place holder
         yield self
 
-    def read_bytes(self):
+    @overrides
+    def read_bytes(self) -> bytes:
         try:
             return _store.read_bytes(self._bucket, self._path)
         except ResourceNotFoundError as e:
             raise FileNotFoundError(self) from e
 
+    @overrides
     def riterdir(self):
         p = self._path
         if not p.endswith('/'):
@@ -119,17 +127,20 @@ class FakeBlobUpath(BlobUpath):
         for pp in _store.list_blobs(self._bucket, p):
             yield self / pp[len(p):]
 
-    def remove_file(self):
+    @overrides
+    def remove_file(self) -> int:
         try:
             _store.delete_blob(self._bucket, self._path)
             return 1
         except ResourceNotFoundError:
             return 0
 
+    @overrides
     def with_path(self, *paths):
         return self.__class__(*paths, bucket=self._bucket)
 
-    def write_bytes(self, data, *, overwrite=False):
+    @overrides
+    def write_bytes(self, data, *, overwrite=False) -> int:
         try:
             _store.write_bytes(self._bucket, self._path,
                                data, overwrite=overwrite)

@@ -14,10 +14,11 @@ import urllib3
 from io import BufferedReader, UnsupportedOperation
 
 import requests
-from google.oauth2 import service_account  # type: ignore
-from google.cloud import storage  # type: ignore
-from google.api_core.exceptions import (  # type: ignore
-    NotFound, PreconditionFailed, TooManyRequests)  # type: ignore
+from google.oauth2 import service_account
+from google.cloud import storage
+from google.api_core.exceptions import (
+    NotFound, PreconditionFailed, TooManyRequests)
+from overrides import overrides
 
 from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
 from ._blob import BlobUpath
@@ -139,24 +140,28 @@ class GcpBlobUpath(BlobUpath):
             return self._blob
         return self.bucket.blob(self.blob_name, **kwargs)
 
-    def _copy_file(self, target: GcpBlobUpath):
+    @overrides
+    def _copy_file(self, target: GcpBlobUpath) -> None:
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         self.bucket.copy_blob(
             self.blob(), target.bucket, target.blob_name
         )
 
+    @overrides
     def export_dir(self, target, **kwargs):
         _ = self.client
         _ = self.bucket
         return super().export_dir(target, **kwargs)
 
-    def _export_file(self, target: Upath):
+    @overrides
+    def _export_file(self, target: Upath) -> None:
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
         os.makedirs(str(target.parent), exist_ok=True)
         self.blob().download_to_filename(str(target))
         # TODO: look into `retry`.
 
+    @overrides
     def file_info(self):
         b = self.bucket.get_blob(self.blob_name)
         if b is not None:
@@ -172,20 +177,24 @@ class GcpBlobUpath(BlobUpath):
             # then its `ctime` and `mtime` are both updated.
             # My experiments showed that `ctime` and `mtime` are equal.
 
+    @overrides
     def import_dir(self, source, **kwargs):
         _ = self.client
         _ = self.bucket
         return super().import_dir(source, **kwargs)
 
-    def _import_file(self, source: Upath):
+    @overrides
+    def _import_file(self, source: Upath) -> None:
         if not isinstance(source, LocalUpath):
             return super()._import_file(source)
         self.blob().upload_from_filename(str(source))
         # TODO: look into `retry`.
 
+    @overrides
     def is_file(self) -> bool:
         return self.blob().exists()
 
+    @overrides
     def iterdir(self):
         prefix = self.blob_name + '/'
         k = len(prefix)
@@ -249,6 +258,7 @@ class GcpBlobUpath(BlobUpath):
             time.sleep(random.uniform(0.02, 0.2))
 
     @contextlib.contextmanager
+    @overrides
     def lock(self, *, timeout=None):
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
@@ -277,6 +287,7 @@ class GcpBlobUpath(BlobUpath):
                 except Exception as e:
                     logger.error(e)
 
+    @overrides
     def read_bytes(self):
         sleeper = Backoff()
         while True:
@@ -298,7 +309,8 @@ class GcpBlobUpath(BlobUpath):
             except NotFound as e:
                 raise FileNotFoundError(self) from e
 
-    def remove_file(self):
+    @overrides
+    def remove_file(self) -> int:
         try:
             self._rate_limit(self.blob().delete)
             self._blob = None
@@ -307,6 +319,7 @@ class GcpBlobUpath(BlobUpath):
             self._blob = None
             return 0
 
+    @overrides
     def riterdir(self):
         prefix = self.blob_name + '/'
         k = len(prefix)
@@ -315,6 +328,7 @@ class GcpBlobUpath(BlobUpath):
             obj._blob = p
             yield obj
 
+    @overrides
     def with_path(self, *paths: str):
         obj = self.__class__(*paths, bucket_name=self._bucket_name,
                              account_info=self._account_info)
@@ -323,7 +337,8 @@ class GcpBlobUpath(BlobUpath):
         obj._blob = None
         return obj
 
-    def write_bytes(self, data, *, overwrite=False):
+    @overrides
+    def write_bytes(self, data, *, overwrite=False) -> int:
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
         if isinstance(data, BufferedReader):

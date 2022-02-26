@@ -12,12 +12,12 @@ import logging
 import os
 import os.path
 import pathlib
-import sys
 import time
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Union, Callable
+from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Union, Callable, cast
 
+from overrides import EnforceOverrides
 from .serializer import (
     ByteSerializer, TextSerializer,
     JsonSerializer, PickleSerializer, CompressedPickleSerializer,
@@ -122,16 +122,16 @@ def _execute_in_thread_pool(
 
 
 def _should_update(source: Upath, target: Upath) -> bool:
-    sourceinfo = source.file_info()
-    targetinfo = target.file_info()
-    return (sourceinfo.size != targetinfo.size  # type: ignore
-            or sourceinfo.mtime > targetinfo.mtime)  # type: ignore
+    sourceinfo = cast(FileInfo, source.file_info())
+    targetinfo = cast(FileInfo, target.file_info())
+    return (sourceinfo.size != targetinfo.size
+            or sourceinfo.mtime > targetinfo.mtime)
     # Otherwise, we're assuming that
     # the target file was copied from the source
     # previously.
 
 
-class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
+class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
     @staticmethod
     def _should_overwrite(source: Upath,
                           target: Upath,
@@ -560,7 +560,7 @@ class Upath(abc.ABC):  # pylint: disable=too-many-public-methods
         `timeout`: if the lock can't be acquired within *timeout* seconds,
         raise `LockAcquisitionTimeoutError`. Default is waiting for ever.
         Once a lease is acquired, it will not expire until this contexmanager
-        exits. In other word, this is timeout for the "wait", not for the 
+        exits. In other word, this is timeout for the "wait", not for the
         lease itself. Actual waiting time may be slightly longer.
 
         This is a "mandatory lock", as opposed to an "advisory lock".

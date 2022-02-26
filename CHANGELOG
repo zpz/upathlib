@@ -1,3 +1,9 @@
+Release 0.6.3
+=============
+
+- Use `overrides` to enforce sanity in class inheritence.
+
+
 Release 0.6.2
 =============
 
