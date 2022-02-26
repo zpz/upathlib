@@ -1,3 +1,15 @@
+Release 0.6.3
+=============
+
+- Use `overrides` to enforce sanity in class inheritance.
+
+
+Release 0.6.2
+=============
+
+- GcpUpath: refresh cache upon timeout error.
+
+
 Release 0.6.1.post1
 ===================
 
@@ -102,7 +114,7 @@ Release 0.4.5
 
 - Remove `AzureBlobUpath` and `GcpBlobUpath` from package `__init__.py`,
   making their dependencies optional in a future release.
-  
+
 
 Release 0.4.3
 =============

@@ -2,6 +2,8 @@ import pathlib
 from ._upath import Upath
 from ._local import LocalUpath
 
+from overrides import overrides, EnforceOverrides
+
 
 def _resolve_local_path(p):
     if isinstance(p, str):
@@ -13,7 +15,7 @@ def _resolve_local_path(p):
     return p
 
 
-class BlobUpath(Upath):  # pylint: disable=abstract-method
+class BlobUpath(Upath, EnforceOverrides):
     @property
     def blob_name(self) -> str:
         return self._path.lstrip('/')
@@ -26,7 +28,8 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         target_ = _resolve_local_path(target)
         return self.export_file(target_, **kwargs)
 
-    def is_dir(self):
+    @overrides
+    def is_dir(self) -> bool:
         '''In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
         system. If there is a blob named like
@@ -51,6 +54,7 @@ class BlobUpath(Upath):  # pylint: disable=abstract-method
         except StopIteration:
             return False
 
+    @overrides
     def iterdir(self):
         # A naive, inefficient implementation.
         p0 = self._path  # this could be '/'.
