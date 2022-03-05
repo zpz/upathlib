@@ -94,8 +94,8 @@ def test_read_write_rm_navigate(p: Upath):
     assert p2.read_bytes() == b'x'
 
     p3 = p / 'a'
-
     assert p.ls() == [p3, p1]
+
     assert sorted(p.riterdir()) == [p2, p1]
     assert p3.file_info() is None
     fi1 = p1.file_info()

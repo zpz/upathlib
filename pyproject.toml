@@ -4,5 +4,9 @@ build-backend = "setuptools.build_meta"
 
 
 [tool.pytest.ini_options]
-#cache_dir = "/tmp/.pytest_cache/docker-project-template-py"
-addopts = "-p no:cacheprovider"
+minversion = "6.0"
+addopts = "-sv --log-cli-level info -p no:cacheprovider"
+
+
+[tool.coverage.run]
+data_file = "/tmp/.coverage"

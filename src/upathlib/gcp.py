@@ -148,7 +148,7 @@ class GcpBlobUpath(BlobUpath):
         )
 
     @overrides
-    def export_dir(self, target, **kwargs):
+    def export_dir(self, target, **kwargs) -> int:
         _ = self.client
         _ = self.bucket
         return super().export_dir(target, **kwargs)
@@ -178,7 +178,7 @@ class GcpBlobUpath(BlobUpath):
             # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
-    def import_dir(self, source, **kwargs):
+    def import_dir(self, source, **kwargs) -> int:
         _ = self.client
         _ = self.bucket
         return super().import_dir(source, **kwargs)
@@ -196,15 +196,52 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def iterdir(self):
+        # From Google doc:
+        #
+        # Lists all the blobs in the bucket that begin with the prefix.
+        #
+        # This can be used to list all blobs in a "folder", e.g. "public/".
+        #
+        # The delimiter argument can be used to restrict the results to only the
+        # "files" in the given "folder". Without the delimiter, the entire tree under
+        # the prefix is returned. For example, given these blobs:
+        #
+        #     a/1.txt
+        #     a/b/2.txt
+        #
+        # If you specify prefix ='a/', without a delimiter, you'll get back:
+        #
+        #     a/1.txt
+        #     a/b/2.txt
+        #
+        # However, if you specify prefix='a/' and delimiter='/', you'll get back
+        # only the file directly under 'a/':
+        #
+        #     a/1.txt
+        #
+        # As part of the response, you'll also get back a blobs.prefixes entity
+        # that lists the "subfolders" under `a/`:
+        #
+        #     a/b/
+        #
+        # Search "List the objects in a bucket using a prefix filter | Cloud Storage"
+
         prefix = self.blob_name + '/'
         k = len(prefix)
-        for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
-            obj = self / p.name[k:]  # "files"
+        # for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
+        #     obj = self / p.name[k:]  # "files"
+        #     obj._blob = p
+        #     yield obj
+        # for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
+        #     for p in page.prefixes:
+        #         yield self / p[k:].rstrip('/')  # "subdirectories"
+        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/')
+        for p in blobs:
+            obj = self / p.name[k:]  # files
             obj._blob = p
             yield obj
-        for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
-            for p in page.prefixes:
-                yield self / p[k:].rstrip('/')  # "subdirectories"
+        for p in blobs.prefixes:
+            yield self / p[k:].rstrip('/')  # "subdirectories"
 
     def _rate_limit(self, func, *args, **kwargs):
         # `func` is a create/update/delete function.
@@ -288,7 +325,7 @@ class GcpBlobUpath(BlobUpath):
                     logger.error(e)
 
     @overrides
-    def read_bytes(self):
+    def read_bytes(self) -> bytes:
         sleeper = Backoff()
         while True:
             try:

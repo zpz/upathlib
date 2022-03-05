@@ -5,24 +5,24 @@ set -e
 PROJ=upathlib
 
 docker build \
-    -f Dockerfile \
+    -f Dockerfile-dev \
     --build-arg PROJ=${PROJ} \
     -t ${PROJ}-dev:latest \
     .
 
+SRC=/src/src/${PROJ}
+TESTS=/src/tests
 
 if [[ $# > 0 ]]; then
-    if [[ $# > 1 ]] || [[ $1 != -i ]]; then
-        >&2 echo unknow options "'$@'"
+    if [[ "$1" != -i ]]; then
+        >&2 echo "unknown argument '$1'"
         exit 1
     fi
-
     docker run \
         -it --rm \
         -v $(pwd):/src \
         --workdir /src \
         -e PYTHONPATH=/src/src \
-	    -e IMAGE_NAME=${PROJ} \
         ${PROJ}-dev:latest \
         bash
 else
@@ -34,10 +34,8 @@ else
         -v $(pwd):/src \
         --workdir /src \
         -e PYTHONPATH=/src/src \
-        -e IMAGE_NAME=${PROJ} \
         ${PROJ}-dev:latest \
             /src/check-code
-
     echo
     echo --- running tests ---
     echo
@@ -46,10 +44,11 @@ else
         -v $(pwd):/src \
         --workdir /src \
         -e PYTHONPATH=/src/src \
-	    -e IMAGE_NAME=${PROJ} \
         ${PROJ}-dev:latest \
-	        py.test \
-            --cov=/src/src/${PROJ} \
-            --cov-report term-missing \
-            /src/tests
+            py.test \
+                --log-cli-level info \
+                --cov=/src/src/${PROJ} \
+                --cov-report term-missing \
+                --cov-fail-under 45 \
+                /src/tests
 fi

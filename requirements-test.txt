@@ -1,8 +1,5 @@
 bandit
 mypy
-flake8
 pylint
-pytest
-pytest-cov
 pytest-mock
 radon
