@@ -1,20 +1,4 @@
 #!/bin/bash
 
-# How to make a release:
-# (1) run this script
-# (2) if no error, run `python -m twine upload build/*`
+source <(curl -s https://raw.githubusercontent.com/zpz/utilities.py/master/make-release)
 
-set -e
-
-PROJ=upathlib
-
-docker build \
-    -f Dockerfile-release \
-    --build-arg PROJ=${PROJ} \
-    -t ${PROJ}-release:latest \
-    .
-
-docker create --name ${PROJ}-release ${PROJ}-release:latest
-rm -rf $(pwd)/build
-docker cp ${PROJ}-release:/build build
-docker rm -f ${PROJ}-release
