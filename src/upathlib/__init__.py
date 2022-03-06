@@ -1,3 +1,4 @@
+"""upathlib"""
 __version__ = '0.6.3b2'
 
 from ._upath import Upath, FileInfo, LockAcquisitionTimeoutError

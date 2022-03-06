@@ -182,7 +182,7 @@ class AzureBlobUpath(BlobUpath):
                 except ResourceNotFoundError:
                     continue  # go to the outer looper to write the file again
                 except HttpResponseError as e:
-                    if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':
+                    if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':  # pylint: disable=no-member
                         # Having a lease held by others. Continue to wait.
                         # This may happen when another client placed the lease
                         # on this blob right after we've created it, that is,
@@ -191,7 +191,7 @@ class AzureBlobUpath(BlobUpath):
                     else:
                         raise
             except HttpResponseError as e:
-                if e.status_code == 412 and e.error_code == 'LeaseIdMissing':
+                if e.status_code == 412 and e.error_code == 'LeaseIdMissing':  # pylint: disable=no-member
                     # Blob exists and has a lease on it. Wait and try again.
                     pass
                 else:

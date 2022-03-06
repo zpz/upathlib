@@ -97,22 +97,22 @@ class JsonSerializer(TextSerializer):
 class OrjsonSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x):
-        return orjson.dumps(x)
+        return orjson.dumps(x)  # pylint: disable=no-member
 
     @classmethod
     def deserialize(cls, y):
         with no_gc():
-            return orjson.loads(y)
+            return orjson.loads(y)  # pylint: disable=no-member
 
 
 class CompressedOrjsonSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x):
-        y = orjson.dumps(x)
+        y = orjson.dumps(x)  # pylint: disable=no-member
         return zlib.compress(y, level=3)
 
     @classmethod
     def deserialize(cls, y):
         with no_gc():
             z = zlib.decompress(y)
-            return orjson.loads(z)
+            return orjson.loads(z)  # pylint: disable=no-member
