@@ -244,6 +244,7 @@ class GcpBlobUpath(BlobUpath):
             yield self / p[k:].rstrip('/')  # "subdirectories"
 
     def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
+        # `func_name` is the name of a blob method.
         sleeper = Backoff()
         while True:
             try:
@@ -264,12 +265,11 @@ class GcpBlobUpath(BlobUpath):
                 self._blob = None
 
     def _blob_rate_limit(self, func_name, *args, **kwargs):
-        # `func` is the name of a create/update/delete function.
+        # `func_name` is the name of a create/update/delete function.
         sleeper = Backoff()
         while True:
             try:
                 return self._blob_retry(func_name, *args, **kwargs)
-                # return getattr(self.blob(), func_name)(*args, **kwargs)
             except (TooManyRequests,
                     urllib3.exceptions.SSLError,
                     requests.exceptions.SSLError) as e:
