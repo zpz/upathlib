@@ -60,6 +60,7 @@ def test_compare(p: Upath):
 
 def test_read_write_rm_navigate(p: Upath):
     init_path = p._path
+
     p.rmrf()
 
     p1 = p / 'abc.txt'

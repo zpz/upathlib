@@ -243,19 +243,40 @@ class GcpBlobUpath(BlobUpath):
         for p in blobs.prefixes:
             yield self / p[k:].rstrip('/')  # "subdirectories"
 
-    def _rate_limit(self, func, *args, **kwargs):
-        # `func` is a create/update/delete function.
+    def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
         sleeper = Backoff()
         while True:
             try:
-                return func(*args, **kwargs)
+                return getattr(self.blob(), func_name)(*args, **kwargs)
+            except (requests.exceptions.ReadTimeout,
+                    urllib3.exceptions.ReadTimeoutError,
+                    socket.timeout,
+                    ) as e:
+                if sleeper.retries > max_tries:
+                    raise
+                logger.info("retrying %r: %r", func_name, e)
+                sleeper.sleep()
+                # My hypothesis is that sometimes timeout happens
+                # because the cached `client`, `bucket`, `blob`
+                # have become stale, hence should be recreated.
+                self._client = None
+                self._bucket = None
+                self._blob = None
+
+    def _blob_rate_limit(self, func_name, *args, **kwargs):
+        # `func` is the name of a create/update/delete function.
+        sleeper = Backoff()
+        while True:
+            try:
+                return self._blob_retry(func_name, *args, **kwargs)
+                # return getattr(self.blob(), func_name)(*args, **kwargs)
             except (TooManyRequests,
                     urllib3.exceptions.SSLError,
                     requests.exceptions.SSLError) as e:
-                sleeper.sleep()
                 if sleeper.retries >= 5:
                     raise
-                logger.info('retrying %r: %r', func, e)
+                logger.info("retrying %r: %r", func_name, e)
+                sleeper.sleep()
 
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
@@ -317,7 +338,7 @@ class GcpBlobUpath(BlobUpath):
             self._lock_count -= 1
             if self._lock_count == 0:
                 try:
-                    self._rate_limit(self.blob().delete,
+                    self._blob_rate_limit('delete',
                                      if_generation_match=self._generation,
                                      if_metageneration_match=self._metageneration,
                                      )
@@ -326,30 +347,15 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def read_bytes(self) -> bytes:
-        sleeper = Backoff()
-        while True:
-            try:
-                return self.blob().download_as_bytes()
-            except (requests.exceptions.ReadTimeout,
-                    urllib3.exceptions.ReadTimeoutError,
-                    socket.timeout,
-                    ):
-                if sleeper.retries > 3:
-                    raise
-                sleeper.sleep()
-                # My hypothesis is that sometimes timeout happens
-                # because the cached `client`, `bucket`, `blob`
-                # have become stale, hence should be recreated.
-                self._client = None
-                self._bucket = None
-                self._blob = None
-            except NotFound as e:
-                raise FileNotFoundError(self) from e
+        try:
+            return self._blob_retry('download_as_bytes')
+        except NotFound as e:
+            raise FileNotFoundError(self) from e
 
     @overrides
     def remove_file(self) -> int:
         try:
-            self._rate_limit(self.blob().delete)
+            self._blob_rate_limit('delete')
             self._blob = None
             return 1
         except NotFound:
@@ -381,16 +387,13 @@ class GcpBlobUpath(BlobUpath):
         if isinstance(data, BufferedReader):
             data = data.read()
         nbytes = len(data)
-        b = self.blob()
-
-        # TODO: look into `retry`.
 
         if overwrite:
-            self._rate_limit(b.upload_from_string, data, retry=None)
+            self._blob_rate_limit('upload_from_string', data, retry=None)
             # this will overwrite existing content.
         else:
             try:
-                self._rate_limit(b.upload_from_string,
+                self._blob_rate_limit('upload_from_string',
                                  data,
                                  if_generation_match=0)
             except PreconditionFailed:
