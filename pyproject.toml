@@ -53,7 +53,7 @@ addopts = "-sv --log-cli-level info -p no:cacheprovider"
 
 
 [tool.coverage.report]
-fail_under = 60
+fail_under = 70
 show_missing = true
 skip_empty = true
 

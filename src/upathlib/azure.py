@@ -323,7 +323,7 @@ class AzureBlobUpath(BlobUpath):
         )
 
     @overrides
-    def write_bytes(self, data, *, overwrite=False) -> int:
+    def write_bytes(self, data: bytes, *, overwrite=False) -> int:
         if self._path == '/':
             raise UnsupportedOperation(
                 "can not write to root as a blob", self)

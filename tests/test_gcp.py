@@ -1,6 +1,4 @@
 from datetime import datetime
-from unittest.mock import Mock, patch
-import pathlib
 import upathlib.tests
 from upathlib.gcp import GcpBlobUpath, NotFound
 
@@ -27,7 +25,7 @@ class Blob:
         self._bucket._blobs[self.name] = {
             'data': data,
             'time_created': datetime.now(),
-            'updated': datetime.now(),
+            'time_updated': datetime.now(),
             'size': len(data),
             }
 
@@ -50,7 +48,7 @@ class Blob:
 
     @property
     def updated(self):
-        return self._bucket._blobs[self.name]['updated']
+        return self._bucket._blobs[self.name]['time_updated']
 
     @property
     def size(self):

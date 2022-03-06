@@ -542,8 +542,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Each yielded element is either a file or a dir.
 
-        If `self` is not a dir, or does not exist at all,
-        yield nothing, but do not raise exception.
+        If `self` is not a dir (e.g. maybe it's a file),
+        or does not exist at all, yield nothing, but do not raise exception.
 
         There is no guarantee on the order of the returned elements.'''
         raise NotImplementedError

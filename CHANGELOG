@@ -2,7 +2,9 @@ Release 0.6.3
 =============
 
 - Use `overrides` to enforce sanity in class inheritance.
-- Add tests on GCP using mocking.
+- Add tests on Azure and GCP using mocks.
+- Add more retry logic to GCP.
+- Refactor and simplify test/build process.
 
 
 Release 0.6.2

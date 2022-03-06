@@ -338,10 +338,11 @@ class GcpBlobUpath(BlobUpath):
             self._lock_count -= 1
             if self._lock_count == 0:
                 try:
-                    self._blob_rate_limit('delete',
-                                     if_generation_match=self._generation,
-                                     if_metageneration_match=self._metageneration,
-                                     )
+                    self._blob_rate_limit(
+                        'delete',
+                        if_generation_match=self._generation,
+                        if_metageneration_match=self._metageneration,
+                    )
                 except Exception as e:
                     logger.error(e)
 
@@ -393,9 +394,10 @@ class GcpBlobUpath(BlobUpath):
             # this will overwrite existing content.
         else:
             try:
-                self._blob_rate_limit('upload_from_string',
-                                 data,
-                                 if_generation_match=0)
+                self._blob_rate_limit(
+                    'upload_from_string',
+                    data,
+                    if_generation_match=0)
             except PreconditionFailed:
                 raise FileExistsError(self)
         return nbytes
