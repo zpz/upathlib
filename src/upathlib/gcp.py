@@ -253,7 +253,7 @@ class GcpBlobUpath(BlobUpath):
                     urllib3.exceptions.ReadTimeoutError,
                     socket.timeout,
                     ) as e:
-                if sleeper.retries > max_tries:
+                if sleeper.retries >= max_tries:
                     raise
                 logger.info("retrying %r: %r", func_name, e)
                 sleeper.sleep()
