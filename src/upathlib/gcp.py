@@ -148,7 +148,7 @@ class GcpBlobUpath(BlobUpath):
         )
 
     @overrides
-    def export_dir(self, target, **kwargs):
+    def export_dir(self, target, **kwargs) -> int:
         _ = self.client
         _ = self.bucket
         return super().export_dir(target, **kwargs)
@@ -178,7 +178,7 @@ class GcpBlobUpath(BlobUpath):
             # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
-    def import_dir(self, source, **kwargs):
+    def import_dir(self, source, **kwargs) -> int:
         _ = self.client
         _ = self.bucket
         return super().import_dir(source, **kwargs)
@@ -196,29 +196,87 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def iterdir(self):
+        # From Google doc:
+        #
+        # Lists all the blobs in the bucket that begin with the prefix.
+        #
+        # This can be used to list all blobs in a "folder", e.g. "public/".
+        #
+        # The delimiter argument can be used to restrict the results to only the
+        # "files" in the given "folder". Without the delimiter, the entire tree under
+        # the prefix is returned. For example, given these blobs:
+        #
+        #     a/1.txt
+        #     a/b/2.txt
+        #
+        # If you specify prefix ='a/', without a delimiter, you'll get back:
+        #
+        #     a/1.txt
+        #     a/b/2.txt
+        #
+        # However, if you specify prefix='a/' and delimiter='/', you'll get back
+        # only the file directly under 'a/':
+        #
+        #     a/1.txt
+        #
+        # As part of the response, you'll also get back a blobs.prefixes entity
+        # that lists the "subfolders" under `a/`:
+        #
+        #     a/b/
+        #
+        # Search "List the objects in a bucket using a prefix filter | Cloud Storage"
+
         prefix = self.blob_name + '/'
         k = len(prefix)
-        for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
-            obj = self / p.name[k:]  # "files"
+        # for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
+        #     obj = self / p.name[k:]  # "files"
+        #     obj._blob = p
+        #     yield obj
+        # for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
+        #     for p in page.prefixes:
+        #         yield self / p[k:].rstrip('/')  # "subdirectories"
+        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/')
+        for p in blobs:
+            obj = self / p.name[k:]  # files
             obj._blob = p
             yield obj
-        for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
-            for p in page.prefixes:
-                yield self / p[k:].rstrip('/')  # "subdirectories"
+        for p in blobs.prefixes:
+            yield self / p[k:].rstrip('/')  # "subdirectories"
 
-    def _rate_limit(self, func, *args, **kwargs):
-        # `func` is a create/update/delete function.
+    def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
+        # `func_name` is the name of a blob method.
         sleeper = Backoff()
         while True:
             try:
-                return func(*args, **kwargs)
+                return getattr(self.blob(), func_name)(*args, **kwargs)
+            except (requests.exceptions.ReadTimeout,
+                    urllib3.exceptions.ReadTimeoutError,
+                    socket.timeout,
+                    ) as e:
+                if sleeper.retries > max_tries:
+                    raise
+                logger.info("retrying %r: %r", func_name, e)
+                sleeper.sleep()
+                # My hypothesis is that sometimes timeout happens
+                # because the cached `client`, `bucket`, `blob`
+                # have become stale, hence should be recreated.
+                self._client = None
+                self._bucket = None
+                self._blob = None
+
+    def _blob_rate_limit(self, func_name, *args, **kwargs):
+        # `func_name` is the name of a create/update/delete function.
+        sleeper = Backoff()
+        while True:
+            try:
+                return self._blob_retry(func_name, *args, **kwargs)
             except (TooManyRequests,
                     urllib3.exceptions.SSLError,
                     requests.exceptions.SSLError) as e:
-                sleeper.sleep()
                 if sleeper.retries >= 5:
                     raise
-                logger.info('retrying %r: %r', func, e)
+                logger.info("retrying %r: %r", func_name, e)
+                sleeper.sleep()
 
     def _acquire_lease(self, timeout: int = None):
         if self._path == '/':
@@ -280,39 +338,25 @@ class GcpBlobUpath(BlobUpath):
             self._lock_count -= 1
             if self._lock_count == 0:
                 try:
-                    self._rate_limit(self.blob().delete,
-                                     if_generation_match=self._generation,
-                                     if_metageneration_match=self._metageneration,
-                                     )
+                    self._blob_rate_limit(
+                        'delete',
+                        if_generation_match=self._generation,
+                        if_metageneration_match=self._metageneration,
+                    )
                 except Exception as e:
                     logger.error(e)
 
     @overrides
-    def read_bytes(self):
-        sleeper = Backoff()
-        while True:
-            try:
-                return self.blob().download_as_bytes()
-            except (requests.exceptions.ReadTimeout,
-                    urllib3.exceptions.ReadTimeoutError,
-                    socket.timeout,
-                    ):
-                if sleeper.retries > 3:
-                    raise
-                sleeper.sleep()
-                # My hypothesis is that sometimes timeout happens
-                # because the cached `client`, `bucket`, `blob`
-                # have become stale, hence should be recreated.
-                self._client = None
-                self._bucket = None
-                self._blob = None
-            except NotFound as e:
-                raise FileNotFoundError(self) from e
+    def read_bytes(self) -> bytes:
+        try:
+            return self._blob_retry('download_as_bytes')
+        except NotFound as e:
+            raise FileNotFoundError(self) from e
 
     @overrides
     def remove_file(self) -> int:
         try:
-            self._rate_limit(self.blob().delete)
+            self._blob_rate_limit('delete')
             self._blob = None
             return 1
         except NotFound:
@@ -344,18 +388,16 @@ class GcpBlobUpath(BlobUpath):
         if isinstance(data, BufferedReader):
             data = data.read()
         nbytes = len(data)
-        b = self.blob()
-
-        # TODO: look into `retry`.
 
         if overwrite:
-            self._rate_limit(b.upload_from_string, data, retry=None)
+            self._blob_rate_limit('upload_from_string', data, retry=None)
             # this will overwrite existing content.
         else:
             try:
-                self._rate_limit(b.upload_from_string,
-                                 data,
-                                 if_generation_match=0)
+                self._blob_rate_limit(
+                    'upload_from_string',
+                    data,
+                    if_generation_match=0)
             except PreconditionFailed:
                 raise FileExistsError(self)
         return nbytes

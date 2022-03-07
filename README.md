@@ -20,3 +20,12 @@ One use case is the [`biglist` package](https://github.com/zpz/biglist).
 The class `Biglist` takes a `Upath` object to indicate its location of storage.
 It does not care whether the storage is local, or in Azure or GCP or AWS S3 or other
 cloud blob store---it simply uses the common API to operate the storage.
+
+This package is published to `pypi`. To install, does
+
+```
+$ pip3 install upathlib
+$ pip3 install upathlib[azure]
+$ pip3 install upathlib[gcp]
+$ pip3 install upathlib[azure,gcp]
+```

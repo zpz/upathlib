@@ -60,13 +60,16 @@ def test_compare(p: Upath):
 
 def test_read_write_rm_navigate(p: Upath):
     init_path = p._path
+
     p.rmrf()
 
     p1 = p / 'abc.txt'
     assert not p1.exists()
     p1.write_text('abc')
+
     assert p1.is_file()
     assert not p1.is_dir()
+
     assert p1.exists()
     assert p1.read_text() == 'abc'
 
@@ -96,6 +99,7 @@ def test_read_write_rm_navigate(p: Upath):
     p3 = p / 'a'
 
     assert p.ls() == [p3, p1]
+
     assert sorted(p.riterdir()) == [p2, p1]
     assert p3.file_info() is None
     fi1 = p1.file_info()
@@ -170,10 +174,6 @@ def test_rename(p: Upath):
     assert (p / 'a/b/a.txt').read_text() == 'a'
 
     pp = (p / 'c').rename_dir('a/c')
-
-    # print(p)
-    # for x in p.riterdir():
-    #     print(x)
 
     assert (pp / 'd/e.txt').read_text() == 'e'
     assert (pp / 'd.txt').read_text() == 'd'
