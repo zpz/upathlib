@@ -31,12 +31,17 @@ class Backoff:
     def __init__(self, basetime=1, jitter=1):
         self._basetime = basetime
         self._jitter = jitter
+        self._time_started = time.perf_counter()
         self.retries = 0
 
     def sleep(self):
         t = self._basetime * 2 ** self.retries + random.uniform(0, self._jitter)
         time.sleep(t)
         self.retries += 1
+
+    @property
+    def time_elapsed(self):
+        return time.perf_counter() - self._time_started  # seconds
 
 
 class GcpBlobUpath(BlobUpath):
@@ -284,7 +289,6 @@ class GcpBlobUpath(BlobUpath):
         if timeout is None:
             timeout = 600
         b = self.blob()
-        t0 = time.perf_counter()
         n = 0
         sleeper = Backoff(0.02, 0.1)
         while True:
@@ -293,7 +297,6 @@ class GcpBlobUpath(BlobUpath):
                 b.cache_control = 'no-store'
                 b.patch()
                 self._generation = b.generation
-                return b.generation
             except (PreconditionFailed, TooManyRequests):
                 pass
             except (urllib3.exceptions.SSLError,
@@ -309,9 +312,8 @@ class GcpBlobUpath(BlobUpath):
                 print('\n\n', flush=True)
                 raise
 
-            t1 = time.perf_counter()
-            if t1 - t0 >= timeout:
-                raise LockAcquisitionTimeoutError(self, t1 - t0)
+            if (t := sleeper.time_elapsed) >= timeout:
+                raise LockAcquisitionTimeoutError(self, t)
             sleeper.sleep()
 
     @contextlib.contextmanager
