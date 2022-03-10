@@ -28,12 +28,13 @@ logger = logging.getLogger(__name__)
 
 
 class Backoff:
-    def __init__(self, basetime=1):
+    def __init__(self, basetime=1, jitter=1):
         self._basetime = basetime
+        self._jitter = jitter
         self.retries = 0
 
     def sleep(self):
-        t = self._basetime * 2 ** self.retries + random.uniform(0, 1)
+        t = self._basetime * 2 ** self.retries + random.uniform(0, self._jitter)
         time.sleep(t)
         self.retries += 1
 
@@ -48,7 +49,6 @@ class GcpBlobUpath(BlobUpath):
         self._blob = None
         self._lock_count: int = 0
         self._generation = -1
-        self._metageneration = -1
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
@@ -286,15 +286,14 @@ class GcpBlobUpath(BlobUpath):
         b = self.blob()
         t0 = time.perf_counter()
         n = 0
+        sleeper = Backoff(0.02, 0.1)
         while True:
             try:
-                b.upload_from_string(
-                    b'0', if_generation_match=0, timeout=10, retry=None)
+                b.upload_from_string(b'0', if_generation_match=0)
                 b.cache_control = 'no-store'
                 b.patch()
                 self._generation = b.generation
-                self._metageneration = b.metageneration
-                return
+                return b.generation
             except (PreconditionFailed, TooManyRequests):
                 pass
             except (urllib3.exceptions.SSLError,
@@ -313,7 +312,7 @@ class GcpBlobUpath(BlobUpath):
             t1 = time.perf_counter()
             if t1 - t0 >= timeout:
                 raise LockAcquisitionTimeoutError(self, t1 - t0)
-            time.sleep(random.uniform(0.02, 0.2))
+            sleeper.sleep()
 
     @contextlib.contextmanager
     @overrides
@@ -323,10 +322,9 @@ class GcpBlobUpath(BlobUpath):
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
 
-        # TODO: this implementation needs enhancements.
-        # I did not get the `generation`, `if-generation-match` work.
         # This implementation does not prevent the file from being deleted
-        # by other workers. It relies on the assumption that this blob
+        # by other workers that does not use the 'if-generation-match' condition.
+        # It relies on the assumption that this blob
         # is used solely in this locking logic.
 
         if self._lock_count == 0:
@@ -341,7 +339,6 @@ class GcpBlobUpath(BlobUpath):
                     self._blob_rate_limit(
                         'delete',
                         if_generation_match=self._generation,
-                        if_metageneration_match=self._metageneration,
                     )
                 except Exception as e:
                     logger.error(e)
