@@ -28,14 +28,15 @@ logger = logging.getLogger(__name__)
 
 
 class Backoff:
-    def __init__(self, basetime=1, jitter=1):
-        self._basetime = basetime
-        self._jitter = jitter
+    def __init__(self, base=1, jitter=None, multiplier=2):
+        self._base = base
+        self._jitter = base if jitter is None else jitter
+        self._multiplier = multiplier
         self._time_started = time.perf_counter()
         self.retries = 0
 
     def sleep(self):
-        t = self._basetime * 2 ** self.retries + random.uniform(0, self._jitter)
+        t = self._base * self._multiplier ** self.retries + random.uniform(0, self._jitter)
         time.sleep(t)
         self.retries += 1
 
@@ -145,6 +146,42 @@ class GcpBlobUpath(BlobUpath):
             return self._blob
         return self.bucket.blob(self.blob_name, **kwargs)
 
+    def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
+        # `func_name` is the name of a blob method.
+        sleeper = Backoff(0.1)
+        while True:
+            try:
+                return getattr(self.blob(), func_name)(*args, **kwargs)
+            except (requests.exceptions.ReadTimeout,
+                    urllib3.exceptions.ReadTimeoutError,
+                    socket.timeout,
+                    urllib3.exceptions.SSLError,
+                    requests.exceptions.SSLError,
+                    requests.exceptions.ConnectionError,
+                    ) as e:
+                if sleeper.retries >= max_tries:
+                    raise
+                logger.info("retrying %r on error: %r", func_name, e)
+                sleeper.sleep()
+                # My hypothesis is that sometimes timeout happens
+                # because the cached `client`, `bucket`, `blob`
+                # have become stale, hence should be recreated.
+                self._client = None
+                self._bucket = None
+                self._blob = None
+
+    def _blob_rate_limit(self, func_name, *args, max_retries=5, **kwargs):
+        # `func_name` is the name of a create/update/delete function.
+        sleeper = Backoff(0.2)
+        while True:
+            try:
+                return self._blob_retry(func_name, *args, **kwargs)
+            except TooManyRequests as e:
+                if sleeper.retries >= max_retries:
+                    raise
+                logger.info("retrying %r on error: %r", func_name, e)
+                sleeper.sleep()
+
     @overrides
     def _copy_file(self, target: GcpBlobUpath) -> None:
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
@@ -163,8 +200,7 @@ class GcpBlobUpath(BlobUpath):
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
         os.makedirs(str(target.parent), exist_ok=True)
-        self.blob().download_to_filename(str(target))
-        # TODO: look into `retry`.
+        self._blob_retry('download_to_filename', str(target))
 
     @overrides
     def file_info(self):
@@ -192,8 +228,7 @@ class GcpBlobUpath(BlobUpath):
     def _import_file(self, source: Upath) -> None:
         if not isinstance(source, LocalUpath):
             return super()._import_file(source)
-        self.blob().upload_from_filename(str(source))
-        # TODO: look into `retry`.
+        self._blob_retry('upload_from_filename', str(source))
 
     @overrides
     def is_file(self) -> bool:
@@ -248,73 +283,24 @@ class GcpBlobUpath(BlobUpath):
         for p in blobs.prefixes:
             yield self / p[k:].rstrip('/')  # "subdirectories"
 
-    def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
-        # `func_name` is the name of a blob method.
-        sleeper = Backoff()
-        while True:
-            try:
-                return getattr(self.blob(), func_name)(*args, **kwargs)
-            except (requests.exceptions.ReadTimeout,
-                    urllib3.exceptions.ReadTimeoutError,
-                    socket.timeout,
-                    ) as e:
-                if sleeper.retries >= max_tries:
-                    raise
-                logger.info("retrying %r: %r", func_name, e)
-                sleeper.sleep()
-                # My hypothesis is that sometimes timeout happens
-                # because the cached `client`, `bucket`, `blob`
-                # have become stale, hence should be recreated.
-                self._client = None
-                self._bucket = None
-                self._blob = None
-
-    def _blob_rate_limit(self, func_name, *args, **kwargs):
-        # `func_name` is the name of a create/update/delete function.
-        sleeper = Backoff()
-        while True:
-            try:
-                return self._blob_retry(func_name, *args, **kwargs)
-            except (TooManyRequests,
-                    urllib3.exceptions.SSLError,
-                    requests.exceptions.SSLError) as e:
-                if sleeper.retries >= 5:
-                    raise
-                logger.info("retrying %r: %r", func_name, e)
-                sleeper.sleep()
-
-    def _acquire_lease(self, timeout: int = None):
+    def _acquire_lease(self, *, timeout: int = None):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
-            timeout = 600
-        b = self.blob()
-        n = 0
-        sleeper = Backoff(0.02, 0.1)
+            timeout = 600  # seconds
+        sleeper = Backoff(0.1)
         while True:
             try:
-                b.upload_from_string(b'0', if_generation_match=0)
-                b.cache_control = 'no-store'
-                b.patch()
-                self._generation = b.generation
-            except (PreconditionFailed, TooManyRequests):
-                pass
-            except (urllib3.exceptions.SSLError,
-                    requests.exceptions.SSLError,
-                    requests.exceptions.ConnectionError) as e:
-                n += 1
-                if n % 10 == 0:
-                    logger.warning('trying to acquire lock on %s: %s', self, e)
-            except Exception as e:
-                print('\n\nin GcpBlobUpath lock acquire', flush=True)
-                print(e, flush=True)
-                print(e.__class__, flush=True)
-                print('\n\n', flush=True)
-                raise
-
-            if (t := sleeper.time_elapsed) >= timeout:
-                raise LockAcquisitionTimeoutError(self, t)
-            sleeper.sleep()
+                # b.upload_from_string(b'0', if_generation_match=0)
+                # b.cache_control = 'no-store'
+                # b.patch()
+                self._blob_rate_limit('upload_from_string', b'0', if_generation_match=0)
+                self._generation = self.blob().generation
+                return
+            except PreconditionFailed:
+                if (t := sleeper.time_elapsed) >= timeout:
+                    raise LockAcquisitionTimeoutError(self, t)
+                sleeper.sleep()
 
     @contextlib.contextmanager
     @overrides
@@ -330,7 +316,7 @@ class GcpBlobUpath(BlobUpath):
         # is used solely in this locking logic.
 
         if self._lock_count == 0:
-            self._acquire_lease(timeout)
+            self._acquire_lease(timeout=timeout)
         self._lock_count += 1
         try:
             yield
@@ -341,6 +327,7 @@ class GcpBlobUpath(BlobUpath):
                     self._blob_rate_limit(
                         'delete',
                         if_generation_match=self._generation,
+                        max_retries=10,
                     )
                 except Exception as e:
                     logger.error(e)
@@ -389,7 +376,7 @@ class GcpBlobUpath(BlobUpath):
         nbytes = len(data)
 
         if overwrite:
-            self._blob_rate_limit('upload_from_string', data, retry=None)
+            self._blob_rate_limit('upload_from_string', data)
             # this will overwrite existing content.
         else:
             try:
