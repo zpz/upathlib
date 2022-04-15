@@ -11,6 +11,14 @@ import orjson
 
 T = TypeVar('T')
 
+ORJSON_OPT = orjson.OPT_SERIALIZE_NUMPY
+# Although this is supported, when data contains numpy,
+# you probably should serialize it by pickle, because
+# pickle would be much faster for numpy, and
+# deserialize JSON will not get back numpy arrays.
+
+PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
+
 
 @contextmanager
 def no_gc():
@@ -47,26 +55,36 @@ class TextSerializer(abc.ABC):
 
 
 class PickleSerializer(ByteSerializer):
+    PROTOCOL = PICKLE_PROTOCOL
+
     @classmethod
     def serialize(cls, x):
-        return pickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+        return pickle.dumps(x, protocol=cls.PROTOCOL)
 
     @classmethod
     def deserialize(cls, y):
-        with no_gc():
+        if len(y) > 10_000:
+            with no_gc():
+                return pickle.loads(y)
+        else:
             return pickle.loads(y)
 
 
 class CompressedPickleSerializer(ByteSerializer):
+    PROTOCOL = PICKLE_PROTOCOL
+
     @classmethod
     def serialize(cls, x):
-        y = pickle.dumps(x, protocol=pickle.HIGHEST_PROTOCOL)
+        y = pickle.dumps(x, protocol=cls.PROTOCOL)
         return zlib.compress(y, level=3)
 
     @classmethod
     def deserialize(cls, y):
-        with no_gc():
-            z = zlib.decompress(y)
+        z = zlib.decompress(y)
+        if len(y) > 10_000:
+            with no_gc():
+                return pickle.loads(z)
+        else:
             return pickle.loads(z)
 
 
@@ -78,8 +96,11 @@ class JsonByteSerializer(ByteSerializer):
 
     @classmethod
     def deserialize(cls, y):
-        with no_gc():
-            z = y.decode()
+        z = y.decode()
+        if len(y) > 10_000:
+            with no_gc():
+                return json.loads(z)
+        else:
             return json.loads(z)
 
 
@@ -90,29 +111,42 @@ class JsonSerializer(TextSerializer):
 
     @classmethod
     def deserialize(cls, y):
-        with no_gc():
+        if len(y) > 10_000:
+            with no_gc():
+                return json.loads(y)
+        else:
             return json.loads(y)
 
 
 class OrjsonSerializer(ByteSerializer):
+    OPTION = ORJSON_OPT
+
     @classmethod
     def serialize(cls, x):
-        return orjson.dumps(x)  # pylint: disable=no-member
+        return orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
 
     @classmethod
     def deserialize(cls, y):
-        with no_gc():
+        if len(y) > 10_000:
+            with no_gc():
+                return orjson.loads(y)  # pylint: disable=no-member
+        else:
             return orjson.loads(y)  # pylint: disable=no-member
 
 
 class CompressedOrjsonSerializer(ByteSerializer):
+    OPTION = ORJSON_OPT
+
     @classmethod
     def serialize(cls, x):
-        y = orjson.dumps(x)  # pylint: disable=no-member
+        y = orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
         return zlib.compress(y, level=3)
 
     @classmethod
     def deserialize(cls, y):
-        with no_gc():
-            z = zlib.decompress(y)
+        z = zlib.decompress(y)
+        if len(y) > 10_000:
+            with no_gc():
+                return orjson.loads(z)  # pylint: disable=no-member
+        else:
             return orjson.loads(z)  # pylint: disable=no-member
