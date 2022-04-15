@@ -14,6 +14,7 @@ T = TypeVar('T')
 ORJSON_OPT = orjson.OPT_SERIALIZE_NUMPY
 # Although this is supported, when data contains numpy,
 # you probably should serialize it by pickle, because
+# pickle would be much faster for numpy, and
 # deserialize JSON will not get back numpy arrays.
 
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
