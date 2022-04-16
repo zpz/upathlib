@@ -30,7 +30,7 @@ Source = "https://github.com/zpz/upathlib"
 
 [project.optional-dependencies]
 azure = [
-    "azure-storage-blob",
+    "azure-storage-blob >=12.9.0,<13.0",
 ]
 gcp = [
     "google-api-python-client >=2.13.9,<3.0",
@@ -39,8 +39,10 @@ gcp = [
 test = [
     "bandit",
     "coverage[toml]",
+    "Faker",
     "flake8",
     "mypy",
+    "numpy",
     "pylint",
     "pytest",
     "pytest-mock",
