@@ -1,5 +1,0 @@
-bandit
-mypy
-pylint
-pytest-mock
-radon
