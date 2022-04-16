@@ -821,7 +821,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return n
 
 
-# Add methods 'read_json', 'write_json', 'read_pickle', 'write_pickle', etc.
+# Add methods
+# 'read_json', 'write_json',
+# 'read_pickle', 'write_pickle',
+# 'read_pickle_z', 'write_pickle_z',
+# 'read_orjson', 'write_orjson',
+# 'read_orjson_z', 'write_orjson_z'.
 Upath.register_read_write_text_format(JsonSerializer, 'json')
 Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
 Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
