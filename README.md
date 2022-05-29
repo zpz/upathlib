@@ -33,3 +33,7 @@ $ pip3 install upathlib[azure]
 $ pip3 install upathlib[gcp]
 $ pip3 install upathlib[azure,gcp]
 ```
+
+## Status
+
+API, as well as implementations for local and GCP cloud storage are production ready.
