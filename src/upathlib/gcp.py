@@ -121,12 +121,16 @@ class GcpBlobUpath(BlobUpath):
     def bucket_name(self):
         return self._bucket_name
 
-    def blob(self, **kwargs):
-        if not kwargs:
+    def blob(self, chunk_size=None, **kwargs):
+        # `chunk_size` is relevant to downloading/uploading of large blobs.
+        # See `Blob._do_download` and `Blob._do_upload`.
+        # 67108864 = 256 * 1024 * 256 = 64 MB
+        if not chunk_size and not kwargs:
             if self._blob is None:
-                self._blob = self.bucket.blob(self.blob_name)
+                self._blob = self.bucket.blob(self.blob_name, chunk_size=67108864)
             return self._blob
-        return self.bucket.blob(self.blob_name, **kwargs)
+        return self.bucket.blob(self.blob_name,
+            chunk_size=chunk_size or 67108864, **kwargs)
 
     def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
         # `func_name` is the name of a blob method.
