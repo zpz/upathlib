@@ -318,6 +318,13 @@ class GcpBlobUpath(BlobUpath):
                 except Exception as e:
                     logger.error(e)
 
+    def open(self, mode='r', **kwargs):
+        '''
+        Use this on a blob (not a "directory") as a context manager.
+        See Google documentation.
+        '''
+        return self.blob().open(mode, **kwargs)
+
     @overrides
     def read_bytes(self) -> bytes:
         try:
