@@ -1,5 +1,12 @@
 # Changelog
 
+## Release 0.6.4 (upcoming)
+
+- GCP download of large blobs uses threading concurrency.
+- API change: `write_bytes` and `write_text` return `None`.
+- GCP implementation fine-tuning.
+
+
 ## Release 0.6.3
 
 - Use `overrides` to enforce sanity in class inheritance.

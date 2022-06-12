@@ -132,6 +132,8 @@ def _should_update(source: Upath, target: Upath) -> bool:
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
+    _thread_executor_ = None
+
     @staticmethod
     def _should_overwrite(source: Upath,
                           target: Upath,
@@ -160,6 +162,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     f"target {target!r} appears to be up-to-date; skipped")
                 return False
         return True
+
+    @classmethod
+    def _get_thread_executor(cls):
+        if cls._thread_executor_ is None:
+            cls._thread_executor_ = concurrent.futures.ThreadPoolExecutor(64)
+        return cls._thread_executor_
 
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
@@ -796,10 +804,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
     def write_bytes(self,
                     data: bytes,
                     *,
-                    overwrite: bool = False) -> int:
+                    overwrite: bool = False) -> None:
         '''Write bytes to file.
-
-        Return number of bytes written.
 
         Parent directories are created as needed.
 
@@ -814,14 +820,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                    overwrite: bool = False,
                    encoding: str = 'utf-8',
                    errors: str = 'strict',
-                   ) -> int:
-        '''
-        Return number of characters written.
-        '''
-        n = len(data)
+                   ) -> None:
         z = data.encode(encoding=encoding, errors=errors)
         self.write_bytes(z, overwrite=overwrite)
-        return n
 
 
 # Add methods

@@ -323,13 +323,12 @@ class AzureBlobUpath(BlobUpath):
         )
 
     @overrides
-    def write_bytes(self, data: bytes, *, overwrite=False) -> int:
+    def write_bytes(self, data: bytes, *, overwrite=False) -> None:
         if self._path == '/':
             raise UnsupportedOperation(
                 "can not write to root as a blob", self)
 
         with self._provide_blob_client():
-            nbytes = len(data)
             try:
                 self._blob_client.upload_blob(
                     data,
@@ -337,4 +336,3 @@ class AzureBlobUpath(BlobUpath):
                     lease=self._lease)
             except ResourceExistsError as e:
                 raise FileExistsError(self) from e
-            return nbytes

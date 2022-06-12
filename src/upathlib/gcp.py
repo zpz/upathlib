@@ -4,16 +4,16 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
-import concurrent.futures
 import contextlib
 import logging
 import os
 import queue
-import socket
-import urllib3
+# import socket
+# import urllib3
 from io import BufferedReader, UnsupportedOperation, BytesIO
+from typing import Union
 
-import requests
+# import requests
 from google import resumable_media
 from google.oauth2 import service_account
 from google.cloud import storage
@@ -142,53 +142,59 @@ class GcpBlobUpath(BlobUpath):
         return self._bucket
 
     def blob(self):
+        '''
+        This constructs a Blob object irrespecitive of whether the blob
+        exists in cloud storage.
+        '''
         if self._blob is None:
             self._blob = self.bucket.blob(self.blob_name)
         return self._blob
 
-    def _reload_blob(self):
+    def get_blob(self):
         '''
-        Reload properties of the blob from cloud storage.
-        Raise `NotFound` if the blob does not exist.
+        While `.blob` simply constructs a Blob object,
+        `.get_blob` makes network calls to refresh properties
+        of the object in cloud storage. If the blob does not exist,
+        return `None`.
         '''
         b = self.blob()
         b.reload(client=self.client)
         return b
 
-    def _blob_retry(self, func_name, *args, max_tries=3, **kwargs):
-        # `func_name` is the name of a blob method.
-        sleeper = Backoff(0.1)
-        while True:
-            try:
-                return getattr(self.blob(), func_name)(*args, **kwargs)
-            except (requests.exceptions.ReadTimeout,
-                    urllib3.exceptions.ReadTimeoutError,
-                    socket.timeout,
-                    urllib3.exceptions.SSLError,
-                    requests.exceptions.SSLError,
-                    requests.exceptions.ConnectionError,
-                    ) as e:
-                if sleeper.retries >= max_tries:
-                    raise
-                logger.info("retrying %r on error: %r", func_name, e)
-                sleeper.sleep()
-                # My hypothesis is that sometimes timeout happens
-                # because the cached `client`, `bucket`, `blob`
-                # have become stale, hence should be recreated.
-                self._client = None
-                self._bucket = None
-                self._blob = None
+    # def _blob_retry(self, func_name, *args, max_tries=3, **kwargs):
+    #     # `func_name` is the name of a blob method.
+    #     sleeper = Backoff(0.1)
+    #     while True:
+    #         try:
+    #             return getattr(self.blob(), func_name)(*args, **kwargs)
+    #         except (requests.exceptions.ReadTimeout,
+    #                 urllib3.exceptions.ReadTimeoutError,
+    #                 socket.timeout,
+    #                 urllib3.exceptions.SSLError,
+    #                 requests.exceptions.SSLError,
+    #                 requests.exceptions.ConnectionError,
+    #                 ) as e:
+    #             if sleeper.retries >= max_tries:
+    #                 raise
+    #             logger.info("retrying %r on error: %r", func_name, e)
+    #             sleeper.sleep()
+    #             # My hypothesis is that sometimes timeout happens
+    #             # because the cached `client`, `bucket`, `blob`
+    #             # have become stale, hence should be recreated.
+    #             self._client = None
+    #             self._bucket = None
+    #             self._blob = None
 
-    def _blob_rate_limit(self, func_name, *args, max_retries=5, **kwargs):
+    def _blob_rate_limit(self, func, *args, max_retries=5, **kwargs):
         # `func_name` is the name of a create/update/delete function.
         sleeper = Backoff(0.2)
         while True:
             try:
-                return self._blob_retry(func_name, *args, **kwargs)
+                return func(*args, **kwargs)
             except TooManyRequests as e:
                 if sleeper.retries >= max_retries:
                     raise
-                logger.info("retrying %r on error: %r", func_name, e)
+                logger.info("retrying %r on error: %r", func, e)
                 sleeper.sleep()
 
     @overrides
@@ -211,7 +217,7 @@ class GcpBlobUpath(BlobUpath):
         os.makedirs(str(target.parent), exist_ok=True)
         try:
             with open(str(target), 'wb') as file_obj:
-                self._read_bytes(file_obj)
+                self._read_into_buffer(file_obj)
         except resumable_media.DataCorruption:
             target.remove_file()
             raise
@@ -219,7 +225,7 @@ class GcpBlobUpath(BlobUpath):
     @overrides
     def file_info(self):
         try:
-            b = self._reload_blob()
+            b = self.get_blob()
         except NotFound:
             return None
         return FileInfo(
@@ -244,7 +250,15 @@ class GcpBlobUpath(BlobUpath):
     def _import_file(self, source: Upath) -> None:
         if not isinstance(source, LocalUpath):
             return super()._import_file(source)
-        self._blob_retry('upload_from_filename', str(source))
+
+        def _upload(filename, **kwargs):
+            with open(filename, 'rb') as file_obj:
+                total_bytes = os.fstat(file_obj.fileno()).st_size
+                self._write_from_buffer(file_obj, size=total_bytes, **kwargs)
+
+        filename = str(source)
+        content_type = self.blob()._get_content_type(None, filename=filename)
+        self._blob_rate_limit(_upload, filename, content_type=content_type)
 
     @overrides
     def is_file(self) -> bool:
@@ -305,10 +319,10 @@ class GcpBlobUpath(BlobUpath):
                 # b.upload_from_string(b'0', if_generation_match=0)
                 # b.cache_control = 'no-store'
                 # b.patch()
-                self._blob_rate_limit('upload_from_string', b'0', if_generation_match=0)
+                self._blob_rate_limit(self._write_bytes, b'0')
                 self._generation = self.blob().generation
                 return
-            except PreconditionFailed:
+            except (PreconditionFailed, FileExistsError):
                 if (t := sleeper.time_elapsed) >= timeout:
                     raise LockAcquisitionTimeoutError(self, t)
                 sleeper.sleep()
@@ -336,10 +350,11 @@ class GcpBlobUpath(BlobUpath):
             if self._lock_count == 0:
                 try:
                     self._blob_rate_limit(
-                        'delete',
-                        if_generation_match=self._generation,
-                        max_retries=10,
-                    )
+                            self.blob().delete,
+                            client=self.client,
+                            if_generation_match=self._generation,
+                            max_retries=10,
+                            )
                 except Exception as e:
                     logger.error(e)
 
@@ -350,7 +365,7 @@ class GcpBlobUpath(BlobUpath):
         '''
         return self.blob().open(mode, **kwargs)
 
-    def _read_bytes(self, file_obj, *, concurrency=10):
+    def _read_into_buffer(self, file_obj):
         file_info = self.file_info()
         if not file_info:
             raise FileNotFoundError(self)
@@ -365,40 +380,42 @@ class GcpBlobUpath(BlobUpath):
                     blob, file_obj=buffer, start=start, end=end)
             return buffer
 
-        with concurrent.futures.ThreadPoolExecutor(concurrency) as pool:
-            tasks = queue.SimpleQueue()
-            client = self.client
-            blob = self.blob()
-            k = 0
-            while True:
-                kk = min(k + MEGABYTES32, file_size)
-                t = pool.submit(_download, client, blob, k, kk - 1)
-                tasks.put((t, kk - k))
-                k = kk
-                if k >= file_size:
-                    tasks.put(None)
-                    break
+        pool = self._get_thread_executor()
 
-            while True:
-                z = tasks.get()
-                if z is None:
-                    break
-                t, k = z
-                buffer = t.result()
-                n = buffer.readinto(file_obj)
-                if n != k:
-                    raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
+        tasks = queue.SimpleQueue()
+        client = self.client
+        blob = self.blob()
+        k = 0
+        while True:
+            kk = min(k + MEGABYTES32, file_size)
+            t = pool.submit(_download, client, blob, k, kk - 1)
+            tasks.put((t, kk - k))
+            k = kk
+            if k >= file_size:
+                tasks.put(None)
+                break
+
+        while True:
+            z = tasks.get()
+            if z is None:
+                break
+            t, k = z
+            buffer = t.result()
+            n = buffer.readinto(file_obj)
+            if n != k:
+                raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
+            buffer.close()
 
     @overrides
     def read_bytes(self) -> bytes:
         buffer = BytesIO()
-        self._read_bytes(buffer)
+        self._read_into_buffer(buffer)
         return buffer.getvalue()
 
     @overrides
     def remove_file(self) -> int:
         try:
-            self._blob_rate_limit('delete')
+            self._blob_rate_limit(self.blob().delete, client=self.client)
             self._blob = None
             return 1
         except NotFound:
@@ -422,23 +439,38 @@ class GcpBlobUpath(BlobUpath):
         obj._bucket = self._bucket
         return obj
 
-    @overrides
-    def write_bytes(self, data, *, overwrite=False) -> int:
+    def _write_from_buffer(self, file_obj, *, overwrite=False, content_type=None, size=None):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
-        if isinstance(data, BufferedReader):
-            data = data.read()
-        nbytes = len(data)
 
         if overwrite:
-            self._blob_rate_limit('upload_from_string', data)
-            # this will overwrite existing content.
-        else:
-            try:
-                self._blob_rate_limit(
-                    'upload_from_string',
-                    data,
-                    if_generation_match=0)
-            except PreconditionFailed:
-                raise FileExistsError(self)
-        return nbytes
+            self.blob().upload_from_file(
+                file_obj,
+                content_type=content_type,
+                size=size,
+                client=self.client,
+                )
+            # this will overwrite existing content if any.
+            return
+
+        try:
+            self.blob().upload_from_file(
+                file_obj,
+                content_type=content_type,
+                size=size,
+                client=self.client,
+                if_generation_match=0,
+                )
+        except PreconditionFailed:
+            raise FileExistsError(self)
+
+    def _write_bytes(self, data, **kwargs):
+        self._write_from_buffer(BytesIO(data), content_type='text/plain', size=len(data), **kwargs)
+
+    @overrides
+    def write_bytes(self, data: Union[bytes, BufferedReader], *, overwrite=False):
+        if isinstance(data, bytes):
+            self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
+            return
+        self._write_from_buffer(data, content_type='text/plain', overwrite=overwrite)
+
