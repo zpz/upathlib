@@ -202,7 +202,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         self._path = os.path.normpath(os.path.join(
             '/', *pathsegments))  # pylint: disable=no-value-for-parameter
         # The path is always "absolute" starting with '/'.
-        # Unless it is `/`, it does not have a trailing `/`.
+        # Unless it is just `/`, it does not have a trailing `/`.
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self._path}')"
@@ -239,6 +239,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return hash(repr(self))
 
     def __truediv__(self: T, key: str) -> T:
+        '''
+        This is called by `self / key`.
+        '''
         return self.joinpath(key)
 
     def copy_dir(self: T,

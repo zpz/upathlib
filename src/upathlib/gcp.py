@@ -4,14 +4,17 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
+import concurrent.futures
 import contextlib
 import logging
 import os
+import queue
 import socket
 import urllib3
-from io import BufferedReader, UnsupportedOperation
+from io import BufferedReader, UnsupportedOperation, BytesIO
 
 import requests
+from google import resumable_media
 from google.oauth2 import service_account
 from google.cloud import storage
 from google.api_core.exceptions import (
@@ -27,8 +30,29 @@ from ._util import Backoff
 logger = logging.getLogger(__name__)
 
 
+# 67108864 = 256 * 1024 * 256 = 64 MB
+MEGABYTES32 = 33554432
+MEGABYTES64 = 67108864
+
+
 class GcpBlobUpath(BlobUpath):
     def __init__(self, *paths: str, bucket_name: str, account_info: dict):
+        '''
+        `account_info`: a dict with these elements:
+            'type': 'service_account',
+            'project_id':
+            'private_key_id':
+            'private_key':
+                '-----BEGIN PRIVATE KEY-----\n'
+                + private_key.encode('latin1').decode('unicode_escape')
+                + '\n-----END PRIVATE KEY-----\n',
+            'client_email':
+            'client_id':
+            'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+            'token_uri': 'https://oauth2.googleapis.com/token',
+            'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+            'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
+        '''
         super().__init__(*paths)
         self._bucket_name = bucket_name
         self._account_info = account_info
@@ -40,44 +64,44 @@ class GcpBlobUpath(BlobUpath):
 
     def __repr__(self) -> str:
         return "{}('{}', bucket_name='{}')".format(
-            self.__class__.__name__, self._path, self._bucket_name
+            self.__class__.__name__, self._path, self.bucket_name
         )
 
     def __str__(self) -> str:
-        return f"{self._bucket_name}://{self._path}"
+        return f"{self.bucket_name}://{self._path}"
 
     def __eq__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        if other._bucket_name != self._bucket_name:
+        if other.bucket_name != self.bucket_name:
             return NotImplemented
         return self._path == other._path
 
     def __lt__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        if other._bucket_name != self._bucket_name:
+        if other.bucket_name != self.bucket_name:
             return NotImplemented
         return self._path < other._path
 
     def __le__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        if other._bucket_name != self._bucket_name:
+        if other.bucket_name != self.bucket_name:
             return NotImplemented
         return self._path <= other._path
 
     def __gt__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        if other._bucket_name != self._bucket_name:
+        if other.bucket_name != self.bucket_name:
             return NotImplemented
         return self._path > other._path
 
     def __ge__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        if other._bucket_name != self._bucket_name:
+        if other.bucket_name != self.bucket_name:
             return NotImplemented
         return self._path >= other._path
 
@@ -86,13 +110,13 @@ class GcpBlobUpath(BlobUpath):
         # (when not None) can't be pickled.
         return {
             '_path': self._path,
-            '_bucket_name': self._bucket_name,
+            'bucket_name': self.bucket_name,
             '_account_info': self._account_info,
         }
 
     def __setstate__(self, data):
         self._path = data['_path']
-        self._bucket_name = data['_bucket_name']
+        self.bucket_name = data['bucket_name']
         self._account_info = data['_account_info']
         self._client = None
         self._bucket = None
@@ -113,26 +137,25 @@ class GcpBlobUpath(BlobUpath):
     @property
     def bucket(self):
         if self._bucket is None:
-            self._bucket = self.client.bucket(self._bucket_name)
-            # self._bucket = self.client.get_bucket(self._bucket_name)
+            self._bucket = self.client.bucket(self.bucket_name)
+            # self._bucket = self.client.get_bucket(self.bucket_name)
         return self._bucket
 
-    @property
-    def bucket_name(self):
-        return self._bucket_name
+    def blob(self):
+        if self._blob is None:
+            self._blob = self.bucket.blob(self.blob_name)
+        return self._blob
 
-    def blob(self, chunk_size=None, **kwargs):
-        # `chunk_size` is relevant to downloading/uploading of large blobs.
-        # See `Blob._do_download` and `Blob._do_upload`.
-        # 67108864 = 256 * 1024 * 256 = 64 MB
-        if not chunk_size and not kwargs:
-            if self._blob is None:
-                self._blob = self.bucket.blob(self.blob_name, chunk_size=67108864)
-            return self._blob
-        return self.bucket.blob(self.blob_name,
-            chunk_size=chunk_size or 67108864, **kwargs)
+    def _reload_blob(self):
+        '''
+        Reload properties of the blob from cloud storage.
+        Raise `NotFound` if the blob does not exist.
+        '''
+        b = self.blob()
+        b.reload(client=self.client)
+        return b
 
-    def _blob_retry(self, func_name, *args, max_tries=5, **kwargs):
+    def _blob_retry(self, func_name, *args, max_tries=3, **kwargs):
         # `func_name` is the name of a blob method.
         sleeper = Backoff(0.1)
         while True:
@@ -186,23 +209,30 @@ class GcpBlobUpath(BlobUpath):
         if not isinstance(target, LocalUpath):
             return super()._export_file(target)
         os.makedirs(str(target.parent), exist_ok=True)
-        self._blob_retry('download_to_filename', str(target))
+        try:
+            with open(str(target), 'wb') as file_obj:
+                self._read_bytes(file_obj)
+        except resumable_media.DataCorruption:
+            target.remove_file()
+            raise
 
     @overrides
     def file_info(self):
-        b = self.bucket.get_blob(self.blob_name)
-        if b is not None:
-            return FileInfo(
-                ctime=b.time_created.timestamp(),
-                mtime=b.updated.timestamp(),
-                time_created=b.time_created,
-                time_modified=b.updated,
-                size=b.size,
-                details=b._properties,
-            )
-            # If an existing file is written to again using `write_...`,
-            # then its `ctime` and `mtime` are both updated.
-            # My experiments showed that `ctime` and `mtime` are equal.
+        try:
+            b = self._reload_blob()
+        except NotFound:
+            return None
+        return FileInfo(
+            ctime=b.time_created.timestamp(),
+            mtime=b.updated.timestamp(),
+            time_created=b.time_created,
+            time_modified=b.updated,
+            size=b.size,  # bytes
+            details=b._properties,
+        )
+        # If an existing file is written to again using `write_...`,
+        # then its `ctime` and `mtime` are both updated.
+        # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
     def import_dir(self, source, **kwargs) -> int:
@@ -218,7 +248,9 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def is_file(self) -> bool:
-        return self.blob().exists()
+        # This is not cached, in case the object is modified anytime
+        # by other clients.
+        return self.blob().exists(self.client)
 
     @overrides
     def iterdir(self):
@@ -254,13 +286,6 @@ class GcpBlobUpath(BlobUpath):
 
         prefix = self.blob_name + '/'
         k = len(prefix)
-        # for p in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/'):
-        #     obj = self / p.name[k:]  # "files"
-        #     obj._blob = p
-        #     yield obj
-        # for page in self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/').pages:
-        #     for p in page.prefixes:
-        #         yield self / p[k:].rstrip('/')  # "subdirectories"
         blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/')
         for p in blobs:
             obj = self / p.name[k:]  # files
@@ -325,12 +350,50 @@ class GcpBlobUpath(BlobUpath):
         '''
         return self.blob().open(mode, **kwargs)
 
+    def _read_bytes(self, file_obj, *, concurrency=10):
+        file_info = self.file_info()
+        if not file_info:
+            raise FileNotFoundError(self)
+        file_size = file_info.size  # bytes
+        if file_size <= MEGABYTES32:
+            self.client.download_blob_to_file(self.blob(), file_obj)
+            return
+
+        def _download(client, blob, start, end):
+            buffer = BytesIO()
+            client.download_blob_to_file(
+                    blob, file_obj=buffer, start=start, end=end)
+            return buffer
+
+        with concurrent.futures.ThreadPoolExecutor(concurrency) as pool:
+            tasks = queue.SimpleQueue()
+            client = self.client
+            blob = self.blob()
+            k = 0
+            while True:
+                kk = min(k + MEGABYTES32, file_size)
+                t = pool.submit(_download, client, blob, k, kk - 1)
+                tasks.put((t, kk - k))
+                k = kk
+                if k >= file_size:
+                    tasks.put(None)
+                    break
+
+            while True:
+                z = tasks.get()
+                if z is None:
+                    break
+                t, k = z
+                buffer = t.result()
+                n = buffer.readinto(file_obj)
+                if n != k:
+                    raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
+
     @overrides
     def read_bytes(self) -> bytes:
-        try:
-            return self._blob_retry('download_as_bytes')
-        except NotFound as e:
-            raise FileNotFoundError(self) from e
+        buffer = BytesIO()
+        self._read_bytes(buffer)
+        return buffer.getvalue()
 
     @overrides
     def remove_file(self) -> int:
@@ -357,7 +420,6 @@ class GcpBlobUpath(BlobUpath):
                              account_info=self._account_info)
         obj._client = self._client
         obj._bucket = self._bucket
-        obj._blob = None
         return obj
 
     @overrides
