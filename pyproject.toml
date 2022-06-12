@@ -12,6 +12,7 @@ dependencies = [
     "filelock >=3.3.0",
     "orjson >=3.6.0",
     "overrides",
+    "tqdm",
 ]
 requires-python = ">=3.8"
 readme = "README.md"

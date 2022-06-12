@@ -42,7 +42,6 @@ class FakeBlobStore:
         )
         self._data[bucket][name] = data
         self._meta[bucket][name] = fi
-        return len(data)
 
     def read_bytes(self, bucket: str, name: str):
         z = self._data[bucket]
@@ -140,7 +139,7 @@ class FakeBlobUpath(BlobUpath):
         return self.__class__(*paths, bucket=self._bucket)
 
     @overrides
-    def write_bytes(self, data, *, overwrite=False) -> int:
+    def write_bytes(self, data, *, overwrite=False):
         try:
             _store.write_bytes(self._bucket, self._path,
                                data, overwrite=overwrite)

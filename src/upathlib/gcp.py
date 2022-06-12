@@ -7,10 +7,9 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-import queue
 # import socket
 # import urllib3
-from io import BufferedReader, UnsupportedOperation, BytesIO
+from io import BufferedReader, BufferedWriter, UnsupportedOperation, BytesIO
 from typing import Union
 
 # import requests
@@ -54,7 +53,7 @@ class GcpBlobUpath(BlobUpath):
             'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
         '''
         super().__init__(*paths)
-        self._bucket_name = bucket_name
+        self.bucket_name = bucket_name
         self._account_info = account_info
         self._client = None
         self._bucket = None
@@ -378,33 +377,27 @@ class GcpBlobUpath(BlobUpath):
             buffer = BytesIO()
             client.download_blob_to_file(
                     blob, file_obj=buffer, start=start, end=end)
-            return buffer
+            return buffer, end - start
 
-        pool = self._get_thread_executor()
+        def _do_download():
+            client = self.client
+            blob = self.blob()
+            name = self.name
+            k = 0
+            p = 0
+            while True:
+                kk = min(k + MEGABYTES32, file_size)
+                p += 1
+                yield (_download, (client, blob, k, kk - 1), {}, f"{name}: part {p}")
+                k = kk
+                if k >= file_size:
+                    break
 
-        tasks = queue.SimpleQueue()
-        client = self.client
-        blob = self.blob()
-        k = 0
-        while True:
-            kk = min(k + MEGABYTES32, file_size)
-            t = pool.submit(_download, client, blob, k, kk - 1)
-            tasks.put((t, kk - k))
-            k = kk
-            if k >= file_size:
-                tasks.put(None)
-                break
-
-        while True:
-            z = tasks.get()
-            if z is None:
-                break
-            t, k = z
-            buffer = t.result()
-            n = buffer.readinto(file_obj)
+        for buf, k in self._run_in_executor(_do_download()):
+            n = buf.readinto(file_obj)
             if n != k:
                 raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
-            buffer.close()
+            buf.close()
 
     @overrides
     def read_bytes(self) -> bytes:
@@ -433,7 +426,7 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def with_path(self, *paths: str):
-        obj = self.__class__(*paths, bucket_name=self._bucket_name,
+        obj = self.__class__(*paths, bucket_name=self.bucket_name,
                              account_info=self._account_info)
         obj._client = self._client
         obj._bucket = self._bucket

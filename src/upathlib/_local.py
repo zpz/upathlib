@@ -125,8 +125,8 @@ class LocalUpath(Upath):
             raise FileNotFoundError(self) from e
 
     @overrides
-    def remove_dir(self, *, concurrency=None, **kwargs) -> int:
-        n = super().remove_dir(concurrency=concurrency, **kwargs)
+    def remove_dir(self) -> int:
+        n = super().remove_dir()
 
         def _remove_empty_dir(path):
             for p in path.iterdir():
@@ -147,8 +147,8 @@ class LocalUpath(Upath):
             return 0
 
     @overrides
-    def rename_dir(self, target, *, concurrency=None, **kwargs):
-        target_ = super().rename_dir(target, concurrency=concurrency, **kwargs)
+    def rename_dir(self, target, **kwargs):
+        target_ = super().rename_dir(target, **kwargs)
 
         def _remove_empty_dir(path):
             k = 0
@@ -179,7 +179,7 @@ class LocalUpath(Upath):
                 yield from p.riterdir()
 
     @overrides
-    def write_bytes(self, data: bytes, *, overwrite=False) -> int:
+    def write_bytes(self, data: bytes, *, overwrite=False):
         if self.localpath.is_file():
             if not overwrite:
                 raise FileExistsError(self)
@@ -187,4 +187,4 @@ class LocalUpath(Upath):
             raise IsADirectoryError(self)
         else:
             self.localpath.parent.mkdir(exist_ok=True, parents=True)
-        return self.localpath.write_bytes(data)
+        self.localpath.write_bytes(data)

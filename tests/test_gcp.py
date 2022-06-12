@@ -1,4 +1,5 @@
 from datetime import datetime
+from io import BytesIO
 import upathlib.tests
 from upathlib.gcp import GcpBlobUpath, NotFound
 
@@ -10,18 +11,22 @@ class Blob:
         self.name = name
         self._bucket = bucket
 
-    def delete(self):
+    def delete(self, client=None):
         try:
             del self._bucket._blobs[self.name]
         except KeyError:
             raise NotFound(self.name)
 
-    def exists(self):
+    def exists(self, client=None):
         return self.name in self._bucket._blobs
 
-    def upload_from_string(self, data, *, if_generation_match=None, **ignore):
+    def reload(self, client=None):
+        pass
+
+    def upload_from_file(self, data, *, if_generation_match=None, **ignore):
         if if_generation_match == 0 and self.name in self._bucket._blobs:
             raise FileExistsError(self.name)
+        data = data.read()
         self._bucket._blobs[self.name] = {
             'data': data,
             'time_created': datetime.now(),
@@ -29,18 +34,12 @@ class Blob:
             'size': len(data),
             }
 
-    def download_as_bytes(self):
+    def download_to_file(self, file_obj):
         try:
             z = self._bucket._blobs[self.name]
-            return z['data']
+            file_obj.write(z['data'])
         except KeyError:
             raise NotFound(self.name)
-
-    def download_to_filename(self, filename):
-        upathlib.LocalUpath(filename).write_bytes(self.download_as_bytes())
-
-    def upload_from_filename(self, filename):
-        self.upload_from_string(upathlib.LocalUpath(filename).read_bytes())
 
     @property
     def time_created(self):
@@ -128,6 +127,9 @@ class Client:
 
     def list_blobs(self, bucket, prefix, delimiter=None):
         return BlobLists(bucket, prefix, delimiter)
+
+    def download_blob_to_file(self, blob, file_obj):
+        blob.download_to_file(file_obj)
 
 
 
