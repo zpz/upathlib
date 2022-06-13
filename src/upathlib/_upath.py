@@ -13,17 +13,15 @@ import os
 import os.path
 import pathlib
 import queue
-import time
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import List, Iterator, Tuple, Type, TypeVar, Any, Optional, Union, Callable, cast
+from typing import List, Iterator, Type, TypeVar, Any, Optional, Callable, cast
 
 from overrides import EnforceOverrides
 from tqdm import tqdm
 from .serializer import (
     ByteSerializer, TextSerializer,
     JsonSerializer, PickleSerializer, CompressedPickleSerializer,
-    OrjsonSerializer, CompressedOrjsonSerializer,
 )
 
 
@@ -220,7 +218,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     [(target_ / extra)._path],
                     {'exist_action': exist_action, 'update_filter': update_filter},
                     p.name,
-                    )
+                )
 
         n = 0
         for k in self._run_in_executor(foo()):
@@ -311,9 +309,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         which is typically in another store.
 
         Compare with `copy_dir`, which make copies within the same store.
-
-        `concurrency`: number of threads to use. If `None`,
-        a default value (e.g. 4) is used.
 
         Overwriting happens file-wise. For example, if the target directory
         contains files that do not exist in the source directory, they
@@ -774,10 +769,17 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 # 'read_json', 'write_json',
 # 'read_pickle', 'write_pickle',
 # 'read_pickle_z', 'write_pickle_z',
-# 'read_orjson', 'write_orjson',
-# 'read_orjson_z', 'write_orjson_z'.
 Upath.register_read_write_text_format(JsonSerializer, 'json')
 Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
 Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
-Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
-Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')
+
+try:
+    from .serializer import OrjsonSerializer, CompressedOrjsonSerializer
+except ImportError:
+    pass
+else:
+    # Add methods
+    # 'read_orjson', 'write_orjson',
+    # 'read_orjson_z', 'write_orjson_z'.
+    Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
+    Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')

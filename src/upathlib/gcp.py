@@ -9,7 +9,7 @@ import logging
 import os
 # import socket
 # import urllib3
-from io import BufferedReader, BufferedWriter, UnsupportedOperation, BytesIO
+from io import BufferedReader, UnsupportedOperation, BytesIO
 from typing import Union
 
 # import requests
@@ -157,8 +157,11 @@ class GcpBlobUpath(BlobUpath):
         return `None`.
         '''
         b = self.blob()
-        b.reload(client=self.client)
-        return b
+        try:
+            b.reload(client=self.client)
+            return b
+        except NotFound:
+            return None
 
     # def _blob_retry(self, func_name, *args, max_tries=3, **kwargs):
     #     # `func_name` is the name of a blob method.
@@ -200,7 +203,7 @@ class GcpBlobUpath(BlobUpath):
     def _copy_file(self, target: GcpBlobUpath) -> None:
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         self.bucket.copy_blob(
-            self.blob(), target.bucket, target.blob_name
+            self.blob(), target.bucket, target.blob_name, client=self.client,
         )
 
     @overrides
@@ -223,9 +226,8 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def file_info(self):
-        try:
-            b = self.get_blob()
-        except NotFound:
+        b = self.get_blob()
+        if not b:
             return None
         return FileInfo(
             ctime=b.time_created.timestamp(),
@@ -349,11 +351,11 @@ class GcpBlobUpath(BlobUpath):
             if self._lock_count == 0:
                 try:
                     self._blob_rate_limit(
-                            self.blob().delete,
-                            client=self.client,
-                            if_generation_match=self._generation,
-                            max_retries=10,
-                            )
+                        self.blob().delete,
+                        client=self.client,
+                        if_generation_match=self._generation,
+                        max_retries=10,
+                    )
                 except Exception as e:
                     logger.error(e)
 
@@ -370,13 +372,13 @@ class GcpBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
         file_size = file_info.size  # bytes
         if file_size <= MEGABYTES32:
-            self.client.download_blob_to_file(self.blob(), file_obj)
+            self.blob().download_to_file(file_obj, client=self.client)
             return
 
         def _download(client, blob, start, end):
             buffer = BytesIO()
-            client.download_blob_to_file(
-                    blob, file_obj=buffer, start=start, end=end)
+            blob.download_to_file(buffer, client=client, start=start, end=end)
+            buffer.seek(0)
             return buffer, end - start
 
         def _do_download():
@@ -442,7 +444,7 @@ class GcpBlobUpath(BlobUpath):
                 content_type=content_type,
                 size=size,
                 client=self.client,
-                )
+            )
             # this will overwrite existing content if any.
             return
 
@@ -453,12 +455,14 @@ class GcpBlobUpath(BlobUpath):
                 size=size,
                 client=self.client,
                 if_generation_match=0,
-                )
+            )
         except PreconditionFailed:
             raise FileExistsError(self)
 
     def _write_bytes(self, data, **kwargs):
-        self._write_from_buffer(BytesIO(data), content_type='text/plain', size=len(data), **kwargs)
+        b = BytesIO(data)
+        b.seek(0)
+        self._write_from_buffer(b, content_type='text/plain', size=len(data), **kwargs)
 
     @overrides
     def write_bytes(self, data: Union[bytes, BufferedReader], *, overwrite=False):
@@ -466,4 +470,3 @@ class GcpBlobUpath(BlobUpath):
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
             return
         self._write_from_buffer(data, content_type='text/plain', overwrite=overwrite)
-

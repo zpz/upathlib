@@ -21,7 +21,11 @@ class Blob:
         return self.name in self._bucket._blobs
 
     def reload(self, client=None):
-        pass
+        if not self.exists(client):
+            raise NotFound(self.name)
+
+    def _get_content_type(self, content_type, filename):
+        return 'ok'
 
     def upload_from_file(self, data, *, if_generation_match=None, **ignore):
         if if_generation_match == 0 and self.name in self._bucket._blobs:
@@ -34,7 +38,7 @@ class Blob:
             'size': len(data),
             }
 
-    def download_to_file(self, file_obj):
+    def download_to_file(self, file_obj, client=None):
         try:
             z = self._bucket._blobs[self.name]
             file_obj.write(z['data'])
@@ -57,6 +61,10 @@ class Blob:
     def _properties(self):
         return {}
 
+    @property
+    def generation(self):
+        return 0
+
 
 class Bucket:
     def __init__(self, name):
@@ -70,9 +78,11 @@ class Bucket:
         if name in self._blobs:
             return self.blob(name)
 
-    def copy_blob(self, blob, target_bucket, target_blob_name):
-        target_bucket.blob(target_blob_name).upload_from_string(
-                blob.download_as_bytes())
+    def copy_blob(self, blob, target_bucket, target_blob_name, client=None):
+        buffer = BytesIO()
+        blob.download_to_file(buffer)
+        buffer.seek(0)
+        target_bucket.blob(target_blob_name).upload_from_file(buffer)
 
 
 class Page:
@@ -127,9 +137,6 @@ class Client:
 
     def list_blobs(self, bucket, prefix, delimiter=None):
         return BlobLists(bucket, prefix, delimiter)
-
-    def download_blob_to_file(self, blob, file_obj):
-        blob.download_to_file(file_obj)
 
 
 
