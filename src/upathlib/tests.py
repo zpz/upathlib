@@ -169,6 +169,8 @@ def test_rename(p: Upath):
     (p / 'c/d/e.txt').write_text('e')
     (p / 'c/d.txt').write_text('d')
 
+    assert (p / 'a/a.txt').read_text() == 'a'
+
     p.joinpath('a/a.txt').rename_file('b/a.txt')
     assert not (p / 'a/a.txt').exists()
     assert (p / 'a/b/a.txt').read_text() == 'a'

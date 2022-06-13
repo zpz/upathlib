@@ -6,16 +6,8 @@ import zlib
 from contextlib import contextmanager
 from typing import TypeVar
 
-import orjson
-
 
 T = TypeVar('T')
-
-ORJSON_OPT = orjson.OPT_SERIALIZE_NUMPY
-# Although this is supported, when data contains numpy,
-# you probably should serialize it by pickle, because
-# pickle would be much faster for numpy, and
-# deserialize JSON will not get back numpy arrays.
 
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
@@ -118,35 +110,46 @@ class JsonSerializer(TextSerializer):
             return json.loads(y)
 
 
-class OrjsonSerializer(ByteSerializer):
-    OPTION = ORJSON_OPT
+try:
+    import orjson
+except ImportError:
+    pass
+else:
 
-    @classmethod
-    def serialize(cls, x):
-        return orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
+    ORJSON_OPT = orjson.OPT_SERIALIZE_NUMPY  # pylint: disable=no-member
+    # Although this is supported, when data contains numpy,
+    # you probably should serialize it by pickle, because
+    # pickle would be much faster for numpy, and
+    # deserialize JSON will not get back numpy arrays.
 
-    @classmethod
-    def deserialize(cls, y):
-        if len(y) > 10_000:
-            with no_gc():
+    class OrjsonSerializer(ByteSerializer):
+        OPTION = ORJSON_OPT
+
+        @classmethod
+        def serialize(cls, x):
+            return orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
+
+        @classmethod
+        def deserialize(cls, y):
+            if len(y) > 10_000:
+                with no_gc():
+                    return orjson.loads(y)  # pylint: disable=no-member
+            else:
                 return orjson.loads(y)  # pylint: disable=no-member
-        else:
-            return orjson.loads(y)  # pylint: disable=no-member
 
+    class CompressedOrjsonSerializer(ByteSerializer):
+        OPTION = ORJSON_OPT
 
-class CompressedOrjsonSerializer(ByteSerializer):
-    OPTION = ORJSON_OPT
+        @classmethod
+        def serialize(cls, x):
+            y = orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
+            return zlib.compress(y, level=3)
 
-    @classmethod
-    def serialize(cls, x):
-        y = orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
-        return zlib.compress(y, level=3)
-
-    @classmethod
-    def deserialize(cls, y):
-        z = zlib.decompress(y)
-        if len(y) > 10_000:
-            with no_gc():
+        @classmethod
+        def deserialize(cls, y):
+            z = zlib.decompress(y)
+            if len(y) > 10_000:
+                with no_gc():
+                    return orjson.loads(z)  # pylint: disable=no-member
+            else:
                 return orjson.loads(z)  # pylint: disable=no-member
-        else:
-            return orjson.loads(z)  # pylint: disable=no-member

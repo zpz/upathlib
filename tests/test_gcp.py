@@ -1,4 +1,5 @@
 from datetime import datetime
+from io import BytesIO
 import upathlib.tests
 from upathlib.gcp import GcpBlobUpath, NotFound
 
@@ -10,18 +11,26 @@ class Blob:
         self.name = name
         self._bucket = bucket
 
-    def delete(self):
+    def delete(self, client=None):
         try:
             del self._bucket._blobs[self.name]
         except KeyError:
             raise NotFound(self.name)
 
-    def exists(self):
+    def exists(self, client=None):
         return self.name in self._bucket._blobs
 
-    def upload_from_string(self, data, *, if_generation_match=None, **ignore):
+    def reload(self, client=None):
+        if not self.exists(client):
+            raise NotFound(self.name)
+
+    def _get_content_type(self, content_type, filename):
+        return 'ok'
+
+    def upload_from_file(self, data, *, if_generation_match=None, **ignore):
         if if_generation_match == 0 and self.name in self._bucket._blobs:
             raise FileExistsError(self.name)
+        data = data.read()
         self._bucket._blobs[self.name] = {
             'data': data,
             'time_created': datetime.now(),
@@ -29,18 +38,12 @@ class Blob:
             'size': len(data),
             }
 
-    def download_as_bytes(self):
+    def download_to_file(self, file_obj, client=None):
         try:
             z = self._bucket._blobs[self.name]
-            return z['data']
+            file_obj.write(z['data'])
         except KeyError:
             raise NotFound(self.name)
-
-    def download_to_filename(self, filename):
-        upathlib.LocalUpath(filename).write_bytes(self.download_as_bytes())
-
-    def upload_from_filename(self, filename):
-        self.upload_from_string(upathlib.LocalUpath(filename).read_bytes())
 
     @property
     def time_created(self):
@@ -58,6 +61,10 @@ class Blob:
     def _properties(self):
         return {}
 
+    @property
+    def generation(self):
+        return 0
+
 
 class Bucket:
     def __init__(self, name):
@@ -71,9 +78,11 @@ class Bucket:
         if name in self._blobs:
             return self.blob(name)
 
-    def copy_blob(self, blob, target_bucket, target_blob_name):
-        target_bucket.blob(target_blob_name).upload_from_string(
-                blob.download_as_bytes())
+    def copy_blob(self, blob, target_bucket, target_blob_name, client=None):
+        buffer = BytesIO()
+        blob.download_to_file(buffer)
+        buffer.seek(0)
+        target_bucket.blob(target_blob_name).upload_from_file(buffer)
 
 
 class Page:
