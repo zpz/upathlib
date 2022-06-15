@@ -220,6 +220,10 @@ class GcpBlobUpath(BlobUpath):
         try:
             with open(str(target), 'wb') as file_obj:
                 self._read_into_buffer(file_obj)
+            updated = self.blob().updated
+            if updated is not None:
+                mtime = updated.timestamp()
+                os.utime(target.name, (mtime, mtime))
         except resumable_media.DataCorruption:
             target.remove_file()
             raise
@@ -396,7 +400,7 @@ class GcpBlobUpath(BlobUpath):
                     break
 
         for buf, k in self._run_in_executor(_do_download()):
-            n = buf.readinto(file_obj)
+            n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
             buf.close()

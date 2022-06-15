@@ -13,6 +13,7 @@ import os
 import os.path
 import pathlib
 import queue
+import threading
 from dataclasses import dataclass
 from io import UnsupportedOperation
 from typing import List, Iterator, Type, TypeVar, Any, Optional, Callable, cast
@@ -91,6 +92,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         `tasks`: each element is a tuple of (func, args, kwargs, desc).
         '''
+        if not isinstance(tasks, list):
+            tasks = list(tasks)
+        n_tasks = len(tasks)
+
         if cls._thread_executor_ is None:
             cls._thread_executor_ = concurrent.futures.ThreadPoolExecutor(cls.NUM_EXECUTORS)
 
@@ -101,8 +106,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             q.put(None)
 
         q = queue.Queue(cls.NUM_EXECUTORS * 2)
-        task = cls._thread_executor_.submit(enqueue, tasks, cls._thread_executor_, q)
-        with tqdm() as pbar:
+        task = threading.Thread(target=enqueue, args=(tasks, cls._thread_executor_, q))
+        task.start()
+        with tqdm(total=n_tasks) as pbar:
             while True:
                 z = q.get()
                 if z is None:
@@ -111,7 +117,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 pbar.set_description(desc + ' ...')
                 yield t.result()
                 pbar.set_description(desc + ' ... done')
-            _ = task.result()
+                pbar.update(1)
+            task.join()
 
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
@@ -324,7 +331,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     p.export_file,
                     [target / extra],
                     {'exist_action': exist_action,
-                     'check_source_exist': False,
                      'update_filter': update_filter},
                     p.name,
                 )
@@ -346,7 +352,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     *,
                     exist_action: str = None,
                     update_filter: Callable[[Upath, Upath], bool] = None,
-                    check_source_exist: bool = True,
                     ) -> int:
         '''Copy the file to the specified `target`, which is typically
         in another store.
@@ -360,9 +365,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Compare with `copy_file`, which make copies within the same store.
         '''
-        if check_source_exist and not self.is_file():
-            raise FileNotFoundError(self)
-
         if target.is_file():
             if self._should_overwrite(self, target,
                                       exist_action=exist_action,
@@ -377,6 +379,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         logger.info("copying '%s' to '%s'", self, target)
         self._export_file(target)
+        # TODO: if `self` does not exist, raise FileNotFoundError.
         return 1
 
     @ abc.abstractmethod
@@ -402,7 +405,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     (self / extra).import_file,
                     [p],
                     {'exist_action': exist_action,
-                     'check_source_exist': False,
                      'update_filter': update_filter},
                     p.name,
                 )
@@ -424,10 +426,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
     def import_file(self, source: Upath, *,
                     exist_action: str = None,
                     update_filter: Callable[[Upath, Upath], bool] = None,
-                    check_source_exist: bool = True,
                     ) -> int:
-        if check_source_exist and not source.is_file():
-            raise FileNotFoundError(source)
+        # TODO: if `source` does not exist, raise FileNotFoundError.
 
         if self.is_file():
             if self._should_overwrite(source, self,
