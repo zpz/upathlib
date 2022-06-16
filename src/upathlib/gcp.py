@@ -382,8 +382,10 @@ class GcpBlobUpath(BlobUpath):
         def _download(client, blob, start, end):
             buffer = BytesIO()
             blob.download_to_file(buffer, client=client, start=start, end=end)
+            # Both `start` and `end` are inclusive.
+            # The very first `start` should be 0.
             buffer.seek(0)
-            return buffer, end - start
+            return buffer, end - start + 1
 
         def _do_download():
             client = self.client
@@ -394,7 +396,7 @@ class GcpBlobUpath(BlobUpath):
             while True:
                 kk = min(k + MEGABYTES32, file_size)
                 p += 1
-                yield (_download, (client, blob, k, kk - 1), {}, f"{name}: part {p}")
+                yield (_download, (client, blob, k, kk - 1), {}, f"downloading {name} part {p}")
                 k = kk
                 if k >= file_size:
                     break

@@ -95,6 +95,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         if not isinstance(tasks, list):
             tasks = list(tasks)
         n_tasks = len(tasks)
+        if not n_tasks:
+            return
 
         if cls._thread_executor_ is None:
             cls._thread_executor_ = concurrent.futures.ThreadPoolExecutor(cls.NUM_EXECUTORS)
