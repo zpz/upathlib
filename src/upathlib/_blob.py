@@ -20,13 +20,13 @@ class BlobUpath(Upath, EnforceOverrides):
     def blob_name(self) -> str:
         return self._path.lstrip('/')
 
-    def download_dir(self, target, **kwargs) -> int:
+    def download_dir(self, target, *, overwrite=False) -> int:
         target_ = _resolve_local_path(target)
-        return self.export_dir(target_, **kwargs)
+        return self.export_dir(target_, overwrite=overwrite)
 
-    def download_file(self, target, **kwargs) -> int:
+    def download_file(self, target, *, overwrite=False) -> None:
         target_ = _resolve_local_path(target)
-        return self.export_file(target_, **kwargs)
+        return self.export_file(target_, overwrite=overwrite)
 
     @overrides
     def is_dir(self) -> bool:
@@ -72,10 +72,10 @@ class BlobUpath(Upath, EnforceOverrides):
                 yield self / tail
                 subdirs.add(tail)
 
-    def upload_dir(self, source, **kwargs) -> int:
+    def upload_dir(self, source, *, overwrite=False) -> int:
         s = _resolve_local_path(source)
-        return self.import_dir(s, **kwargs)
+        return self.import_dir(s, overwrite=overwrite)
 
-    def upload_file(self, source, **kwargs) -> int:
+    def upload_file(self, source, *, overwrite=False) -> None:
         s = _resolve_local_path(source)
-        return self.import_file(s, **kwargs)
+        return self.import_file(s, overwrite=overwrite)

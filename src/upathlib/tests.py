@@ -121,8 +121,9 @@ def test_read_write_rm_navigate(p: Upath):
     assert p3.remove_dir() == 0
     assert p.ls() == [p1]
     assert p1.remove_dir() == 0
-    assert p1.remove_file() == 1
-    assert p1.remove_file() == 0
+    p1.remove_file()
+    with pytest.raises(FileNotFoundError):
+        p1.remove_file()
     assert p.rmrf() == 0
 
 

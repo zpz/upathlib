@@ -78,11 +78,11 @@ class Bucket:
         if name in self._blobs:
             return self.blob(name)
 
-    def copy_blob(self, blob, target_bucket, target_blob_name, client=None):
+    def copy_blob(self, blob, target_bucket, target_blob_name, client=None, if_generation_match=None):
         buffer = BytesIO()
         blob.download_to_file(buffer)
         buffer.seek(0)
-        target_bucket.blob(target_blob_name).upload_from_file(buffer)
+        target_bucket.blob(target_blob_name).upload_from_file(buffer, if_generation_match=if_generation_match)
 
 
 class Page:

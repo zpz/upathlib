@@ -101,7 +101,8 @@ class AzureBlobUpath(BlobUpath):
     def container_name(self):
         return self._container_name
 
-    def _copy_file_from(self, source):
+    def _copy_file_from(self, source, *, overwrite=False):
+        # TODO: use `overwrite`
         with self._provide_blob_client():
             with source._provide_blob_client():
                 copy = self._blob_client.start_copy_from_url(
@@ -111,14 +112,16 @@ class AzureBlobUpath(BlobUpath):
                 assert copy['copy_status'] == 'success'
 
     @overrides
-    def _copy_file(self, target: AzureBlobUpath):
-        target._copy_file_from(self)
+    def _copy_file(self, target: AzureBlobUpath, *, overwrite=False):
+        target._copy_file_from(self, overwrite=overwrite)
 
     @overrides
-    def _export_file(self, target: Upath) -> None:
+    def _export_file(self, target: Upath, *, overwrite=False) -> None:
         if not isinstance(target, LocalUpath):
-            return super()._export_file(target)
+            return super()._export_file(target, overwrite=overwrite)
         with self._provide_blob_client():
+            # TODO: check behavior of `download_blob` about
+            # overwrite.
             os.makedirs(str(target.parent), exist_ok=True)
             with open(str(target), 'wb') as f:
                 data = self._blob_client.download_blob()
@@ -145,9 +148,13 @@ class AzureBlobUpath(BlobUpath):
             return None
 
     @overrides
-    def _import_file(self, source: Upath):
+    def _import_file(self, source: Upath, *, overwrite: bool = False):
         if not isinstance(source, LocalUpath):
-            return super()._import_file(source)
+            return super()._import_file(source, overwrite=overwrite)
+        if not overwrite and self.is_file():
+            # TODO: check the behavior of `upload_blob` related to
+            # behavior about overwrite.
+            raise FileExistsError(self)
         with self._provide_blob_client():
             with open(str(source), 'rb') as data:
                 self._blob_client.upload_blob(data)
@@ -292,16 +299,15 @@ class AzureBlobUpath(BlobUpath):
                 raise FileNotFoundError(self) from e
 
     @overrides
-    def remove_file(self) -> int:
+    def remove_file(self):
         with self._provide_blob_client():
             try:
 
                 self._blob_client.delete_blob(
                     delete_snapshots='include',
                     lease=self._lease)
-                return 1
             except ResourceNotFoundError:
-                return 0
+                raise FileNotFoundError(self)
 
     @overrides
     def riterdir(self):

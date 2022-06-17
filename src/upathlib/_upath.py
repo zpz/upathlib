@@ -13,9 +13,10 @@ import os
 import os.path
 import pathlib
 import queue
+import threading
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import List, Iterator, Type, TypeVar, Any, Optional, Callable, cast
+from typing import List, Iterator, Type, TypeVar, Any, Optional, Union
 
 from overrides import EnforceOverrides
 from tqdm import tqdm
@@ -43,54 +44,21 @@ class FileInfo:
     details: Any   # platform-dependent
 
 
-def _should_update(source: Upath, target: Upath) -> bool:
-    sourceinfo = cast(FileInfo, source.file_info())
-    targetinfo = cast(FileInfo, target.file_info())
-    return (sourceinfo.size != targetinfo.size
-            or sourceinfo.mtime > targetinfo.mtime)
-    # Otherwise, we're assuming that
-    # the target file was copied from the source
-    # previously.
-
-
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
     NUM_EXECUTORS = 64
     _thread_executor_ = None
-
-    @staticmethod
-    def _should_overwrite(source: Upath,
-                          target: Upath,
-                          *,
-                          exist_action: str = None,
-                          update_filter: Callable[[Upath, Upath], bool] = None,
-                          ) -> bool:
-        # Determine whether `source` should overwrite `target`,
-        # both of which being existing files, usually of the same name
-        # in the context of 'copying' or 'exporting'.
-        if exist_action is None:
-            exist_action = 'raise'
-        else:
-            assert exist_action in ('raise', 'skip', 'overwrite', 'update')
-
-        if exist_action == 'raise':
-            raise FileExistsError(target)
-        if exist_action == 'skip':
-            logger.info(f"target file {target!r} exists; skipped")
-            return False
-        if exist_action == 'update':
-            if update_filter is None:
-                update_filter = _should_update
-            if not update_filter(source, target):
-                logger.info(
-                    f"target {target!r} appears to be up-to-date; skipped")
-                return False
-        return True
 
     @classmethod
     def _run_in_executor(cls, tasks):
         '''
         `tasks`: each element is a tuple of (func, args, kwargs, desc).
         '''
+        if not isinstance(tasks, list):
+            tasks = list(tasks)
+        n_tasks = len(tasks)
+        if not n_tasks:
+            return
+
         if cls._thread_executor_ is None:
             cls._thread_executor_ = concurrent.futures.ThreadPoolExecutor(cls.NUM_EXECUTORS)
 
@@ -101,17 +69,27 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             q.put(None)
 
         q = queue.Queue(cls.NUM_EXECUTORS * 2)
-        task = cls._thread_executor_.submit(enqueue, tasks, cls._thread_executor_, q)
-        with tqdm() as pbar:
+        task = threading.Thread(target=enqueue, args=(tasks, cls._thread_executor_, q))
+        task.start()
+        with tqdm(total=n_tasks) as pbar:
             while True:
                 z = q.get()
                 if z is None:
                     break
                 t, desc = z
-                pbar.set_description(desc + ' ...')
-                yield t.result()
-                pbar.set_description(desc + ' ... done')
-            _ = task.result()
+                pbar.set_description(desc + '... ...')
+                try:
+                    yield t.result()
+                except Exception:
+                    # TODO: is this a clean shutdown?
+                    while True:
+                        z = q.get()
+                        if z is None:
+                            break
+                    raise
+                pbar.set_description(desc + '... ... done')
+                pbar.update(1)
+            task.join()
 
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
@@ -196,12 +174,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         return self.joinpath(key)
 
-    def copy_dir(self,
-                 target: str,
-                 *,
-                 exist_action: str = None,
-                 update_filter: Callable[[Upath, Upath], bool] = None,
-                 ) -> int:
+    def copy_dir(self, target: str, *, overwrite: bool = False) -> int:
         '''Analogous to `copy_file`.
 
         Return the number of files copied.
@@ -216,27 +189,22 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 yield (
                     p.copy_file,
                     [(target_ / extra)._path],
-                    {'exist_action': exist_action, 'update_filter': update_filter},
-                    p.name,
+                    {'overwrite': overwrite},
+                    f'copying {p.name}',
                 )
 
         n = 0
-        for k in self._run_in_executor(foo()):
-            n += k
+        for _ in self._run_in_executor(foo()):
+            n += 1
         return n
 
-    def _copy_file(self: T, target: T) -> None:
-        # `target` is a path in the same store, but does not exist.
+    def _copy_file(self: T, target: T, *, overwrite: bool = False) -> None:
+        # `target` is a path in the same store.
         # Reference implementation.
         # Subclass may customize this to perform file operations.
-        target.write_bytes(self.read_bytes())
+        target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
-    def copy_file(self,
-                  target: str,
-                  *,
-                  exist_action: str = None,
-                  update_filter: Callable[[Upath, Upath], bool] = None,
-                  ) -> int:
+    def copy_file(self: T, target: Union[T, str], *, overwrite: bool = False) -> None:
         '''Copy file to `target` in the same store.
 
         `target` is either absolute, or relative to `self.parent`.
@@ -245,43 +213,26 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         If `self` is not an existing file, raise `FileNotFoundError`.
 
-        If `target` is an existing file, then the behavior depends on
-        `exist_action`:
-
-            'raise' (default): raise `FileExistsError`.
-            'skip': skip this file; proceed to work on other files.
-            'overwrite': overwrite the existing file.
-            'update': overwrite if source `mtime` is newer than target,
-                or source and target have diff size; otherwise skip.
+        If `target` is an existing file and `overwrite` is `False`,
+        raise `FileExistsError`.
 
         If `target` is an existing directory, raise `IsADirectoryError`.
         Note: this behavior is different from the Unix command `cp`
         in this situation---it does not *copy into* the target directory.
-
-        Return number of files copied (0 or 1).
         '''
         # Reference implementation.
         # Subclass should implement by direct file operation if possible.
-        if not self.is_file():
-            raise FileNotFoundError(self)
-        target_ = self.parent / target
+        if isinstance(target, str):
+            target_ = self.parent / target
+        else:
+            target_ = target
         if target_ == self:
-            return 0
-
-        if target_.is_file():
-            if self._should_overwrite(self, target_,
-                                      exist_action=exist_action,
-                                      update_filter=update_filter):
-                target_.remove_file()
-                self._copy_file(target_)
-                return 1
-            return 0
+            return
 
         if target_.is_dir():
             raise IsADirectoryError(target_)
 
-        self._copy_file(target_)
-        return 1
+        self._copy_file(target_, overwrite=overwrite)
 
     def exists(self) -> bool:
         '''Return `True` if the path is an existing file or dir,
@@ -299,12 +250,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         return self.is_file() or self.is_dir()
 
-    def export_dir(self,
-                   target: Upath,
-                   *,
-                   exist_action: str = None,
-                   update_filter: Callable[[Upath, Upath], bool] = None,
-                   ) -> int:
+    def export_dir(self, target: Upath, *, overwrite: bool = False) -> int:
         '''Copy the content of `self` to the specified `target`,
         which is typically in another store.
 
@@ -323,35 +269,25 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 yield (
                     p.export_file,
                     [target / extra],
-                    {'exist_action': exist_action,
-                     'check_source_exist': False,
-                     'update_filter': update_filter},
-                    p.name,
+                    {'overwrite': overwrite},
+                    f'exporting {p.name}',
                 )
 
         n = 0
-        for k in self._run_in_executor(foo()):
-            n += k
+        for _ in self._run_in_executor(foo()):
+            n += 1
         return n
 
-    def _export_file(self, target: Upath) -> None:
+    def _export_file(self, target: Upath, *, overwrite: bool = False) -> None:
         # `target` is a non-existent path in another store.
         # Reference implementation.
         # Subclass may customize this to perform file download
         # when `target` is a `LocalUpath`.
-        target.write_bytes(self.read_bytes())
+        target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
-    def export_file(self,
-                    target: Upath,
-                    *,
-                    exist_action: str = None,
-                    update_filter: Callable[[Upath, Upath], bool] = None,
-                    check_source_exist: bool = True,
-                    ) -> int:
+    def export_file(self, target: Upath, *, overwrite: bool = False) -> None:
         '''Copy the file to the specified `target`, which is typically
         in another store.
-
-        Return the number of files copied (0 or 1).
 
         The `target` specifies the name corresponding the the name of `self`.
         If `target` is an existing directory, a `FileExistsError` is raised.
@@ -360,24 +296,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Compare with `copy_file`, which make copies within the same store.
         '''
-        if check_source_exist and not self.is_file():
-            raise FileNotFoundError(self)
-
-        if target.is_file():
-            if self._should_overwrite(self, target,
-                                      exist_action=exist_action,
-                                      update_filter=update_filter):
-                target.remove_file()
-            else:
-                return 0
-
         if target.is_dir():
             # Do not delete.
             raise FileExistsError(target)
 
-        logger.info("copying '%s' to '%s'", self, target)
-        self._export_file(target)
-        return 1
+        self._export_file(target, overwrite=overwrite)
 
     @ abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
@@ -386,12 +309,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         raise NotImplementedError
 
-    def import_dir(self,
-                   source: Upath,
-                   *,
-                   exist_action: str = None,
-                   update_filter: Callable[[Upath, Upath], bool] = None,
-                   ) -> int:
+    def import_dir(self, source: Upath, *, overwrite: bool = False) -> int:
         '''Analogous to `export_dir`.
         '''
         def foo():
@@ -401,49 +319,28 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 yield (
                     (self / extra).import_file,
                     [p],
-                    {'exist_action': exist_action,
-                     'check_source_exist': False,
-                     'update_filter': update_filter},
-                    p.name,
+                    {'overwrite': overwrite},
+                    f'importing {p.name}',
                 )
 
         n = 0
-        for k in self._run_in_executor(foo()):
-            n += k
+        for _ in self._run_in_executor(foo()):
+            n += 1
         return n
 
-    def _import_file(self, source: Upath) -> None:
-        # `self` does not exist, hence no concern about overwriting.
+    def _import_file(self, source: Upath, *, overwrite: bool = False) -> None:
         # Subclass may customize this to perform file upload
         # when `target` is a `LocalUpath`.
         # This is not used by `import_file` directly, but
         # it is used by `export_file` in certain situations.
         # See `LocalUpath._export_file`.
-        self.write_bytes(source.read_bytes())
+        self.write_bytes(source.read_bytes(), overwrite=overwrite)
 
-    def import_file(self, source: Upath, *,
-                    exist_action: str = None,
-                    update_filter: Callable[[Upath, Upath], bool] = None,
-                    check_source_exist: bool = True,
-                    ) -> int:
-        if check_source_exist and not source.is_file():
-            raise FileNotFoundError(source)
-
-        if self.is_file():
-            if self._should_overwrite(source, self,
-                                      exist_action=exist_action,
-                                      update_filter=update_filter):
-                self.remove_file()
-            else:
-                return 0
-
+    def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
         if self.is_dir():
             # Do not delete.
             raise FileExistsError(self)
-
-        logger.info("copying '%s' to '%s'", source, self)
-        self._import_file(source)
-        return 1
+        self._import_file(source, overwrite=overwrite)
 
     @ abc.abstractmethod
     def is_dir(self) -> bool:
@@ -575,6 +472,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding=encoding, errors=errors)
 
+    # TODO: rename 'remove' to 'delete'?
+
     def remove_dir(self) -> int:
         '''Remove the directory pointed to by `self`,
         along with all its contents, recursively.
@@ -586,29 +485,23 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         def foo():
             for p in self.riterdir():
-                yield p.remove_file, [], {}, p.name
+                yield p.remove_file, [], {}, f'deleting {p.name}'
 
         n = 0
-        for k in self._run_in_executor(foo()):
-            n += k
+        for _ in self._run_in_executor(foo()):
+            n += 1
         return n
 
     @abc.abstractmethod
-    def remove_file(self) -> int:
+    def remove_file(self) -> None:
         '''Remove the file pointed to by `self`.
 
-        Return the number of files removed (0 or 1).
-
-        If `self` is not an existing file, return 0.
+        If `self` is not an existing file, raise FileNotFoundError.
         If the file exists but can't be removed, raise an exception.
         '''
         raise NotImplementedError
 
-    def rename_dir(self: T,
-                   target: str,
-                   *,
-                   exist_ok: bool = False,
-                   ) -> T:
+    def rename_dir(self: T, target: str, *, overwrite: bool = False) -> T:
         '''Analogous to `rename_file`.
 
         Local upath needs to customize this implementation, because
@@ -621,7 +514,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         if target_ == self:
             return self
 
-        if not exist_ok:
+        if not overwrite:
             if target_.exists():
                 raise FileExistsError(target_)
 
@@ -631,22 +524,22 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 yield (
                     p.rename_file,
                     [(target_ / extra)._path],
-                    {},
-                    p.name,
+                    {'overwrite': overwrite},
+                    f'renaming {p.name}',
                 )
 
         for _ in self._run_in_executor(foo()):
             pass
         return target_
 
-    def _rename_file(self: T, target: T):
-        '''Rename `self` to `target`, which is a non-existent path
-        in the same store.
+    def _rename_file(self: T, target: str, *, overwrite: bool = False):
+        '''Rename `self` to `target`, which is a path in the same store.
+        This is a reference implementation.
         '''
-        self._copy_file(target)
+        self.copy_file(target, overwrite=overwrite)
         self.remove_file()
 
-    def rename_file(self: T, target: str) -> T:
+    def rename_file(self: T, target: str, *, overwrite: bool = False) -> T:
         '''Rename the current file to `target` in the same store.
 
         `target` is either absolute or relative to `self.parent`.
@@ -655,16 +548,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Return an object pointing to the new path.
         '''
-        if not self.is_file():
-            raise FileNotFoundError(self)
         target_ = self.parent / target
         if target_ == self:
             return self
 
-        if target_.exists():
-            raise FileExistsError(target_)
-
-        self._rename_file(target_)
+        self._rename_file(target_._path, overwrite=overwrite)
         return target_
 
     @abc.abstractmethod
@@ -698,9 +586,17 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         if self._path == '/':
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
-        n1 = self.remove_file()
-        n2 = self.remove_dir()
-        return n1 + n2
+        try:
+            self.remove_file()
+        except (FileNotFoundError, IsADirectoryError):
+            n = 0
+        else:
+            n = 1
+        try:
+            m = self.remove_dir()
+        except FileNotFoundError:
+            m = 0
+        return n + m
 
     @ property
     def stem(self) -> str:

@@ -9,6 +9,7 @@
 - Simplified retry logic. For example, GCP's `download_to_file` has its own
   handling of retry; now we rely on `download_to_file` to finish the task
   and do not retry on it.
+- Simplified parameters and behavior around 'overwrite'.
 - Made `orjson` an optional dependency.
 
 
