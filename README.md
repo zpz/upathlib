@@ -36,6 +36,5 @@ $ pip3 install upathlib[azure,gcp]
 
 ## Status
 
-The API is largely stable. The implementations for local file system and for Google Cloud storage
-(GCP blob store) are production ready. The implementation for Azure Blob Storage is also
-production ready but less robust than that for GCP (because I do not use the Azure side these days).
+The style of the API is largely stable. The implementations for local file system and for Google Cloud storage
+(GCP blob store) are production ready.
