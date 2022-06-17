@@ -62,10 +62,11 @@ class FakeBlobStore:
         except KeyError:
             raise ResourceNotFoundError(name)
 
-    def copy_blob(self, bucket: str, name: str, target: str):
+    def copy_blob(self, bucket: str, name: str, target: str, *, overwrite=False):
         self.write_bytes(bucket=bucket,
                          name=target,
                          data=self.read_bytes(bucket, name),
+                         overwrite=overwrite,
                          )
 
     def exists(self, bucket: str, name: str):
@@ -102,8 +103,8 @@ class FakeBlobUpath(BlobUpath):
         return _store.exists(self._bucket, self._path)
 
     @overrides
-    def _copy_file(self, target):
-        _store.copy_blob(self._bucket, self._path, target._path)
+    def _copy_file(self, target, *, overwrite=False):
+        _store.copy_blob(self._bucket, self._path, target._path, overwrite=overwrite)
 
     @contextlib.contextmanager
     @overrides
@@ -127,12 +128,11 @@ class FakeBlobUpath(BlobUpath):
             yield self / pp[len(p):]
 
     @overrides
-    def remove_file(self) -> int:
+    def remove_file(self):
         try:
             _store.delete_blob(self._bucket, self._path)
-            return 1
         except ResourceNotFoundError:
-            return 0
+            raise FileNotFoundError(self)
 
     @overrides
     def with_path(self, *paths):

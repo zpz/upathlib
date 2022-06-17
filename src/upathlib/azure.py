@@ -101,7 +101,8 @@ class AzureBlobUpath(BlobUpath):
     def container_name(self):
         return self._container_name
 
-    def _copy_file_from(self, source):
+    def _copy_file_from(self, source, *, overwrite=False):
+        # TODO: use `overwrite`
         with self._provide_blob_client():
             with source._provide_blob_client():
                 copy = self._blob_client.start_copy_from_url(
@@ -111,8 +112,8 @@ class AzureBlobUpath(BlobUpath):
                 assert copy['copy_status'] == 'success'
 
     @overrides
-    def _copy_file(self, target: AzureBlobUpath):
-        target._copy_file_from(self)
+    def _copy_file(self, target: AzureBlobUpath, *, overwrite=False):
+        target._copy_file_from(self, overwrite=overwrite)
 
     @overrides
     def _export_file(self, target: Upath, *, overwrite=False) -> None:
@@ -298,16 +299,15 @@ class AzureBlobUpath(BlobUpath):
                 raise FileNotFoundError(self) from e
 
     @overrides
-    def remove_file(self) -> int:
+    def remove_file(self):
         with self._provide_blob_client():
             try:
 
                 self._blob_client.delete_blob(
                     delete_snapshots='include',
                     lease=self._lease)
-                return 1
             except ResourceNotFoundError:
-                return 0
+                raise FileNotFoundError(self)
 
     @overrides
     def riterdir(self):

@@ -33,24 +33,27 @@ class LocalUpath(Upath):
         super().__init__(*parts)
 
     @overrides
-    def _copy_file(self, target):
+    def _copy_file(self, target, *, overwrite=False):
+        if not overwrite and target.is_file():
+            raise FileExistsError(target)
         os.makedirs(target.localpath.parent, exist_ok=True)
         shutil.copyfile(self.localpath, target.localpath)
 
     @overrides
-    def export_dir(self, target: Upath, **kwargs) -> int:
+    def export_dir(self, target: Upath, *, overwrite=False) -> int:
         if isinstance(target, LocalUpath):
-            return super().export_dir(target, **kwargs)
-        return target.import_dir(self, **kwargs)
+            return super().export_dir(target, overwrite=overwrite)
+        # `target` is a cloud store; it might have implemented
+        # efficient 'download' functionality.
+        return target.import_dir(self, overwrite=overwrite)
 
     @overrides
-    def _export_file(self, target: Upath):
+    def _export_file(self, target: Upath, *, overwrite=False):
         if isinstance(target, LocalUpath):
-            self._copy_file(target)
-            return
-        # Call the other side in case it implements an efficient
-        # file upload.
-        target._import_file(self)
+            return self._copy_file(target, overwrite=overwrite)
+        # `target` is a cloud store; it might have implemented
+        # efficient 'upload' functionality.
+        target._import_file(self, overwrite=overwrite)
 
     @overrides
     def file_info(self):
@@ -70,19 +73,18 @@ class LocalUpath(Upath):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
-    def import_dir(self, source: Upath, **kwargs) -> int:
+    def import_dir(self, source: Upath, *, overwrite=False) -> int:
         if isinstance(source, LocalUpath):
-            return super().import_dir(source, **kwargs)
-        return source.export_dir(self, **kwargs)
+            return super().import_dir(source, overwrite=overwrite)
+        return source.export_dir(self, overwrite=overwrite)
 
     @overrides
-    def _import_file(self, source: Upath):
+    def _import_file(self, source: Upath, *, overwrite=False):
         if isinstance(source, LocalUpath):
-            source._copy_file(self)
-            return
+            return source._copy_file(self, overwrite=overwrite)
         # Call the other side in case it implements an efficient
         # file download.
-        source._export_file(self)
+        source._export_file(self, overwrite=overwrite)
 
     @overrides
     def is_dir(self) -> bool:
@@ -139,16 +141,12 @@ class LocalUpath(Upath):
         return n
 
     @overrides
-    def remove_file(self) -> int:
-        try:
-            self.localpath.unlink()
-            return 1
-        except (FileNotFoundError, IsADirectoryError):
-            return 0
+    def remove_file(self) -> None:
+        self.localpath.unlink()
 
     @overrides
-    def rename_dir(self, target, **kwargs):
-        target_ = super().rename_dir(target, **kwargs)
+    def rename_dir(self, target, *, overwrite=False):
+        target_ = super().rename_dir(target, overwrite=overwrite)
 
         def _remove_empty_dir(path):
             k = 0
@@ -166,7 +164,10 @@ class LocalUpath(Upath):
         return target_
 
     @overrides
-    def _rename_file(self, target):
+    def _rename_file(self, target: str, *, overwrite=False):
+        target = self.parent / target
+        if not overwrite and target.is_file():
+            raise FileExistsError(target)
         os.makedirs(target.localpath.parent, exist_ok=True)
         self.localpath.rename(target.localpath)
 
@@ -180,11 +181,11 @@ class LocalUpath(Upath):
 
     @overrides
     def write_bytes(self, data: bytes, *, overwrite=False):
-        if self.localpath.is_file():
+        if self.is_file():
             if not overwrite:
                 raise FileExistsError(self)
-        elif self.localpath.is_dir():
+        elif self.is_dir():
             raise IsADirectoryError(self)
         else:
-            self.localpath.parent.mkdir(exist_ok=True, parents=True)
+            self.parent.localpath.mkdir(exist_ok=True, parents=True)
         self.localpath.write_bytes(data)

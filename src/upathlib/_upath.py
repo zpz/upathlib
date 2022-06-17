@@ -16,7 +16,7 @@ import queue
 import threading
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import List, Iterator, Type, TypeVar, Any, Optional
+from typing import List, Iterator, Type, TypeVar, Any, Optional, Union
 
 from overrides import EnforceOverrides
 from tqdm import tqdm
@@ -204,7 +204,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         # Subclass may customize this to perform file operations.
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
-    def copy_file(self, target: str, *, overwrite: bool = False) -> None:
+    def copy_file(self: T, target: Union[T, str], *, overwrite: bool = False) -> None:
         '''Copy file to `target` in the same store.
 
         `target` is either absolute, or relative to `self.parent`.
@@ -222,7 +222,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         # Reference implementation.
         # Subclass should implement by direct file operation if possible.
-        target_ = self.parent / target
+        if isinstance(target, str):
+            target_ = self.parent / target
+        else:
+            target_ = target
         if target_ == self:
             return
 
@@ -529,7 +532,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             pass
         return target_
 
-    def _rename_file(self: T, target: T, *, overwrite: bool = False):
+    def _rename_file(self: T, target: str, *, overwrite: bool = False):
         '''Rename `self` to `target`, which is a path in the same store.
         This is a reference implementation.
         '''
@@ -549,7 +552,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         if target_ == self:
             return self
 
-        self._rename_file(target_, overwrite=overwrite)
+        self._rename_file(target_._path, overwrite=overwrite)
         return target_
 
     @abc.abstractmethod
@@ -585,11 +588,15 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
         try:
             self.remove_file()
-        except FileNotFoundError:
-            return self.remove_dir()
+        except (FileNotFoundError, IsADirectoryError):
+            n = 0
         else:
-            n = self.remove_dir()
-            return 1 + n
+            n = 1
+        try:
+            m = self.remove_dir()
+        except FileNotFoundError:
+            m = 0
+        return n + m
 
     @ property
     def stem(self) -> str:

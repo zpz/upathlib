@@ -200,30 +200,33 @@ class GcpBlobUpath(BlobUpath):
                 sleeper.sleep()
 
     @overrides
-    def _copy_file(self, target: GcpBlobUpath) -> None:
+    def _copy_file(self, target: GcpBlobUpath, *, overwrite=False) -> None:
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         self.bucket.copy_blob(
             self.blob(), target.bucket, target.blob_name, client=self.client,
+            if_generation_match=None if overwrite else 0,
         )
 
-    @overrides
-    def export_dir(self, target, **kwargs) -> int:
-        _ = self.client
-        _ = self.bucket
-        return super().export_dir(target, **kwargs)
+    # @overrides
+    # def export_dir(self, target, *, overwrite=False) -> int:
+    #     _ = self.client
+    #     _ = self.bucket
+    #     return super().export_dir(target, overwrite=overwrite)
 
     @overrides
-    def _export_file(self, target: Upath) -> None:
+    def _export_file(self, target: Upath, *, overwrite=False) -> None:
         if not isinstance(target, LocalUpath):
-            return super()._export_file(target)
+            return super()._export_file(target, overwrite=overwrite)
+        if not overwrite and target.is_file():
+            raise FileExistsError(target)
         os.makedirs(str(target.parent), exist_ok=True)
         try:
-            with open(str(target), 'wb') as file_obj:
+            with open(target.localpath, 'wb') as file_obj:
                 self._read_into_buffer(file_obj)
             updated = self.blob().updated
             if updated is not None:
                 mtime = updated.timestamp()
-                os.utime(target.name, (mtime, mtime))
+                os.utime(target.localpath, (mtime, mtime))
         except resumable_media.DataCorruption:
             target.remove_file()
             raise
@@ -245,25 +248,31 @@ class GcpBlobUpath(BlobUpath):
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
 
-    @overrides
-    def import_dir(self, source, **kwargs) -> int:
-        _ = self.client
-        _ = self.bucket
-        return super().import_dir(source, **kwargs)
+    # @overrides
+    # def import_dir(self, source, *, overwrite=False) -> int:
+    #     _ = self.client
+    #     _ = self.bucket
+    #     return super().import_dir(source, overwrite=overwrite)
 
     @overrides
-    def _import_file(self, source: Upath) -> None:
+    def _import_file(self, source: Upath, *, overwrite=False) -> None:
         if not isinstance(source, LocalUpath):
-            return super()._import_file(source)
-
-        def _upload(filename, **kwargs):
-            with open(filename, 'rb') as file_obj:
-                total_bytes = os.fstat(file_obj.fileno()).st_size
-                self._write_from_buffer(file_obj, size=total_bytes, **kwargs)
+            return super()._import_file(source, overwrite=overwrite)
 
         filename = str(source)
         content_type = self.blob()._get_content_type(None, filename=filename)
-        self._blob_rate_limit(_upload, filename, content_type=content_type)
+
+        def _upload():
+            with open(filename, 'rb') as file_obj:
+                total_bytes = os.fstat(file_obj.fileno()).st_size
+                self._write_from_buffer(
+                    file_obj,
+                    size=total_bytes,
+                    content_type=content_type,
+                    overwrite=overwrite,
+                )
+
+        self._blob_rate_limit(_upload)
 
     @overrides
     def is_file(self) -> bool:
@@ -414,14 +423,13 @@ class GcpBlobUpath(BlobUpath):
         return buffer.getvalue()
 
     @overrides
-    def remove_file(self) -> int:
+    def remove_file(self):
         try:
             self._blob_rate_limit(self.blob().delete, client=self.client)
             self._blob = None
-            return 1
         except NotFound:
             self._blob = None
-            return 0
+            raise FileNotFoundError(self)
 
     @overrides
     def riterdir(self):
@@ -444,23 +452,13 @@ class GcpBlobUpath(BlobUpath):
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
 
-        if overwrite:
-            self.blob().upload_from_file(
-                file_obj,
-                content_type=content_type,
-                size=size,
-                client=self.client,
-            )
-            # this will overwrite existing content if any.
-            return
-
         try:
             self.blob().upload_from_file(
                 file_obj,
                 content_type=content_type,
                 size=size,
                 client=self.client,
-                if_generation_match=0,
+                if_generation_match=None if overwrite else 0,
             )
         except PreconditionFailed:
             raise FileExistsError(self)
