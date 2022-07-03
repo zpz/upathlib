@@ -385,12 +385,18 @@ class GcpBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
         file_size = file_info.size  # bytes
         if file_size <= MEGABYTES32:
-            self.blob().download_to_file(file_obj, client=self.client)
-            return
+            try:
+                self.blob().download_to_file(file_obj, client=self.client)
+                return
+            except NotFound:
+                raise FileNotFoundError(self)
 
         def _download(client, blob, start, end):
             buffer = BytesIO()
-            blob.download_to_file(buffer, client=client, start=start, end=end)
+            try:
+                blob.download_to_file(buffer, client=client, start=start, end=end)
+            except NotFound:
+                raise FileNotFoundError(blob.name)
             # Both `start` and `end` are inclusive.
             # The very first `start` should be 0.
             buffer.seek(0)
