@@ -1,4 +1,4 @@
-__version__ = '0.6.4b3'
+__version__ = '0.6.4b5'
 
 from ._upath import Upath, FileInfo, LockAcquisitionTimeoutError
 from ._local import LocalUpath
