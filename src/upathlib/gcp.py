@@ -202,16 +202,15 @@ class GcpBlobUpath(BlobUpath):
     @overrides
     def _copy_file(self, target: GcpBlobUpath, *, overwrite=False) -> None:
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
-        self.bucket.copy_blob(
-            self.blob(), target.bucket, target.blob_name, client=self.client,
-            if_generation_match=None if overwrite else 0,
-        )
-
-    # @overrides
-    # def export_dir(self, target, *, overwrite=False) -> int:
-    #     _ = self.client
-    #     _ = self.bucket
-    #     return super().export_dir(target, overwrite=overwrite)
+        try:
+            self.bucket.copy_blob(
+                self.blob(), target.bucket, target.blob_name, client=self.client,
+                if_generation_match=None if overwrite else 0,
+            )
+        except NotFound:
+            raise FileNotFoundError(self)
+        except PreconditionFailed:
+            raise FileExistsError(target)
 
     @overrides
     def _export_file(self, target: Upath, *, overwrite=False) -> None:
@@ -247,12 +246,6 @@ class GcpBlobUpath(BlobUpath):
         # If an existing file is written to again using `write_...`,
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
-
-    # @overrides
-    # def import_dir(self, source, *, overwrite=False) -> int:
-    #     _ = self.client
-    #     _ = self.bucket
-    #     return super().import_dir(source, overwrite=overwrite)
 
     @overrides
     def _import_file(self, source: Upath, *, overwrite=False) -> None:
@@ -466,6 +459,10 @@ class GcpBlobUpath(BlobUpath):
                 client=self.client,
                 if_generation_match=None if overwrite else 0,
             )
+            # TODO: set "create_time", 'update_time" to be the same
+            # as the source local file?
+            # Blob objects has methods `_set_properties`, `_patch_property`,
+            # `patch`.
         except PreconditionFailed:
             raise FileExistsError(self)
 
