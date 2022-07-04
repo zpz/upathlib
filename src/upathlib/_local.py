@@ -38,6 +38,7 @@ class LocalUpath(Upath):
             raise FileExistsError(target)
         os.makedirs(target.localpath.parent, exist_ok=True)
         shutil.copyfile(self.localpath, target.localpath)
+        # If target already exists, it will be overwritten.
 
     @overrides
     def export_dir(self, target: Upath, *, overwrite=False) -> int:
@@ -58,7 +59,7 @@ class LocalUpath(Upath):
     @overrides
     def file_info(self):
         if not self.is_file():
-            return
+            return None
         st = self.localpath.stat()
         return FileInfo(
             ctime=st.st_ctime,
