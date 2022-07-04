@@ -5,7 +5,7 @@
 - GCP download of large blobs uses threading concurrency.
 - API change: `write_bytes` and `write_text` return `None`.
 - Improvements to handling of concurrency.
-- Increased default concurrency level from 4 to 64.
+- Increased default concurrency level from 4 to 16.
 - Simplified retry logic. For example, GCP's `download_to_file` has its own
   handling of retry; now we rely on `download_to_file` to finish the task
   and do not retry on it.
