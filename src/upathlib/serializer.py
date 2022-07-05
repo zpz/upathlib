@@ -3,7 +3,6 @@ import gc
 import json
 import pickle
 import zlib
-from contextlib import contextmanager
 from typing import TypeVar
 
 
@@ -12,14 +11,21 @@ T = TypeVar('T')
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 
-@contextmanager
-def no_gc():
+MEGABYTE = 1048576  # 1024 * 1024
+
+
+def _loads(func, data):
+    if len(data) < MEGABYTE:
+        return func(data)
     isgc = gc.isenabled()
     if isgc:
         gc.disable()
-    yield
-    if isgc:
-        gc.enable()
+    try:
+        return func(data)
+    finally:
+        if isgc:
+            gc.enable()
+
 
 
 class ByteSerializer(abc.ABC):
@@ -55,11 +61,7 @@ class PickleSerializer(ByteSerializer):
 
     @classmethod
     def deserialize(cls, y):
-        if len(y) > 10_000:
-            with no_gc():
-                return pickle.loads(y)
-        else:
-            return pickle.loads(y)
+        return _loads(pickle.loads, y)
 
 
 class CompressedPickleSerializer(ByteSerializer):
@@ -73,11 +75,7 @@ class CompressedPickleSerializer(ByteSerializer):
     @classmethod
     def deserialize(cls, y):
         z = zlib.decompress(y)
-        if len(y) > 10_000:
-            with no_gc():
-                return pickle.loads(z)
-        else:
-            return pickle.loads(z)
+        return _loads(pickle.loads, z)
 
 
 class JsonByteSerializer(ByteSerializer):
@@ -89,11 +87,7 @@ class JsonByteSerializer(ByteSerializer):
     @classmethod
     def deserialize(cls, y):
         z = y.decode()
-        if len(y) > 10_000:
-            with no_gc():
-                return json.loads(z)
-        else:
-            return json.loads(z)
+        return _loads(json.loads, z)
 
 
 class JsonSerializer(TextSerializer):
@@ -103,11 +97,7 @@ class JsonSerializer(TextSerializer):
 
     @classmethod
     def deserialize(cls, y):
-        if len(y) > 10_000:
-            with no_gc():
-                return json.loads(y)
-        else:
-            return json.loads(y)
+        return _loads(json.loads, y)
 
 
 try:
@@ -131,11 +121,7 @@ else:
 
         @classmethod
         def deserialize(cls, y):
-            if len(y) > 10_000:
-                with no_gc():
-                    return orjson.loads(y)  # pylint: disable=no-member
-            else:
-                return orjson.loads(y)  # pylint: disable=no-member
+            return _loads(orjson.loads, y)
 
     class CompressedOrjsonSerializer(ByteSerializer):
         OPTION = ORJSON_OPT
@@ -148,8 +134,4 @@ else:
         @classmethod
         def deserialize(cls, y):
             z = zlib.decompress(y)
-            if len(y) > 10_000:
-                with no_gc():
-                    return orjson.loads(z)  # pylint: disable=no-member
-            else:
-                return orjson.loads(z)  # pylint: disable=no-member
+            return _loads(orjson.loads, z)  # pylint: disable=no-member
