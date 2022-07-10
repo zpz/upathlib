@@ -29,12 +29,15 @@ This package is published to `pypi`. To install, do one of the following:
 
 ```
 $ pip3 install upathlib
-$ pip3 install upathlib[azure]
-$ pip3 install upathlib[gcp]
-$ pip3 install upathlib[azure,gcp]
+$ pip3 install upathlib[abs]
+$ pip3 install upathlib[gcs]
+$ pip3 install upathlib[abs,gcs]
 ```
 
 ## Status
 
 The style of the API is largely stable. The implementations for local file system and for Google Cloud storage
 (GCP blob store) are production ready.
+
+The implementation for Azure was once in production use, but not anymore by myself, hence is unreliable.
+There is a much older implementation for AWS, which was moved to "archive", because it was not updated to the current API.

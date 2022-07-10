@@ -1,4 +1,4 @@
-__version__ = '0.6.4b7'
+__version__ = '0.6.4'
 
 from ._upath import Upath, FileInfo, LockAcquisitionTimeoutError
 from ._local import LocalUpath
@@ -6,9 +6,7 @@ from ._blob import BlobUpath
 
 
 __all__ = [
-    'Upath',
+    'Upath', 'LocalUpath', 'BlobUpath',
     'FileInfo',
     'LockAcquisitionTimeoutError',
-    'LocalUpath',
-    'BlobUpath',
 ]
