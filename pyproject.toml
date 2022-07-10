@@ -10,6 +10,7 @@ authors = [
 ]
 dependencies = [
     "filelock >=3.3.0",
+    "orjson >=3.6.0",
     "overrides",
     "tqdm",
 ]
@@ -36,9 +37,6 @@ azure = [
 gcp = [
     "google-api-python-client >=2.13.9,<3.0",
     "google-cloud-storage >=2.0,<3.0",
-]
-orjson = [
-    "orjson >=3.6.0",
 ]
 test = [
     "bandit",
