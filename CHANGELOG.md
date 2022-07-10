@@ -1,6 +1,6 @@
 # Changelog
 
-## Release 0.6.4 (upcoming)
+## Release 0.6.4
 
 - GCP download of large blobs uses threading concurrency.
 - API change: `write_bytes` and `write_text` return `None`.
@@ -10,8 +10,10 @@
   handling of retry; now we rely on `download_to_file` to finish the task
   and do not retry on it.
 - Simplified parameters and behavior around 'overwrite'.
-- Serializers allow extra arguments in their `serialize` and `deserialize` methods.
-- Added `CompressedJsonSerializer`.
+- Improvements to serializers:
+  - Serializers allow extra arguments in their `serialize` and `deserialize` methods.
+  - Added dependency `zstandard` to provide compression.
+  - New serializers `ZJsonSerializer`, `ZstdJsonSerializer`, `ZstdPickleSerializer`, `ZstdOrjsonSerializer`.
 
 
 ## Release 0.6.3

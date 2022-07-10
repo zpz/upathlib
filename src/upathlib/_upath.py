@@ -22,8 +22,9 @@ from overrides import EnforceOverrides
 from tqdm import tqdm
 from .serializer import (
     ByteSerializer, TextSerializer,
-    JsonSerializer, CompressedJsonSerializer,
-    PickleSerializer, CompressedPickleSerializer,
+    JsonSerializer, ZJsonSerializer, ZstdJsonSerializer,
+    PickleSerializer, ZPickleSerializer, ZstdPickleSerializer,
+    OrjsonSerializer, ZOrjsonSerializer, ZstdOrjsonSerializer,
 )
 
 
@@ -128,13 +129,13 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         Anologous to `register_read_write_byte_format`.
         '''
-        def _write(self, data, *, overwrite=False, encoding='utf-8', errors='strict', **kwargs):
+        def _write(self, data, *, overwrite=False, **kwargs):
             return self.write_text(
                 serde.serialize(data, **kwargs),
-                overwrite=overwrite, encoding=encoding, errors=errors)
+                overwrite=overwrite)
 
-        def _read(self, *, encoding='utf-8', errors='strict', **kwargs):
-            z = self.read_text(encoding=encoding, errors=errors)
+        def _read(self, **kwargs):
+            z = self.read_text()
             return serde.deserialize(z, **kwargs)
 
         setattr(_write, '__name__', f'write_{name}')
@@ -516,9 +517,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         raise NotImplementedError
 
-    def read_text(self, *, encoding: str = 'utf-8', errors: str = 'strict'):
+    def read_text(self):
         # Refer to https://docs.python.org/3/library/functions.html#open
-        return self.read_bytes().decode(encoding=encoding, errors=errors)
+        return self.read_bytes().decode(encoding='utf-8', errors='strict')
 
     # TODO: rename 'remove' to 'delete'?
 
@@ -705,27 +706,24 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                    data: str,
                    *,
                    overwrite: bool = False,
-                   encoding: str = 'utf-8',
-                   errors: str = 'strict',
                    ) -> None:
-        z = data.encode(encoding=encoding, errors=errors)
+        z = data.encode(encoding='utf-8', errors='strict')
         self.write_bytes(z, overwrite=overwrite)
 
 
 # Add methods
-# 'read_json', 'write_json', 'read_json_z', 'write_json_z',
-# 'read_pickle', 'write_pickle', 'read_pickle_z', 'write_pickle_z'
-Upath.register_read_write_text_format(JsonSerializer, 'json')
-Upath.register_read_write_byte_format(CompressedJsonSerializer, 'json_z')
-Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
-Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
+# 'read_json', 'write_json', 'read_json_z', 'write_json_z', 'read_json_zstd', 'write_json_zstd',
+# 'read_pickle', 'write_pickle', 'read_pickle_z', 'write_pickle_z', 'read_pickle_zstd', 'write_pickle_zstd',
+# 'read_orjson', 'write_orjson', 'read_orjson_z', 'write_orjson_z', 'read_orjson_zstd', 'write_orjson_zstd',
+#
+# Applications can follow these examples to define and register their custom formats.
 
-try:
-    from .serializer import OrjsonSerializer, CompressedOrjsonSerializer
-except ImportError:
-    pass
-else:
-    # Add methods
-    # 'read_orjson', 'write_orjson', 'read_orjson_z', 'write_orjson_z'
-    Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
-    Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')
+Upath.register_read_write_text_format(JsonSerializer, 'json')
+Upath.register_read_write_byte_format(ZJsonSerializer, 'json_z')
+Upath.register_read_write_byte_format(ZstdJsonSerializer, 'json_zstd')
+Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
+Upath.register_read_write_byte_format(ZPickleSerializer, 'pickle_z')
+Upath.register_read_write_byte_format(ZstdPickleSerializer, 'pickle_zstd')
+Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
+Upath.register_read_write_byte_format(ZOrjsonSerializer, 'orjson_z')
+Upath.register_read_write_byte_format(ZstdOrjsonSerializer, 'orjson_zstd')
