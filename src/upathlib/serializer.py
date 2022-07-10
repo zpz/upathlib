@@ -8,8 +8,6 @@ from typing import TypeVar
 
 T = TypeVar('T')
 
-PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
-
 
 MEGABYTE = 1048576  # 1024 * 1024
 
