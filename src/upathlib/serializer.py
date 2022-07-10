@@ -14,90 +14,97 @@ PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 MEGABYTE = 1048576  # 1024 * 1024
 
 
-def _loads(func, data):
+def _loads(func, data, **kwargs):
     if len(data) < MEGABYTE:
-        return func(data)
+        return func(data, **kwargs)
     isgc = gc.isenabled()
     if isgc:
         gc.disable()
     try:
-        return func(data)
+        return func(data, **kwargs)
     finally:
         if isgc:
             gc.enable()
 
 
-
 class ByteSerializer(abc.ABC):
     @classmethod
     @abc.abstractmethod
-    def serialize(cls, x: T) -> bytes:
+    def serialize(cls, x: T, **kwargs) -> bytes:
         raise NotImplementedError
 
     @classmethod
     @abc.abstractmethod
-    def deserialize(cls, y: bytes) -> T:
+    def deserialize(cls, y: bytes, **kwargs) -> T:
         raise NotImplementedError
 
 
 class TextSerializer(abc.ABC):
     @classmethod
     @abc.abstractmethod
-    def serialize(cls, x: T) -> str:
+    def serialize(cls, x: T, **kwargs) -> str:
         raise NotImplementedError
 
     @classmethod
     @abc.abstractmethod
-    def deserialize(cls, y: str) -> T:
+    def deserialize(cls, y: str, **kwargs) -> T:
         raise NotImplementedError
 
 
 class PickleSerializer(ByteSerializer):
-    PROTOCOL = PICKLE_PROTOCOL
-
     @classmethod
-    def serialize(cls, x):
-        return pickle.dumps(x, protocol=cls.PROTOCOL)
+    def serialize(cls, x, *, protocol=None):
+        return pickle.dumps(x, protocol=protocol)
 
     @classmethod
     def deserialize(cls, y):
         return _loads(pickle.loads, y)
 
 
-class CompressedPickleSerializer(ByteSerializer):
-    PROTOCOL = PICKLE_PROTOCOL
-
+class CompressedPickleSerializer(PickleSerializer):
     @classmethod
-    def serialize(cls, x):
-        y = pickle.dumps(x, protocol=cls.PROTOCOL)
-        return zlib.compress(y, level=3)
+    def serialize(cls, x, *, level=3, protocol=None):
+        y = super().serialize(x, protocol=protocol)
+        return zlib.compress(y, level=level)
 
     @classmethod
     def deserialize(cls, y):
         z = zlib.decompress(y)
-        return _loads(pickle.loads, z)
-
-
-class JsonByteSerializer(ByteSerializer):
-    @classmethod
-    def serialize(cls, x):
-        y = json.dumps(x)
-        return y.encode()
-
-    @classmethod
-    def deserialize(cls, y):
-        z = y.decode()
-        return _loads(json.loads, z)
+        return super().deserialize(z)
 
 
 class JsonSerializer(TextSerializer):
     @classmethod
-    def serialize(cls, x):
-        return json.dumps(x)
+    def serialize(cls, x, **kwargs):
+        return json.dumps(x, **kwargs)
 
     @classmethod
-    def deserialize(cls, y):
-        return _loads(json.loads, y)
+    def deserialize(cls, y, **kwargs):
+        return _loads(json.loads, y, **kwargs)
+
+
+class JsonByteSerializer(ByteSerializer):
+    @classmethod
+    def serialize(cls, x, **kwargs):
+        y = json.dumps(x, **kwargs)
+        return y.encode()
+
+    @classmethod
+    def deserialize(cls, y, **kwargs):
+        z = y.decode()
+        return _loads(json.loads, z, **kwargs)
+
+
+class CompressedJsonSerializer(JsonByteSerializer):
+    @classmethod
+    def serialize(cls, x, *, level=3, **kwargs):
+        y = super().serialize(x, **kwargs)
+        return zlib.compress(y, level=level)
+
+    @classmethod
+    def deserialize(cls, y, **kwargs):
+        z = zlib.decompress(y)
+        return super().deserialize(z, **kwargs)
 
 
 try:
@@ -106,30 +113,20 @@ except ImportError:
     pass
 else:
 
-    ORJSON_OPT = orjson.OPT_SERIALIZE_NUMPY  # pylint: disable=no-member
-    # Although this is supported, when data contains numpy,
-    # you probably should serialize it by pickle, because
-    # pickle would be much faster for numpy, and
-    # deserialize JSON will not get back numpy arrays.
-
     class OrjsonSerializer(ByteSerializer):
-        OPTION = ORJSON_OPT
-
         @classmethod
-        def serialize(cls, x):
-            return orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
+        def serialize(cls, x, **kwargs):
+            return orjson.dumps(x, **kwargs)  # pylint: disable=no-member
 
         @classmethod
         def deserialize(cls, y):
-            return _loads(orjson.loads, y)
+            return _loads(orjson.loads, y)  # pylint: disable=no-member
 
     class CompressedOrjsonSerializer(ByteSerializer):
-        OPTION = ORJSON_OPT
-
         @classmethod
-        def serialize(cls, x):
-            y = orjson.dumps(x, option=cls.OPTION)  # pylint: disable=no-member
-            return zlib.compress(y, level=3)
+        def serialize(cls, x, *, level=3, **kwargs):
+            y = orjson.dumps(x, **kwargs)  # pylint: disable=no-member
+            return zlib.compress(y, level=level)
 
         @classmethod
         def deserialize(cls, y):

@@ -22,7 +22,8 @@ from overrides import EnforceOverrides
 from tqdm import tqdm
 from .serializer import (
     ByteSerializer, TextSerializer,
-    JsonSerializer, PickleSerializer, CompressedPickleSerializer,
+    JsonSerializer, CompressedJsonSerializer,
+    PickleSerializer, CompressedPickleSerializer,
 )
 
 
@@ -108,13 +109,17 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         `name`: needs to be valid method name, e.g. can't contain space or dash.
         '''
-        def _write(self, data, *, overwrite: bool = False):
-            return self.write_bytes(serde.serialize(data), overwrite=overwrite)
+        def _write(self, data, *, overwrite=False, **kwargs):
+            return self.write_bytes(
+                serde.serialize(data, **kwargs),
+                overwrite=overwrite)
 
-        def _read(self):
+        def _read(self, **kwargs):
             z = self.read_bytes()
-            return serde.deserialize(z)
+            return serde.deserialize(z, **kwargs)
 
+        setattr(_write, '__name__', f'write_{name}')
+        setattr(_read, '__name__', f'read_{name}')
         setattr(cls, f'write_{name}', _write)
         setattr(cls, f'read_{name}', _read)
 
@@ -123,13 +128,17 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         Anologous to `register_read_write_byte_format`.
         '''
-        def _write(self, data, *, overwrite: bool = False):
-            return self.write_text(serde.serialize(data), overwrite=overwrite)
+        def _write(self, data, *, overwrite=False, encoding='utf-8', errors='strict', **kwargs):
+            return self.write_text(
+                serde.serialize(data, **kwargs),
+                overwrite=overwrite, encoding=encoding, errors=errors)
 
-        def _read(self):
-            z = self.read_text()
-            return serde.deserialize(z)
+        def _read(self, *, encoding='utf-8', errors='strict', **kwargs):
+            z = self.read_text(encoding=encoding, errors=errors)
+            return serde.deserialize(z, **kwargs)
 
+        setattr(_write, '__name__', f'write_{name}')
+        setattr(_read, '__name__', f'read_{name}')
         setattr(cls, f'write_{name}', _write)
         setattr(cls, f'read_{name}', _read)
 
@@ -704,10 +713,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
 
 # Add methods
-# 'read_json', 'write_json',
-# 'read_pickle', 'write_pickle',
-# 'read_pickle_z', 'write_pickle_z',
+# 'read_json', 'write_json', 'read_json_z', 'write_json_z',
+# 'read_pickle', 'write_pickle', 'read_pickle_z', 'write_pickle_z'
 Upath.register_read_write_text_format(JsonSerializer, 'json')
+Upath.register_read_write_byte_format(CompressedJsonSerializer, 'json_z')
 Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
 Upath.register_read_write_byte_format(CompressedPickleSerializer, 'pickle_z')
 
@@ -717,7 +726,6 @@ except ImportError:
     pass
 else:
     # Add methods
-    # 'read_orjson', 'write_orjson',
-    # 'read_orjson_z', 'write_orjson_z'.
+    # 'read_orjson', 'write_orjson', 'read_orjson_z', 'write_orjson_z'
     Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
     Upath.register_read_write_byte_format(CompressedOrjsonSerializer, 'orjson_z')
