@@ -15,10 +15,9 @@ End user should look to the class `Upath` for documentation on the API.
 Local (POSIX) file system is treated as one particular case with the same API,
 and is implemented by `LocalUpath`, which subclasses `Upath`.
 
-Clients for Azure and GCP blob stores are implemented by `Upath` subclasses
-`AzureBlobUpath` and `GcpBlobUpath`, respectively. Users may want to
+Client for Google Cloud Storage (i.e. blob store on GCP) is implemented by a `Upath` subclass
+`GcpBlobUpath`. Users may want to
 add very thin wrappers in their application code to handle credentials for their cloud accounts.
-Clients for other public-cloud blob stores will be added as needed.
 
 One use case is the package [`biglist`](https://github.com/zpz/biglist).
 The class `Biglist` takes a `Upath` object to indicate its location of storage.
@@ -29,15 +28,16 @@ This package is published to `pypi`. To install, do one of the following:
 
 ```
 $ pip3 install upathlib
-$ pip3 install upathlib[abs]
 $ pip3 install upathlib[gcs]
-$ pip3 install upathlib[abs,gcs]
 ```
+
+(`gcs` means Google Cloud Storage, which is its official branding.)
+
 
 ## Status
 
 The style of the API is largely stable. The implementations for local file system and for Google Cloud storage
-(GCP blob store) are production ready.
+are production ready.
 
 The implementation for Azure was once in production use, but not anymore by myself, hence is unreliable.
 There is a much older implementation for AWS, which was moved to "archive", because it was not updated to the current API.
