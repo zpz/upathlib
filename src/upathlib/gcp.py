@@ -35,9 +35,13 @@ MEGABYTES64 = 67108864
 
 
 class GcpBlobUpath(BlobUpath):
-    def __init__(self, *paths: str, bucket_name: str, account_info: dict):
+    def __init__(self, *paths: str,
+                 bucket_name: str = None,
+                 project_id: str = None,
+                 credentials: service_account.Credentials = None,
+                 ):
         '''
-        `account_info`: a dict with these elements:
+        If you have GCP account_info in a dict with these elements:
             'type': 'service_account',
             'project_id':
             'private_key_id':
@@ -51,10 +55,31 @@ class GcpBlobUpath(BlobUpath):
             'token_uri': 'https://oauth2.googleapis.com/token',
             'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
             'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
+
+        then `credentials` are obtained by
+
+            google.oauth2.service_account.Credentials.from_service_account_info(account_info)
+
+        If this code is used on a GCP machine, already in the context of an account/project, then
+        `project_id` and `credentials` are not needed (but not harmful either).
         '''
+        if bucket_name is None:
+            assert len(paths) == 1
+            path = paths[0]
+            assert path.startswith('gs://')
+            path = path[5:]
+            k = path.find('/')
+            if k < 0:
+                bucket_name = path
+                paths = ('/', )
+            else:
+                bucket_name = path[:k]
+                paths = (path[k:], )
+
         super().__init__(*paths)
         self.bucket_name = bucket_name
-        self._account_info = account_info
+        self._project_id = project_id
+        self._credentials = credentials
         self._client = None
         self._bucket = None
         self._blob = None
@@ -107,16 +132,19 @@ class GcpBlobUpath(BlobUpath):
     def __getstate__(self):
         # Customize pickle because `self._client` and `self._bucket`
         # (when not None) can't be pickled.
+        # the `service_account.Credentials` class object can be pickled.
         return {
             '_path': self._path,
             'bucket_name': self.bucket_name,
-            '_account_info': self._account_info,
+            '_project_id': self._project_id,
+            '_credentials': self._credentials,
         }
 
     def __setstate__(self, data):
         self._path = data['_path']
         self.bucket_name = data['bucket_name']
-        self._account_info = data['_account_info']
+        self._project_id = data['_project_id']
+        self._credentials = data['_credentials']
         self._client = None
         self._bucket = None
         self._blob = None
@@ -125,11 +153,9 @@ class GcpBlobUpath(BlobUpath):
     @property
     def client(self):
         if self._client is None:
-            gcp_cred = service_account.Credentials.from_service_account_info(
-                self._account_info)
             self._client = storage.Client(
-                project=self._account_info['project_id'],
-                credentials=gcp_cred,
+                project=self._project_id,
+                credentials=self._credentials,
             )
         return self._client
 
@@ -442,7 +468,8 @@ class GcpBlobUpath(BlobUpath):
     @overrides
     def with_path(self, *paths: str):
         obj = self.__class__(*paths, bucket_name=self.bucket_name,
-                             account_info=self._account_info)
+                             project_id=self._project_id,
+                             credentials=self._credentials,)
         obj._client = self._client
         obj._bucket = self._bucket
         return obj
