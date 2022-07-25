@@ -10,6 +10,7 @@ authors = [
 ]
 dependencies = [
     "filelock >=3.3.0",
+    "opnieuw",
     "orjson >=3.6.0",
     "overrides",
     "tqdm",

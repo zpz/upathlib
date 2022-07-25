@@ -1,5 +1,11 @@
 # Changelog
 
+## Release 0.6.5
+
+- Make GCP info to `GcpBlobUpath` optional.
+- Remove home-made retrying utility `Backoff`. Use `opnieumw`.
+
+
 ## Release 0.6.4
 
 - GCP download of large blobs uses threading concurrency.

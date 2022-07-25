@@ -147,7 +147,8 @@ def gcp(mocker):
     c = GcpBlobUpath(
             '/tmp/test',
             bucket_name='test',
-            account_info={'project_id': 'abc'},
+            project_id='abc',
+            credentials='xyz',
             )
     yield c
 
