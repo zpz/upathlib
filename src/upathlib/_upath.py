@@ -47,11 +47,18 @@ class FileInfo:
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
-    NUM_EXECUTORS = 16  # TODO: what is a good value in general?
-    _thread_executor_ = None
+    _thread_executor_ = {
+        'nest0': concurrent.futures.ThreadPoolExecutor(
+            min(32, (os.cpu_count() or 1) + 4),
+            thread_name_prefix='UpathExecutor0'),
+        'nest1': concurrent.futures.ThreadPoolExecutor(
+            10,
+            thread_name_prefix='UpathExecutor1'),
+    }
+    _tqdm_bar_format = "{desc} | {percentage:3.0f}% | {n:.0f}/{total:.0f}, {elapsed}"
 
     @classmethod
-    def _run_in_executor(cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]]):
+    def _run_in_executor(cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description=''):
         '''
         This method is used to run multiple I/O jobs concurrently, e.g.
         uploading/downloading all files in a folder recursively.
@@ -66,25 +73,27 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         if not n_tasks:
             return
 
-        if cls._thread_executor_ is None:
-            cls._thread_executor_ = concurrent.futures.ThreadPoolExecutor(cls.NUM_EXECUTORS)
-
         def enqueue(tasks, executor, q):
             for func, args, kwargs, desc in tasks:
                 t = executor.submit(func, *args, **kwargs)
                 q.put((t, desc))
             q.put(None)
 
-        q = queue.Queue(cls.NUM_EXECUTORS * 2)
-        task = threading.Thread(target=enqueue, args=(tasks, cls._thread_executor_, q))
+        if threading.current_thread().name.startswith('UpathExecutor0'):
+            executor = cls._thread_executor_['nest1']
+        else:
+            executor = cls._thread_executor_['nest0']
+
+        q = queue.Queue(executor._max_workers * 2)
+        task = threading.Thread(target=enqueue, args=(tasks, executor, q))
         task.start()
-        with tqdm(total=n_tasks) as pbar:
+        with tqdm(total=n_tasks, bar_format=cls._tqdm_bar_format) as pbar:
             while True:
                 z = q.get()
                 if z is None:
                     break
                 t, desc = z
-                pbar.set_description(desc + '... ...')
+                pbar.set_description(description + desc + ' ...')
                 pbar.update(0.5)
                 try:
                     yield t.result()
@@ -98,7 +107,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                         # This may not succeed, but there isn't a good way to
                         # guarantee cancellation here.
                     raise
-                pbar.set_description(desc + '... ... done')
                 pbar.update(0.5)
             task.join()
 
@@ -227,11 +235,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     p.copy_file,
                     ((target_ / extra)._path, ),
                     {'overwrite': overwrite},
-                    f'copying {p.name}',
+                    extra,
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo()):
+        for _ in self._run_in_executor(foo(), f'copying dir {self.name}/'):
             n += 1
         return n
 
@@ -308,11 +316,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     p.export_file,
                     (target / extra, ),
                     {'overwrite': overwrite},
-                    f'exporting {p.name}',
+                    extra,
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo()):
+        for _ in self._run_in_executor(foo(), f'exporting dir {self.name}/'):
             n += 1
         return n
 
@@ -360,11 +368,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     (self / extra).import_file,
                     (p, ),
                     {'overwrite': overwrite},
-                    f'importing {p.name}',
+                    extra,
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo()):
+        for _ in self._run_in_executor(foo(), f'importing dir {self.name}/'):
             n += 1
         return n
 
@@ -534,10 +542,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '''
         def foo():
             for p in self.riterdir():
-                yield p.remove_file, [], {}, f'deleting {p.name}'
+                yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
         n = 0
-        for _ in self._run_in_executor(foo()):
+        for _ in self._run_in_executor(foo(), f'removing dir {self.name}/'):
             n += 1
         return n
 
@@ -575,10 +583,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     p.rename_file,
                     [(target_ / extra)._path],
                     {'overwrite': overwrite},
-                    f'renaming {p.name}',
+                    extra,
                 )
 
-        for _ in self._run_in_executor(foo()):
+        for _ in self._run_in_executor(foo(), f'renaming dir {self.name}/'):
             pass
         return target_
 

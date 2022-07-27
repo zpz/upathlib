@@ -4,6 +4,7 @@
 
 - Make GCP info to `GcpBlobUpath` optional.
 - Remove home-made retrying utility `Backoff`. Use `opnieumw`.
+- Bug fix related to concurrent downloading involving large files.
 
 
 ## Release 0.6.4

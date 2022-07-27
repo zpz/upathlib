@@ -11,7 +11,7 @@ class Blob:
         self.name = name
         self._bucket = bucket
 
-    def delete(self, client=None):
+    def delete(self, client=None, if_generation_match=None):
         try:
             del self._bucket._blobs[self.name]
         except KeyError:
