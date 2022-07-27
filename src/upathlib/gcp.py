@@ -7,12 +7,11 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
-# import socket
-# import urllib3
+import time
 from io import BufferedReader, UnsupportedOperation, BytesIO
 from typing import Union
 
-# import requests
+import opnieuw
 from google import resumable_media
 from google.oauth2 import service_account
 from google.cloud import storage
@@ -23,7 +22,6 @@ from overrides import overrides
 from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
 from ._blob import BlobUpath
 from ._local import LocalUpath
-from ._util import Backoff
 
 
 logger = logging.getLogger(__name__)
@@ -35,9 +33,13 @@ MEGABYTES64 = 67108864
 
 
 class GcpBlobUpath(BlobUpath):
-    def __init__(self, *paths: str, bucket_name: str, account_info: dict):
+    def __init__(self, *paths: str,
+                 bucket_name: str = None,
+                 project_id: str = None,
+                 credentials: service_account.Credentials = None,
+                 ):
         '''
-        `account_info`: a dict with these elements:
+        If you have GCP account_info in a dict with these elements:
             'type': 'service_account',
             'project_id':
             'private_key_id':
@@ -51,10 +53,34 @@ class GcpBlobUpath(BlobUpath):
             'token_uri': 'https://oauth2.googleapis.com/token',
             'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
             'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
+
+        then `credentials` are obtained by
+
+            google.oauth2.service_account.Credentials.from_service_account_info(account_info)
+
+        If this code is used on a GCP machine, already in the context of an account/project, then
+        `project_id` and `credentials` are not needed (but not harmful either).
+
+        TODO: check out github repo `googleapis/python-cloud-core` to see whether there is
+        a way or a need to infer these values. In particular, see class `google.cloud.client.ClientWithProject`.
         '''
+        if bucket_name is None:
+            assert len(paths) == 1
+            path = paths[0]
+            assert path.startswith('gs://')
+            path = path[5:]
+            k = path.find('/')
+            if k < 0:
+                bucket_name = path
+                paths = ('/', )
+            else:
+                bucket_name = path[:k]
+                paths = (path[k:], )
+
         super().__init__(*paths)
         self.bucket_name = bucket_name
-        self._account_info = account_info
+        self._project_id = project_id
+        self._credentials = credentials
         self._client = None
         self._bucket = None
         self._blob = None
@@ -107,16 +133,19 @@ class GcpBlobUpath(BlobUpath):
     def __getstate__(self):
         # Customize pickle because `self._client` and `self._bucket`
         # (when not None) can't be pickled.
+        # the `service_account.Credentials` class object can be pickled.
         return {
             '_path': self._path,
             'bucket_name': self.bucket_name,
-            '_account_info': self._account_info,
+            '_project_id': self._project_id,
+            '_credentials': self._credentials,
         }
 
     def __setstate__(self, data):
         self._path = data['_path']
         self.bucket_name = data['bucket_name']
-        self._account_info = data['_account_info']
+        self._project_id = data['_project_id']
+        self._credentials = data['_credentials']
         self._client = None
         self._bucket = None
         self._blob = None
@@ -125,11 +154,9 @@ class GcpBlobUpath(BlobUpath):
     @property
     def client(self):
         if self._client is None:
-            gcp_cred = service_account.Credentials.from_service_account_info(
-                self._account_info)
             self._client = storage.Client(
-                project=self._account_info['project_id'],
-                credentials=gcp_cred,
+                project=self._project_id,
+                credentials=self._credentials,
             )
         return self._client
 
@@ -163,41 +190,17 @@ class GcpBlobUpath(BlobUpath):
         except NotFound:
             return None
 
-    # def _blob_retry(self, func_name, *args, max_tries=3, **kwargs):
-    #     # `func_name` is the name of a blob method.
-    #     sleeper = Backoff(0.1)
-    #     while True:
-    #         try:
-    #             return getattr(self.blob(), func_name)(*args, **kwargs)
-    #         except (requests.exceptions.ReadTimeout,
-    #                 urllib3.exceptions.ReadTimeoutError,
-    #                 socket.timeout,
-    #                 urllib3.exceptions.SSLError,
-    #                 requests.exceptions.SSLError,
-    #                 requests.exceptions.ConnectionError,
-    #                 ) as e:
-    #             if sleeper.retries >= max_tries:
-    #                 raise
-    #             logger.info("retrying %r on error: %r", func_name, e)
-    #             sleeper.sleep()
-    #             # My hypothesis is that sometimes timeout happens
-    #             # because the cached `client`, `bucket`, `blob`
-    #             # have become stale, hence should be recreated.
-    #             self._client = None
-    #             self._bucket = None
-    #             self._blob = None
-
-    def _blob_rate_limit(self, func, *args, max_retries=5, **kwargs):
-        # `func_name` is the name of a create/update/delete function.
-        sleeper = Backoff(0.2)
-        while True:
-            try:
-                return func(*args, **kwargs)
-            except TooManyRequests as e:
-                if sleeper.retries >= max_retries:
-                    raise
-                logger.info("retrying %r on error: %r", func, e)
-                sleeper.sleep()
+    @opnieuw.retry(
+        retry_on_exceptions=(TooManyRequests, ),
+        max_calls_total=10,
+        retry_window_after_first_call_in_seconds=60,
+    )
+    def _blob_rate_limit(self, func, *args, **kwargs):
+        # `func_name` is a create/update/delete function.
+        # Google imposes rate limiting on such requests.
+        # According to Google doc, https://cloud.google.com/storage/quotas,
+        #   There is a write limit to the same object name. This limit is once per second.
+        return func(*args, **kwargs)
 
     @overrides
     def _copy_file(self, target: GcpBlobUpath, *, overwrite=False) -> None:
@@ -316,23 +319,30 @@ class GcpBlobUpath(BlobUpath):
             yield self / p[k:].rstrip('/')  # "subdirectories"
 
     def _acquire_lease(self, *, timeout: int = None):
+        # Note: `timeout = None` does not mean infinite wait.
+        # It means a default wait time. If user wants longer wait,
+        # just pass in a large number. Because user often associate
+        # `timeout = None` with infinite wait, the default wait
+        # is a long period.
         if self._path == '/':
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
-            timeout = 600  # seconds
-        sleeper = Backoff(0.1)
-        while True:
-            try:
-                # b.upload_from_string(b'0', if_generation_match=0)
-                # b.cache_control = 'no-store'
-                # b.patch()
-                self._blob_rate_limit(self._write_bytes, b'0')
-                self._generation = self.blob().generation
-                return
-            except (PreconditionFailed, FileExistsError):
-                if (t := sleeper.time_elapsed) >= timeout:
-                    raise LockAcquisitionTimeoutError(self, t)
-                sleeper.sleep()
+            timeout = 3600  # seconds
+
+        @opnieuw.retry(
+            retry_on_exceptions=(PreconditionFailed, FileExistsError),
+            max_calls_total=10,
+            retry_window_after_first_call_in_seconds=timeout,
+        )
+        def _acquire_():
+            self._blob_rate_limit(self._write_bytes, b'0')
+            self._generation = self.blob().generation
+
+        t0 = time.perf_counter()
+        try:
+            _acquire_()
+        except Exception as e:
+            raise LockAcquisitionTimeoutError(self, time.perf_counter() - t0) from e
 
     @contextlib.contextmanager
     @overrides
@@ -360,7 +370,6 @@ class GcpBlobUpath(BlobUpath):
                         self.blob().delete,
                         client=self.client,
                         if_generation_match=self._generation,
-                        max_retries=10,
                     )
                 except Exception as e:
                     logger.error(e)
@@ -398,18 +407,17 @@ class GcpBlobUpath(BlobUpath):
         def _do_download():
             client = self.client
             blob = self.blob()
-            name = self.name
             k = 0
             p = 0
             while True:
                 kk = min(k + MEGABYTES32, file_size)
                 p += 1
-                yield (_download, (client, blob, k, kk - 1), {}, f"downloading {name} part {p}")
+                yield (_download, (client, blob, k, kk - 1), {}, f"part {p}")
                 k = kk
                 if k >= file_size:
                     break
 
-        for buf, k in self._run_in_executor(_do_download()):
+        for buf, k in self._run_in_executor(_do_download(), f'downloading {self.name} - '):
             n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
@@ -442,7 +450,8 @@ class GcpBlobUpath(BlobUpath):
     @overrides
     def with_path(self, *paths: str):
         obj = self.__class__(*paths, bucket_name=self.bucket_name,
-                             account_info=self._account_info)
+                             project_id=self._project_id,
+                             credentials=self._credentials,)
         obj._client = self._client
         obj._bucket = self._bucket
         return obj

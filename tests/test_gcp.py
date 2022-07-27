@@ -11,7 +11,7 @@ class Blob:
         self.name = name
         self._bucket = bucket
 
-    def delete(self, client=None):
+    def delete(self, client=None, if_generation_match=None):
         try:
             del self._bucket._blobs[self.name]
         except KeyError:
@@ -147,7 +147,8 @@ def gcp(mocker):
     c = GcpBlobUpath(
             '/tmp/test',
             bucket_name='test',
-            account_info={'project_id': 'abc'},
+            project_id='abc',
+            credentials='xyz',
             )
     yield c
 

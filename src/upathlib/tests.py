@@ -1,11 +1,11 @@
+# User runs these tests with a `Upath` object of their subclass,
+# in a path that is safe for testing.
+
 import concurrent.futures
 import pathlib
 import time
 import pytest
 from upathlib import Upath, LocalUpath, LockAcquisitionTimeoutError
-
-# User runs these tests with a `Upath` object of their subclass,
-# in a path that is safe for testing.
 
 
 def test_basic(p: Upath):
@@ -193,7 +193,7 @@ def _access_in_mp(root: Upath, path: str, timeout):
         return t0 - time.perf_counter()
 
 
-def test_lock(p: Upath, timeout=None, wait=3):
+def test_lock(p: Upath, timeout=None, wait=8):
     p.rmrf()
     pp = p / 'testlock'
     with pp.lock(timeout=timeout):
@@ -201,7 +201,7 @@ def test_lock(p: Upath, timeout=None, wait=3):
             t = pool.submit(_access_in_mp, p / '/', pp._path, wait)
             z = t.result()
             print('mp returned after', z, 'seconds')
-            assert z <= -wait
+            assert z <= -(wait / 2)
 
 
 def test_all(p: Upath):
@@ -212,3 +212,5 @@ def test_all(p: Upath):
     test_read_write_rm_navigate(p)
     test_import_export(p)
     test_rename(p)
+
+    # test_lock(p)

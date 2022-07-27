@@ -10,6 +10,7 @@ authors = [
 ]
 dependencies = [
     "filelock >=3.3.0",
+    "opnieuw",
     "orjson >=3.6.0",
     "overrides",
     "tqdm",
@@ -48,7 +49,6 @@ test = [
     "numpy",
     "pylint",
     "pytest",
-    "pytest-asyncio",
     "pytest-mock",
 ]
 
@@ -56,7 +56,6 @@ test = [
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-sv --log-cli-level info -p no:cacheprovider"
-asyncio_mode = "auto"
 
 
 [tool.coverage.report]
