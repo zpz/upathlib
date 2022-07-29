@@ -88,12 +88,14 @@ class GcpBlobUpath(BlobUpath):
         self._generation = -1
 
     def __repr__(self) -> str:
-        return "{}('{}', bucket_name='{}')".format(
-            self.__class__.__name__, self._path, self.bucket_name
+        return "{}('gs://{}/{}')".format(
+            self.__class__.__name__,
+            self.bucket_name,
+            self._path,
         )
 
     def __str__(self) -> str:
-        return f"{self.bucket_name}://{self._path}"
+        return self.__repr__()
 
     def __eq__(self, other) -> bool:
         if other.__class__ is not self.__class__:
