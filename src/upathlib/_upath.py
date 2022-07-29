@@ -27,6 +27,10 @@ from .serializer import (
     OrjsonSerializer, ZOrjsonSerializer, ZstdOrjsonSerializer,
 )
 
+# User may want to do this:
+#  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
+# to suppress the "urllib3 connection lost" warning.
+# `upathlib` as a library does not make such changes.
 
 logger = logging.getLogger(__name__)
 T = TypeVar('T', bound='Upath')
@@ -55,10 +59,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             10,
             thread_name_prefix='UpathExecutor1'),
     }
-    _tqdm_bar_format = "{desc} | {percentage:3.0f}% | {n:.0f}/{total:.0f}, {elapsed}"
+    _tqdm_bar_format_ = "{desc} | {percentage:3.0f}% | {n:.0f}/{total:.0f}, {elapsed}"
 
     @classmethod
-    def _run_in_executor(cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description=''):
+    def _run_in_executor(cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description: str):
         '''
         This method is used to run multiple I/O jobs concurrently, e.g.
         uploading/downloading all files in a folder recursively.
@@ -66,6 +70,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         by splitting the work into multiple segments.
 
         `tasks`: each element is a tuple of (func, args, kwargs, description).
+        `description`: used at the beginning of the tqdm progress bar.
         '''
         if not isinstance(tasks, list):
             tasks = list(tasks)
@@ -87,7 +92,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         q = queue.Queue(executor._max_workers * 2)
         task = threading.Thread(target=enqueue, args=(tasks, executor, q))
         task.start()
-        with tqdm(total=n_tasks, bar_format=cls._tqdm_bar_format) as pbar:
+        with tqdm(total=n_tasks, bar_format=cls._tqdm_bar_format_) as pbar:
+            pbar.set_description(description)
             while True:
                 z = q.get()
                 if z is None:
@@ -108,6 +114,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                         # guarantee cancellation here.
                     raise
                 pbar.update(0.5)
+            pbar.set_description(description)
             task.join()
 
     @classmethod
@@ -173,7 +180,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         self._path = os.path.normpath(os.path.join(
             '/', *pathsegments))  # pylint: disable=no-value-for-parameter
         # The path is always "absolute" starting with '/'.
-        # Unless the path is just `/` itself, it does not have a trailing `/`.
+        # It does not have a trailing `/` unless the path is just `/` itself.
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self._path}')"
