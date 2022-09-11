@@ -91,7 +91,7 @@ class GcpBlobUpath(BlobUpath):
         return "{}('gs://{}/{}')".format(
             self.__class__.__name__,
             self.bucket_name,
-            self._path,
+            self._path.lstrip('/'),
         )
 
     def __str__(self) -> str:
