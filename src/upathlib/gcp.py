@@ -12,11 +12,13 @@ from io import BufferedReader, UnsupportedOperation, BytesIO
 from typing import Union
 
 import opnieuw
+import requests
 from google import resumable_media
 from google.oauth2 import service_account
 from google.cloud import storage
 from google.api_core.exceptions import (
-    NotFound, PreconditionFailed, TooManyRequests)
+    NotFound, PreconditionFailed,
+    TooManyRequests, GatewayTimeout, ServiceUnavailable)
 from overrides import overrides
 
 from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
@@ -40,6 +42,7 @@ class GcpBlobUpath(BlobUpath):
                  ):
         '''
         If you have GCP account_info in a dict with these elements:
+
             'type': 'service_account',
             'project_id':
             'private_key_id':
@@ -91,7 +94,7 @@ class GcpBlobUpath(BlobUpath):
         return "{}('gs://{}/{}')".format(
             self.__class__.__name__,
             self.bucket_name,
-            self._path,
+            self._path.lstrip('/'),
         )
 
     def __str__(self) -> str:
@@ -193,9 +196,9 @@ class GcpBlobUpath(BlobUpath):
             return None
 
     @opnieuw.retry(
-        retry_on_exceptions=(TooManyRequests, ),
+        retry_on_exceptions=(TooManyRequests, GatewayTimeout, ServiceUnavailable, requests.ReadTimeout),
         max_calls_total=10,
-        retry_window_after_first_call_in_seconds=60,
+        retry_window_after_first_call_in_seconds=100,
     )
     def _blob_rate_limit(self, func, *args, **kwargs):
         # `func_name` is a create/update/delete function.
@@ -411,10 +414,11 @@ class GcpBlobUpath(BlobUpath):
             blob = self.blob()
             k = 0
             p = 0
+            self_name = self.name
             while True:
                 kk = min(k + MEGABYTES32, file_size)
                 p += 1
-                yield (_download, (client, blob, k, kk - 1), {}, f"part {p}")
+                yield (_download, (client, blob, k, kk - 1), {}, f"downloading {self_name} - part {p}")
                 k = kk
                 if k >= file_size:
                     break

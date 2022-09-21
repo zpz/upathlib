@@ -1,5 +1,10 @@
 # Changelog
 
+## Release 0.6.6 (forthcoming)
+
+- Improvement to robustness in large directory upload to Gcp.
+
+
 ## Release 0.6.5
 
 - Make GCP info to `GcpBlobUpath` optional.
