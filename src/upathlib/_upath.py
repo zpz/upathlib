@@ -78,32 +78,46 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         if not n_tasks:
             return
 
-        def enqueue(tasks, executor, q):
-            for func, args, kwargs, desc in tasks:
+        def enqueue(q_tasks, executor, q):
+            while True:
+                try:
+                    func, args, kwargs, desc = q_tasks.get_nowait()
+                except queue.Empty:
+                    break
                 t = executor.submit(func, *args, **kwargs)
                 q.put((t, desc))
             q.put(None)
 
         if threading.current_thread().name.startswith('UpathExecutor0'):
             executor = cls._thread_executor_['nest1']
+            prefix = '    '
         else:
             executor = cls._thread_executor_['nest0']
+            prefix = '  '
 
-        q = queue.Queue(executor._max_workers * 2)
-        task = threading.Thread(target=enqueue, args=(tasks, executor, q))
+        q = queue.Queue(executor._max_workers + 4)
+        q_tasks = queue.SimpleQueue()
+        for t in tasks:
+            q_tasks.put(t)
+        task = threading.Thread(target=enqueue, args=(q_tasks, executor, q))
         task.start()
         with tqdm(total=n_tasks, bar_format=cls._tqdm_bar_format_) as pbar:
-            pbar.set_description(description)
+            pbar.set_description(prefix + description)
             while True:
                 z = q.get()
                 if z is None:
                     break
                 t, desc = z
-                pbar.set_description(description + desc + ' ...')
+                pbar.set_description(prefix + desc + ' ...')
                 pbar.update(0.5)
                 try:
                     yield t.result()
                 except Exception:
+                    while True:
+                        try:
+                            _ = q_tasks.get_nowait()
+                        except queue.Empty:
+                            break
                     while True:
                         z = q.get()
                         if z is None:
@@ -114,7 +128,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                         # guarantee cancellation here.
                     raise
                 pbar.update(0.5)
-            pbar.set_description(description)
+            pbar.set_description(prefix + description)
             task.join()
 
     @classmethod
