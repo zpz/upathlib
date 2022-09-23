@@ -59,7 +59,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             10,
             thread_name_prefix='UpathExecutor1'),
     }
-    _tqdm_bar_format_ = "{desc} | {percentage:3.0f}% | {n:.0f}/{total:.0f}, {elapsed}"
+    tqdm_bar_color = "##FFA500"  # Orange. Set to `None` to use the default.
 
     @classmethod
     def _run_in_executor(cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description: str):
@@ -89,47 +89,52 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             q.put(None)
 
         if threading.current_thread().name.startswith('UpathExecutor0'):
+            # This is the case when GCP downloads a large file by multiple parts.
             executor = cls._thread_executor_['nest1']
-            prefix = '    '
+            pbar = None
         else:
+            print(description)
             executor = cls._thread_executor_['nest0']
-            prefix = '  '
+            pbar = tqdm(total=n_tasks, colour=cls.tqdm_bar_color, bar_format="{percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} {elapsed}")
 
-        q = queue.Queue(executor._max_workers + 4)
-        q_tasks = queue.SimpleQueue()
-        for t in tasks:
-            q_tasks.put(t)
-        task = threading.Thread(target=enqueue, args=(q_tasks, executor, q))
-        task.start()
-        with tqdm(total=n_tasks, bar_format=cls._tqdm_bar_format_) as pbar:
-            pbar.set_description(prefix + description)
-            while True:
-                z = q.get()
-                if z is None:
-                    break
-                t, desc = z
-                pbar.set_description(prefix + desc + ' ...')
-                pbar.update(0.5)
-                try:
-                    yield t.result()
-                except Exception:
-                    while True:
-                        try:
-                            _ = q_tasks.get_nowait()
-                        except queue.Empty:
-                            break
-                    while True:
-                        z = q.get()
-                        if z is None:
-                            break
-                        t, desc = z
-                        t.cancel()
-                        # This may not succeed, but there isn't a good way to
-                        # guarantee cancellation here.
-                    raise
-                pbar.update(0.5)
-            pbar.set_description(prefix + description)
-            task.join()
+        try:
+            q = queue.Queue(executor._max_workers + 4)
+            q_tasks = queue.SimpleQueue()
+            for t in tasks:
+                q_tasks.put(t)
+            task = threading.Thread(target=enqueue, args=(q_tasks, executor, q))
+            task.start()
+
+            try:
+                while True:
+                    z = q.get()
+                    if z is None:
+                        break
+                    t, desc = z
+                    pbar.update(0.5)
+                    try:
+                        yield t.result()
+                    except Exception:
+                        while True:
+                            try:
+                                _ = q_tasks.get_nowait()
+                            except queue.Empty:
+                                break
+                        while True:
+                            z = q.get()
+                            if z is None:
+                                break
+                            t, desc = z
+                            t.cancel()
+                            # This may not succeed, but there isn't a good way to
+                            # guarantee cancellation here.
+                        raise
+                    pbar.update(0.5)
+            finally:
+                task.join()
+        finally:
+            if pbar is not None:
+                pbar.close()
 
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
