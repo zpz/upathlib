@@ -18,7 +18,7 @@ def _resolve_local_path(p):
 class BlobUpath(Upath, EnforceOverrides):
     @property
     def blob_name(self) -> str:
-        return self._path.lstrip('/')
+        return self._path.lstrip("/")
 
     def download_dir(self, target, *, overwrite=False) -> int:
         target_ = _resolve_local_path(target)
@@ -30,7 +30,7 @@ class BlobUpath(Upath, EnforceOverrides):
 
     @overrides
     def is_dir(self) -> bool:
-        '''In a typical blob store, there is no such concept as a
+        """In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
         system. If there is a blob named like
 
@@ -47,7 +47,7 @@ class BlobUpath(Upath, EnforceOverrides):
         Consequently, `is_dir` is equivalent
         to "having stuff in the dir". There is no such thing as
         an "empty directory" in blob stores.
-        '''
+        """
         try:
             next(self.iterdir())
             return True
@@ -58,16 +58,16 @@ class BlobUpath(Upath, EnforceOverrides):
     def iterdir(self):
         # A naive, inefficient implementation.
         p0 = self._path  # this could be '/'.
-        if not p0.endswith('/'):
-            p0 += '/'
+        if not p0.endswith("/"):
+            p0 += "/"
         np0 = len(p0)
         subdirs = set()
         for p in self.riterdir():
             tail = p._path[np0:]
-            if tail.startswith('/'):
+            if tail.startswith("/"):
                 raise Exception(f"malformed blob name '{p._path}'")
-            if '/' in tail:
-                tail = tail[: tail.find('/')]
+            if "/" in tail:
+                tail = tail[: tail.find("/")]
             if tail not in subdirs:
                 yield self / tail
                 subdirs.add(tail)

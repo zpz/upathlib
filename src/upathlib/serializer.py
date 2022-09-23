@@ -9,7 +9,7 @@ import orjson
 import zstandard
 
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 MEGABYTE = 1048576  # 1024 * 1024

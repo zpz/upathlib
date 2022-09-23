@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # Enable using `Upath` in type annotations in the code
 # that defines this class.
 # https://stackoverflow.com/a/49872353
@@ -17,8 +18,12 @@ from google import resumable_media
 from google.oauth2 import service_account
 from google.cloud import storage
 from google.api_core.exceptions import (
-    NotFound, PreconditionFailed,
-    TooManyRequests, GatewayTimeout, ServiceUnavailable)
+    NotFound,
+    PreconditionFailed,
+    TooManyRequests,
+    GatewayTimeout,
+    ServiceUnavailable,
+)
 from overrides import overrides
 
 from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
@@ -35,12 +40,14 @@ MEGABYTES64 = 67108864
 
 
 class GcpBlobUpath(BlobUpath):
-    def __init__(self, *paths: str,
-                 bucket_name: str = None,
-                 project_id: str = None,
-                 credentials: service_account.Credentials = None,
-                 ):
-        '''
+    def __init__(
+        self,
+        *paths: str,
+        bucket_name: str = None,
+        project_id: str = None,
+        credentials: service_account.Credentials = None,
+    ):
+        """
         If you have GCP account_info in a dict with these elements:
 
             'type': 'service_account',
@@ -66,19 +73,19 @@ class GcpBlobUpath(BlobUpath):
 
         TODO: check out github repo `googleapis/python-cloud-core` to see whether there is
         a way or a need to infer these values. In particular, see class `google.cloud.client.ClientWithProject`.
-        '''
+        """
         if bucket_name is None:
             assert len(paths) == 1
             path = paths[0]
-            assert path.startswith('gs://')
+            assert path.startswith("gs://")
             path = path[5:]
-            k = path.find('/')
+            k = path.find("/")
             if k < 0:
                 bucket_name = path
-                paths = ('/', )
+                paths = ("/",)
             else:
                 bucket_name = path[:k]
-                paths = (path[k:], )
+                paths = (path[k:],)
 
         super().__init__(*paths)
         self.bucket_name = bucket_name
@@ -94,7 +101,7 @@ class GcpBlobUpath(BlobUpath):
         return "{}('gs://{}/{}')".format(
             self.__class__.__name__,
             self.bucket_name,
-            self._path.lstrip('/'),
+            self._path.lstrip("/"),
         )
 
     def __str__(self) -> str:
@@ -140,17 +147,17 @@ class GcpBlobUpath(BlobUpath):
         # (when not None) can't be pickled.
         # the `service_account.Credentials` class object can be pickled.
         return {
-            '_path': self._path,
-            'bucket_name': self.bucket_name,
-            '_project_id': self._project_id,
-            '_credentials': self._credentials,
+            "_path": self._path,
+            "bucket_name": self.bucket_name,
+            "_project_id": self._project_id,
+            "_credentials": self._credentials,
         }
 
     def __setstate__(self, data):
-        self._path = data['_path']
-        self.bucket_name = data['bucket_name']
-        self._project_id = data['_project_id']
-        self._credentials = data['_credentials']
+        self._path = data["_path"]
+        self.bucket_name = data["bucket_name"]
+        self._project_id = data["_project_id"]
+        self._credentials = data["_credentials"]
         self._client = None
         self._bucket = None
         self._blob = None
@@ -173,21 +180,21 @@ class GcpBlobUpath(BlobUpath):
         return self._bucket
 
     def blob(self):
-        '''
+        """
         This constructs a Blob object irrespecitive of whether the blob
         exists in cloud storage.
-        '''
+        """
         if self._blob is None:
             self._blob = self.bucket.blob(self.blob_name)
         return self._blob
 
     def get_blob(self):
-        '''
+        """
         While `.blob` simply constructs a Blob object,
         `.get_blob` makes network calls to refresh properties
         of the object in cloud storage. If the blob does not exist,
         return `None`.
-        '''
+        """
         b = self.blob()
         try:
             b.reload(client=self.client)
@@ -196,7 +203,12 @@ class GcpBlobUpath(BlobUpath):
             return None
 
     @opnieuw.retry(
-        retry_on_exceptions=(TooManyRequests, GatewayTimeout, ServiceUnavailable, requests.ReadTimeout),
+        retry_on_exceptions=(
+            TooManyRequests,
+            GatewayTimeout,
+            ServiceUnavailable,
+            requests.ReadTimeout,
+        ),
         max_calls_total=10,
         retry_window_after_first_call_in_seconds=100,
     )
@@ -212,7 +224,10 @@ class GcpBlobUpath(BlobUpath):
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         try:
             self.bucket.copy_blob(
-                self.blob(), target.bucket, target.blob_name, client=self.client,
+                self.blob(),
+                target.bucket,
+                target.blob_name,
+                client=self.client,
                 if_generation_match=None if overwrite else 0,
             )
         except NotFound:
@@ -228,7 +243,7 @@ class GcpBlobUpath(BlobUpath):
             raise FileExistsError(target)
         os.makedirs(str(target.parent), exist_ok=True)
         try:
-            with open(target.localpath, 'wb') as file_obj:
+            with open(target.localpath, "wb") as file_obj:
                 self._read_into_buffer(file_obj)
             updated = self.blob().updated
             if updated is not None:
@@ -264,7 +279,7 @@ class GcpBlobUpath(BlobUpath):
         content_type = self.blob()._get_content_type(None, filename=filename)
 
         def _upload():
-            with open(filename, 'rb') as file_obj:
+            with open(filename, "rb") as file_obj:
                 total_bytes = os.fstat(file_obj.fileno()).st_size
                 self._write_from_buffer(
                     file_obj,
@@ -313,15 +328,15 @@ class GcpBlobUpath(BlobUpath):
         #
         # Search "List the objects in a bucket using a prefix filter | Cloud Storage"
 
-        prefix = self.blob_name + '/'
+        prefix = self.blob_name + "/"
         k = len(prefix)
-        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter='/')
+        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/")
         for p in blobs:
             obj = self / p.name[k:]  # files
             obj._blob = p
             yield obj
         for p in blobs.prefixes:
-            yield self / p[k:].rstrip('/')  # "subdirectories"
+            yield self / p[k:].rstrip("/")  # "subdirectories"
 
     def _acquire_lease(self, *, timeout: int = None):
         # Note: `timeout = None` does not mean infinite wait.
@@ -329,7 +344,7 @@ class GcpBlobUpath(BlobUpath):
         # just pass in a large number. Because user often associate
         # `timeout = None` with infinite wait, the default wait
         # is a long period.
-        if self._path == '/':
+        if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
             timeout = 3600  # seconds
@@ -340,7 +355,7 @@ class GcpBlobUpath(BlobUpath):
             retry_window_after_first_call_in_seconds=timeout,
         )
         def _acquire_():
-            self._blob_rate_limit(self._write_bytes, b'0')
+            self._blob_rate_limit(self._write_bytes, b"0")
             self._generation = self.blob().generation
 
         t0 = time.perf_counter()
@@ -379,11 +394,11 @@ class GcpBlobUpath(BlobUpath):
                 except Exception as e:
                     logger.error(e)
 
-    def open(self, mode='r', **kwargs):
-        '''
+    def open(self, mode="r", **kwargs):
+        """
         Use this on a blob (not a "directory") as a context manager.
         See Google documentation.
-        '''
+        """
         return self.blob().open(mode, **kwargs)
 
     def _read_into_buffer(self, file_obj):
@@ -418,15 +433,24 @@ class GcpBlobUpath(BlobUpath):
             while True:
                 kk = min(k + MEGABYTES32, file_size)
                 p += 1
-                yield (_download, (client, blob, k, kk - 1), {}, f"downloading {self_name} - part {p}")
+                yield (
+                    _download,
+                    (client, blob, k, kk - 1),
+                    {},
+                    f"downloading {self_name} - part {p}",
+                )
                 k = kk
                 if k >= file_size:
                     break
 
-        for buf, k in self._run_in_executor(_do_download(), f'downloading {self.name} - '):
+        for buf, k in self._run_in_executor(
+            _do_download(), f"downloading {self.name} - "
+        ):
             n = file_obj.write(buf.getbuffer())
             if n != k:
-                raise BufferError(f"expecting to read {k} bytes; actually read {n} bytes")
+                raise BufferError(
+                    f"expecting to read {k} bytes; actually read {n} bytes"
+                )
             buf.close()
 
     @overrides
@@ -446,7 +470,7 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def riterdir(self):
-        prefix = self.blob_name + '/'
+        prefix = self.blob_name + "/"
         k = len(prefix)
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
             obj = self / p.name[k:]
@@ -455,15 +479,20 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def with_path(self, *paths: str):
-        obj = self.__class__(*paths, bucket_name=self.bucket_name,
-                             project_id=self._project_id,
-                             credentials=self._credentials,)
+        obj = self.__class__(
+            *paths,
+            bucket_name=self.bucket_name,
+            project_id=self._project_id,
+            credentials=self._credentials,
+        )
         obj._client = self._client
         obj._bucket = self._bucket
         return obj
 
-    def _write_from_buffer(self, file_obj, *, overwrite=False, content_type=None, size=None):
-        if self._path == '/':
+    def _write_from_buffer(
+        self, file_obj, *, overwrite=False, content_type=None, size=None
+    ):
+        if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         try:
@@ -484,11 +513,11 @@ class GcpBlobUpath(BlobUpath):
     def _write_bytes(self, data, **kwargs):
         b = BytesIO(data)
         b.seek(0)
-        self._write_from_buffer(b, content_type='text/plain', size=len(data), **kwargs)
+        self._write_from_buffer(b, content_type="text/plain", size=len(data), **kwargs)
 
     @overrides
     def write_bytes(self, data: Union[bytes, BufferedReader], *, overwrite=False):
         if isinstance(data, bytes):
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
             return
-        self._write_from_buffer(data, content_type='text/plain', overwrite=overwrite)
+        self._write_from_buffer(data, content_type="text/plain", overwrite=overwrite)
