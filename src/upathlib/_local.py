@@ -7,6 +7,7 @@ import pathlib
 import shutil
 
 import filelock
+
 # `filelock` is also called `py-filelock`.
 # Tried `fasteners` also. In one use case,
 # `filelock` worked whereas `fasteners.InterprocessLock` failed.
@@ -18,14 +19,14 @@ from overrides import overrides
 from ._upath import Upath, LockAcquisitionTimeoutError, FileInfo
 
 
-logging.getLogger('filelock').setLevel(logging.WARNING)
+logging.getLogger("filelock").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
 
 class LocalUpath(Upath):
     def __init__(self, *pathsegments: str):
-        assert os.name == 'posix'
+        assert os.name == "posix"
         if pathsegments:
             parts = [str(pathlib.Path(*pathsegments).absolute())]
         else:

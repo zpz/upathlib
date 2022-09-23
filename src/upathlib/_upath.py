@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # Enable using `Upath` in type annotations in the code
 # that defines this class.
 # https://stackoverflow.com/a/49872353
@@ -16,15 +17,32 @@ import queue
 import threading
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from typing import List, Iterable, Iterator, Type, TypeVar, Any, Optional, Tuple, Callable
+from typing import (
+    List,
+    Iterable,
+    Iterator,
+    Type,
+    TypeVar,
+    Any,
+    Optional,
+    Tuple,
+    Callable,
+)
 
 from overrides import EnforceOverrides
 from tqdm import tqdm
 from .serializer import (
-    ByteSerializer, TextSerializer,
-    JsonSerializer, ZJsonSerializer, ZstdJsonSerializer,
-    PickleSerializer, ZPickleSerializer, ZstdPickleSerializer,
-    OrjsonSerializer, ZOrjsonSerializer, ZstdOrjsonSerializer,
+    ByteSerializer,
+    TextSerializer,
+    JsonSerializer,
+    ZJsonSerializer,
+    ZstdJsonSerializer,
+    PickleSerializer,
+    ZPickleSerializer,
+    ZstdPickleSerializer,
+    OrjsonSerializer,
+    ZOrjsonSerializer,
+    ZstdOrjsonSerializer,
 )
 
 # User may want to do this:
@@ -33,7 +51,7 @@ from .serializer import (
 # `upathlib` as a library does not make such changes.
 
 logger = logging.getLogger(__name__)
-T = TypeVar('T', bound='Upath')
+T = TypeVar("T", bound="Upath")
 
 
 class LockAcquisitionTimeoutError(TimeoutError):
@@ -42,28 +60,30 @@ class LockAcquisitionTimeoutError(TimeoutError):
 
 @dataclass
 class FileInfo:
-    ctime: float   # creation POSIX timetamp
-    mtime: float   # last modification POSIX timestamp
+    ctime: float  # creation POSIX timetamp
+    mtime: float  # last modification POSIX timestamp
     time_created: datetime.datetime
     time_modified: datetime.datetime
-    size: int      # in bytes
-    details: Any   # platform-dependent
+    size: int  # in bytes
+    details: Any  # platform-dependent
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
     _thread_executor_ = {
-        'nest0': concurrent.futures.ThreadPoolExecutor(
-            min(32, (os.cpu_count() or 1) + 4),
-            thread_name_prefix='UpathExecutor0'),
-        'nest1': concurrent.futures.ThreadPoolExecutor(
-            10,
-            thread_name_prefix='UpathExecutor1'),
+        "nest0": concurrent.futures.ThreadPoolExecutor(
+            min(32, (os.cpu_count() or 1) + 4), thread_name_prefix="UpathExecutor0"
+        ),
+        "nest1": concurrent.futures.ThreadPoolExecutor(
+            10, thread_name_prefix="UpathExecutor1"
+        ),
     }
-    _tqdm_bar_format_ = "{desc} | {percentage:3.0f}% | {n:.0f}/{total:.0f}, {elapsed}"
+    tqdm_bar_color = "##FFA500"  # Orange. Set to `None` to use the default.
 
     @classmethod
-    def _run_in_executor(cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description: str):
-        '''
+    def _run_in_executor(
+        cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description: str
+    ):
+        """
         This method is used to run multiple I/O jobs concurrently, e.g.
         uploading/downloading all files in a folder recursively.
         Where supported, this may also be used to download a large blob
@@ -71,7 +91,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         `tasks`: each element is a tuple of (func, args, kwargs, description).
         `description`: used at the beginning of the tqdm progress bar.
-        '''
+        """
         if not isinstance(tasks, list):
             tasks = list(tasks)
         n_tasks = len(tasks)
@@ -88,92 +108,101 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 q.put((t, desc))
             q.put(None)
 
-        if threading.current_thread().name.startswith('UpathExecutor0'):
-            executor = cls._thread_executor_['nest1']
-            prefix = '    '
+        if threading.current_thread().name.startswith("UpathExecutor0"):
+            # This is the case when GCP downloads a large file by multiple parts.
+            executor = cls._thread_executor_["nest1"]
+            pbar = None
         else:
-            executor = cls._thread_executor_['nest0']
-            prefix = '  '
+            print(description)
+            executor = cls._thread_executor_["nest0"]
+            pbar = tqdm(
+                total=n_tasks,
+                colour=cls.tqdm_bar_color,
+                bar_format="{percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} {elapsed}",
+            )
 
-        q = queue.Queue(executor._max_workers + 4)
-        q_tasks = queue.SimpleQueue()
-        for t in tasks:
-            q_tasks.put(t)
-        task = threading.Thread(target=enqueue, args=(q_tasks, executor, q))
-        task.start()
-        with tqdm(total=n_tasks, bar_format=cls._tqdm_bar_format_) as pbar:
-            pbar.set_description(prefix + description)
-            while True:
-                z = q.get()
-                if z is None:
-                    break
-                t, desc = z
-                pbar.set_description(prefix + desc + ' ...')
-                pbar.update(0.5)
-                try:
-                    yield t.result()
-                except Exception:
-                    while True:
-                        try:
-                            _ = q_tasks.get_nowait()
-                        except queue.Empty:
-                            break
-                    while True:
-                        z = q.get()
-                        if z is None:
-                            break
-                        t, desc = z
-                        t.cancel()
-                        # This may not succeed, but there isn't a good way to
-                        # guarantee cancellation here.
-                    raise
-                pbar.update(0.5)
-            pbar.set_description(prefix + description)
-            task.join()
+        try:
+            q = queue.Queue(executor._max_workers + 4)
+            q_tasks = queue.SimpleQueue()
+            for t in tasks:
+                q_tasks.put(t)
+            task = threading.Thread(target=enqueue, args=(q_tasks, executor, q))
+            task.start()
+
+            try:
+                while True:
+                    z = q.get()
+                    if z is None:
+                        break
+                    t, desc = z
+                    pbar.update(0.5)
+                    try:
+                        yield t.result()
+                    except Exception:
+                        while True:
+                            try:
+                                _ = q_tasks.get_nowait()
+                            except queue.Empty:
+                                break
+                        while True:
+                            z = q.get()
+                            if z is None:
+                                break
+                            t, desc = z
+                            t.cancel()
+                            # This may not succeed, but there isn't a good way to
+                            # guarantee cancellation here.
+                        raise
+                    pbar.update(0.5)
+            finally:
+                task.join()
+        finally:
+            if pbar is not None:
+                pbar.close()
 
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
-        '''
+        """
         For example, if `serde` is a ByteSerializer subclass and `name` is 'myway',
         then this method adds isinstance methods `write_myway` and `read_myway`.
 
         `name`: needs to be valid method name, e.g. can't contain space or dash.
-        '''
+        """
+
         def _write(self, data, *, overwrite=False, **kwargs):
             return self.write_bytes(
-                serde.serialize(data, **kwargs),
-                overwrite=overwrite)
+                serde.serialize(data, **kwargs), overwrite=overwrite
+            )
 
         def _read(self, **kwargs):
             z = self.read_bytes()
             return serde.deserialize(z, **kwargs)
 
-        setattr(_write, '__name__', f'write_{name}')
-        setattr(_read, '__name__', f'read_{name}')
-        setattr(cls, f'write_{name}', _write)
-        setattr(cls, f'read_{name}', _read)
+        setattr(_write, "__name__", f"write_{name}")
+        setattr(_read, "__name__", f"read_{name}")
+        setattr(cls, f"write_{name}", _write)
+        setattr(cls, f"read_{name}", _read)
 
     @classmethod
     def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
-        '''
+        """
         Anologous to `register_read_write_byte_format`.
-        '''
+        """
+
         def _write(self, data, *, overwrite=False, **kwargs):
-            return self.write_text(
-                serde.serialize(data, **kwargs),
-                overwrite=overwrite)
+            return self.write_text(serde.serialize(data, **kwargs), overwrite=overwrite)
 
         def _read(self, **kwargs):
             z = self.read_text()
             return serde.deserialize(z, **kwargs)
 
-        setattr(_write, '__name__', f'write_{name}')
-        setattr(_read, '__name__', f'read_{name}')
-        setattr(cls, f'write_{name}', _write)
-        setattr(cls, f'read_{name}', _read)
+        setattr(_write, "__name__", f"write_{name}")
+        setattr(_read, "__name__", f"read_{name}")
+        setattr(cls, f"write_{name}", _write)
+        setattr(cls, f"read_{name}", _read)
 
     def __init__(self, *pathsegments: str):
-        '''`Upath` is the base class for a client to a blob store,
+        """`Upath` is the base class for a client to a blob store,
         including local file system as a special case.
 
         `*pathsegments`: analogous to the input to `pathlib.Path`.
@@ -189,10 +218,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         For a local POSIX file system, the root is the regular `/`.
         For Azure blob store, the root is that of a "container".
         For AWS and GCP blob stores, the root is that of a "bucket".
-        '''
+        """
 
-        self._path = os.path.normpath(os.path.join(
-            '/', *pathsegments))  # pylint: disable=no-value-for-parameter
+        self._path = os.path.normpath(
+            os.path.join("/", *pathsegments)
+        )  # pylint: disable=no-value-for-parameter
         # The path is always "absolute" starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
 
@@ -235,16 +265,16 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return hash(repr(self))
 
     def __truediv__(self: T, key: str) -> T:
-        '''
+        """
         This is called by `self / key`.
-        '''
+        """
         return self.joinpath(key)
 
     def copy_dir(self, target: str, *, overwrite: bool = False) -> int:
-        '''Analogous to `copy_file`.
+        """Analogous to `copy_file`.
 
         Return the number of files copied.
-        '''
+        """
         target_ = self.parent / target
         if target_ == self:
             return 0
@@ -254,13 +284,13 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 extra = str(p.path.relative_to(self.path))
                 yield (
                     p.copy_file,
-                    ((target_ / extra)._path, ),
-                    {'overwrite': overwrite},
+                    ((target_ / extra)._path,),
+                    {"overwrite": overwrite},
                     extra,
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo(), f'copying dir {self.name}/'):
+        for _ in self._run_in_executor(foo(), f"copying dir {self.name}/"):
             n += 1
         return n
 
@@ -271,7 +301,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
     def copy_file(self, target: str, *, overwrite: bool = False) -> None:
-        '''Copy file to `target` in the same store.
+        """Copy file to `target` in the same store.
 
         `target` is either absolute, or relative to `self.parent`.
         For example, if `self` is '/a/b/c/d.txt', then
@@ -285,7 +315,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         If `target` is an existing directory, raise `IsADirectoryError`.
         Note: this behavior is different from the Unix command `cp`
         in this situation---it does not *copy into* the target directory.
-        '''
+        """
         target_ = self.parent / target
         if target_ == self:
             return
@@ -296,7 +326,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         self._copy_file(target_, overwrite=overwrite)
 
     def exists(self) -> bool:
-        '''Return `True` if the path is an existing file or dir,
+        """Return `True` if the path is an existing file or dir,
         `False` otherwise.
 
         In a blobstore with blobs
@@ -308,11 +338,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         '/a/b/cd/e.txt' exists, and is a file;
         '/a/b' exists, and is a dir;
         '/a/b/c' does not exist.
-        '''
+        """
         return self.is_file() or self.is_dir()
 
     def export_dir(self, target: Upath, *, overwrite: bool = False) -> int:
-        '''Copy the content of the current directory recursively
+        """Copy the content of the current directory recursively
         to the specified `target`, which is typically in another store.
 
         `target` corresponds to `self`, that is, direct children of `self`
@@ -328,20 +358,21 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         efficient ways to "download", and also renaming this method to "download_dir".
 
         Return the number of files copied.
-        '''
+        """
+
         def foo():
             self_path = self.path
             for p in self.riterdir():
                 extra = str(p.path.relative_to(self_path))
                 yield (
                     p.export_file,
-                    (target / extra, ),
-                    {'overwrite': overwrite},
+                    (target / extra,),
+                    {"overwrite": overwrite},
                     extra,
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo(), f'exporting dir {self.name}/'):
+        for _ in self._run_in_executor(foo(), f"exporting dir {self.name}/"):
             n += 1
         return n
 
@@ -352,7 +383,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
     def export_file(self, target: Upath, *, overwrite: bool = False) -> None:
-        '''Copy the file to the specified `target`, which is typically
+        """Copy the file to the specified `target`, which is typically
         in another store.
 
         The `target` specifies a blob corresponding to `self`.
@@ -364,36 +395,36 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         efficient ways to "download", and also renaming this method to "download_file".
 
         Compare with `copy_file`, which makes copies within the same store.
-        '''
+        """
         if target.is_dir():
             # Do not delete.
             raise IsADirectoryError(target)
 
         self._export_file(target, overwrite=overwrite)
 
-    @ abc.abstractmethod
+    @abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
-        '''
+        """
         If `self.is_file()` is `False`, return `None`.
-        '''
+        """
         raise NotImplementedError
 
     def import_dir(self, source: Upath, *, overwrite: bool = False) -> int:
-        '''Analogous to `export_dir`.
-        '''
+        """Analogous to `export_dir`."""
+
         def foo():
             source_path = source.path
             for p in source.riterdir():
                 extra = str(p.path.relative_to(source_path))
                 yield (
                     (self / extra).import_file,
-                    (p, ),
-                    {'overwrite': overwrite},
+                    (p,),
+                    {"overwrite": overwrite},
                     extra,
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo(), f'importing dir {self.name}/'):
+        for _ in self._run_in_executor(foo(), f"importing dir {self.name}/"):
             n += 1
         return n
 
@@ -408,9 +439,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             raise IsADirectoryError(self)
         self._import_file(source, overwrite=overwrite)
 
-    @ abc.abstractmethod
+    @abc.abstractmethod
     def is_dir(self) -> bool:
-        '''Return `True` if the path is an existing directory, `False` otherwise.
+        """Return `True` if the path is an existing directory, `False` otherwise.
 
         If there exists a file named like
 
@@ -434,12 +465,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         Simply create a file under the dir, and the dir will come into being.
         This is analogous to our treatment to files---we don't "create" a file
         in advance; we simply write to a path, intending it to be a file.
-        '''
+        """
         raise NotImplementedError
 
-    @ abc.abstractmethod
+    @abc.abstractmethod
     def is_file(self) -> bool:
-        '''Return `True` if the path is an existing file, `False` otherwise.
+        """Return `True` if the path is an existing file, `False` otherwise.
 
         In a cloud blob store, a path can be both a file and a dir. For
         example, if these blobs exist:
@@ -451,12 +482,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         User is recommended to avoid such namings.
 
         This situation does not happen in a local file system.
-        '''
+        """
         raise NotImplementedError
 
-    @ abc.abstractmethod
+    @abc.abstractmethod
     def iterdir(self: T) -> Iterator[T]:
-        '''Yield the first-level (i.e. non-recursive) children
+        """Yield the first-level (i.e. non-recursive) children
         of the current dir.
 
         Each yielded element is either a file or a dir.
@@ -466,17 +497,17 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         empty iterable), but do not raise exception.
 
         There is no guarantee on the order of the returned elements.
-        '''
+        """
         raise NotImplementedError
 
     def joinpath(self: T, *other: str) -> T:
-        '''Join this path with more segments, return the new path object.'''
+        """Join this path with more segments, return the new path object."""
         return self.with_path(self._path, *other)
 
-    @ contextlib.contextmanager
-    @ abc.abstractmethod
+    @contextlib.contextmanager
+    @abc.abstractmethod
     def lock(self, *, timeout: int = None):
-        '''Lock the file pointed to, in order to have exclusive access.
+        """Lock the file pointed to, in order to have exclusive access.
 
         `timeout`: if the lock can't be acquired within *timeout* seconds,
         raise `LockAcquisitionTimeoutError`. If `None`, wait for ever until
@@ -515,73 +546,74 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Some storage engines may not provide the capability to implement
         this lock.
-        '''
+        """
         raise NotImplementedError
 
     def ls(self: T) -> List[T]:
         return sorted(self.iterdir())
 
-    @ property
+    @property
     def name(self) -> str:
-        '''Return the segment after the last `/`.
+        """Return the segment after the last `/`.
 
         If `self.path` is '/', then `self.path.name` is ''.
-        '''
+        """
         return self.path.name
 
-    @ property
+    @property
     def parent(self: T) -> T:
         return self.with_path(str(self.path.parent))
 
-    @ property
+    @property
     def path(self) -> pathlib.PurePosixPath:
         return pathlib.PurePosixPath(self._path)
 
-    @ abc.abstractmethod
+    @abc.abstractmethod
     def read_bytes(self) -> bytes:
-        '''Return the binary contents of the file.
+        """Return the binary contents of the file.
 
         If `self` is not a file or is non-existent,
         raise `FileNotFoundError`.
-        '''
+        """
         raise NotImplementedError
 
     def read_text(self):
         # Refer to https://docs.python.org/3/library/functions.html#open
-        return self.read_bytes().decode(encoding='utf-8', errors='strict')
+        return self.read_bytes().decode(encoding="utf-8", errors="strict")
 
     # TODO: rename 'remove' to 'delete'?
 
     def remove_dir(self) -> int:
-        '''Remove the directory pointed to by `self`,
+        """Remove the directory pointed to by `self`,
         along with all its contents, recursively.
 
         Return the number of files removed.
 
         Local upath needs to customize this implementation, because
         it needs to take care of deleting "empty" subdirectories.
-        '''
+        """
+
         def foo():
             for p in self.riterdir():
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
         n = 0
-        for _ in self._run_in_executor(foo(), f'removing dir {self.name}/'):
+        for _ in self._run_in_executor(foo(), f"removing dir {self.name}/"):
             n += 1
         return n
 
     @abc.abstractmethod
     def remove_file(self) -> None:
-        '''Remove the file pointed to by `self`.
+        """Remove the file pointed to by `self`.
 
         If `self` is not an existing file, raise FileNotFoundError.
         If the file exists but can't be removed, usually the platform-dependent
         exception is propagated.
-        '''
+        """
         raise NotImplementedError
 
     def rename_dir(self: T, target: str, *, overwrite: bool = False) -> T:
-        '''Analogous to `rename_file`.
+        """Analogous to `rename_file`.
 
         `overwrite` is applied per file, which suggests that if there are
         files under `target` that do not have counterparts under `self`,
@@ -589,7 +621,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Local upath needs to customize this implementation, because
         it needs to take care to delete empty subdirectories under `self`.
-        '''
+        """
         if not self.is_dir():
             raise FileNotFoundError(str(self))
 
@@ -603,32 +635,32 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 yield (
                     p.rename_file,
                     [(target_ / extra)._path],
-                    {'overwrite': overwrite},
+                    {"overwrite": overwrite},
                     extra,
                 )
 
-        for _ in self._run_in_executor(foo(), f'renaming dir {self.name}/'):
+        for _ in self._run_in_executor(foo(), f"renaming dir {self.name}/"):
             pass
         return target_
 
     def _rename_file(self: T, target: str, *, overwrite: bool = False):
-        '''Rename `self` to `target`, which is a path in the same store.
+        """Rename `self` to `target`, which is a path in the same store.
 
         This is a reference implementation. There are likely
         more efficient ways to do this on any specific platform.
-        '''
+        """
         self.copy_file(target, overwrite=overwrite)
         self.remove_file()
 
     def rename_file(self: T, target: str, *, overwrite: bool = False) -> T:
-        '''Rename the current file to `target` in the same store.
+        """Rename the current file to `target` in the same store.
 
         `target` is either absolute or relative to `self.parent`.
         For example, if `self` is '/a/b/c/d.txt', then
         `target='e.txt'` means '/a/b/c/e.txt'.
 
         Return an object pointing to the new path.
-        '''
+        """
         target_ = self.parent / target
         if target_ == self:
             return self
@@ -638,7 +670,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
     @abc.abstractmethod
     def riterdir(self: T) -> Iterator[T]:
-        '''Yield files under the current dir recursively.
+        """Yield files under the current dir recursively.
 
         Compared to `iterdir`, this is recursive, and yields
         *files* only. Empty subdirectories will have no representation
@@ -648,11 +680,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         then nothing is yielded, and no exception is raised either.
 
         There is no guarantee on the order of the returned elements.
-        '''
+        """
         raise NotImplementedError
 
     def rmrf(self) -> int:
-        '''Analogous to `rm -rf`. Remove the file or dir pointed to
+        """Analogous to `rm -rf`. Remove the file or dir pointed to
         by `self`.
 
         Return the number of files removed.
@@ -664,8 +696,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             /a/b/c
 
         then `Upath('/a/b/c').rmrf()` would remove all of them.
-        '''
-        if self._path == '/':
+        """
+        if self._path == "/":
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
         try:
             self.remove_file()
@@ -679,15 +711,15 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             m = 0
         return n + m
 
-    @ property
+    @property
     def stem(self) -> str:
         return self.path.stem
 
-    @ property
+    @property
     def suffix(self) -> str:
         return self.path.suffix
 
-    @ property
+    @property
     def suffixes(self) -> List[str]:
         return self.path.suffixes
 
@@ -695,7 +727,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return self.with_path(str(self.path.with_name(name)))
 
     def with_path(self: T, *paths) -> T:
-        '''
+        """
         Returns a new object of the same class at the specified path.
         The new path is unrelated to the current path; in other words,
         the new path is not "relative" to the current path.
@@ -704,7 +736,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Subclass needs to reimplement this method
         if its `__init__` expects additional args.
-        '''
+        """
         return self.__class__(*paths)
 
     # def with_stem(self: T, stem: str) -> T:
@@ -712,31 +744,29 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
     #     return self.with_path(str(self.path.with_stem(stem)))
 
     def with_suffix(self: T, suffix: str) -> T:
-        '''`suffix` should include a dot, like '.txt'.
+        """`suffix` should include a dot, like '.txt'.
         If `suffix` is '', the effect is to remove the existing suffix.
-        '''
+        """
         return self.with_path(str(self.path.with_suffix(suffix)))
 
-    @ abc.abstractmethod
-    def write_bytes(self,
-                    data: bytes,
-                    *,
-                    overwrite: bool = False) -> None:
-        '''Write bytes to file.
+    @abc.abstractmethod
+    def write_bytes(self, data: bytes, *, overwrite: bool = False) -> None:
+        """Write bytes to file.
 
         Parent directories are created as needed.
 
         `overwrite`: overwrite existing file?
             If `False`, and file exists, raises `FileExistsError`.
-        '''
+        """
         raise NotImplementedError
 
-    def write_text(self,
-                   data: str,
-                   *,
-                   overwrite: bool = False,
-                   ) -> None:
-        z = data.encode(encoding='utf-8', errors='strict')
+    def write_text(
+        self,
+        data: str,
+        *,
+        overwrite: bool = False,
+    ) -> None:
+        z = data.encode(encoding="utf-8", errors="strict")
         self.write_bytes(z, overwrite=overwrite)
 
 
@@ -747,12 +777,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 #
 # Applications can follow these examples to define and register their custom formats.
 
-Upath.register_read_write_text_format(JsonSerializer, 'json')
-Upath.register_read_write_byte_format(ZJsonSerializer, 'json_z')
-Upath.register_read_write_byte_format(ZstdJsonSerializer, 'json_zstd')
-Upath.register_read_write_byte_format(PickleSerializer, 'pickle')
-Upath.register_read_write_byte_format(ZPickleSerializer, 'pickle_z')
-Upath.register_read_write_byte_format(ZstdPickleSerializer, 'pickle_zstd')
-Upath.register_read_write_byte_format(OrjsonSerializer, 'orjson')
-Upath.register_read_write_byte_format(ZOrjsonSerializer, 'orjson_z')
-Upath.register_read_write_byte_format(ZstdOrjsonSerializer, 'orjson_zstd')
+Upath.register_read_write_text_format(JsonSerializer, "json")
+Upath.register_read_write_byte_format(ZJsonSerializer, "json_z")
+Upath.register_read_write_byte_format(ZstdJsonSerializer, "json_zstd")
+Upath.register_read_write_byte_format(PickleSerializer, "pickle")
+Upath.register_read_write_byte_format(ZPickleSerializer, "pickle_z")
+Upath.register_read_write_byte_format(ZstdPickleSerializer, "pickle_zstd")
+Upath.register_read_write_byte_format(OrjsonSerializer, "orjson")
+Upath.register_read_write_byte_format(ZOrjsonSerializer, "orjson_z")
+Upath.register_read_write_byte_format(ZstdOrjsonSerializer, "orjson_zstd")

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 # Enable using `Upath` in type annotations in the code
 # that defines this class.
 # https://stackoverflow.com/a/49872353
@@ -13,32 +14,38 @@ from datetime import datetime
 from io import UnsupportedOperation
 
 from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
+
 # from azure.storage.blob.aio import (
 # ContainerClient as aContainerClient,
 # BlobClient as aBlobClient,
 # BlobLeaseClient as aBlobLeaseClient,
 # )
-from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError, HttpResponseError
+from azure.core.exceptions import (
+    ResourceNotFoundError,
+    ResourceExistsError,
+    HttpResponseError,
+)
 from overrides import overrides
 
 from ._upath import LockAcquisitionTimeoutError, FileInfo, Upath
 from ._blob import BlobUpath
 from ._local import LocalUpath
 
-logging.getLogger('azure.storage').setLevel(logging.WARNING)
-logging.getLogger('azure.core.pipeline.policies').setLevel(logging.WARNING)
+logging.getLogger("azure.storage").setLevel(logging.WARNING)
+logging.getLogger("azure.core.pipeline.policies").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
 
 class AzureBlobUpath(BlobUpath):
-    def __init__(self,
-                 *paths: str,
-                 account_name: str,
-                 account_key: str,
-                 sas_token: str,
-                 container_name: str,
-                 ):
+    def __init__(
+        self,
+        *paths: str,
+        account_name: str,
+        account_key: str,
+        sas_token: str,
+        container_name: str,
+    ):
         super().__init__(*paths)
 
         self._account_name = account_name
@@ -109,7 +116,7 @@ class AzureBlobUpath(BlobUpath):
                     source._blob_client.url,
                     requires_sync=True,
                 )
-                assert copy['copy_status'] == 'success'
+                assert copy["copy_status"] == "success"
 
     @overrides
     def _copy_file(self, target: AzureBlobUpath, *, overwrite=False):
@@ -123,7 +130,7 @@ class AzureBlobUpath(BlobUpath):
             # TODO: check behavior of `download_blob` about
             # overwrite.
             os.makedirs(str(target.parent), exist_ok=True)
-            with open(str(target), 'wb') as f:
+            with open(str(target), "wb") as f:
                 data = self._blob_client.download_blob()
                 data.readinto(f)
 
@@ -156,7 +163,7 @@ class AzureBlobUpath(BlobUpath):
             # behavior about overwrite.
             raise FileExistsError(self)
         with self._provide_blob_client():
-            with open(str(source), 'rb') as data:
+            with open(str(source), "rb") as data:
                 self._blob_client.upload_blob(data)
 
     @overrides
@@ -167,10 +174,9 @@ class AzureBlobUpath(BlobUpath):
     @overrides
     def iterdir(self):
         with self._provide_container_client():
-            prefix = self.blob_name + '/'
+            prefix = self.blob_name + "/"
             k = len(prefix)
-            for p in self._container_client.walk_blobs(
-                    name_starts_with=prefix):
+            for p in self._container_client.walk_blobs(name_starts_with=prefix):
                 yield self / p.name[k:]
 
     def _acquire_lease(self, timeout: int = None):
@@ -179,17 +185,18 @@ class AzureBlobUpath(BlobUpath):
         t0 = time.perf_counter()
         while True:
             try:
-                self.write_text(
-                    datetime.utcnow().isoformat(), overwrite=True)
+                self.write_text(datetime.utcnow().isoformat(), overwrite=True)
                 try:
                     self._lease = self._blob_client.acquire_lease(
-                        lease_duration=-1,
-                        timeout=10)
+                        lease_duration=-1, timeout=10
+                    )
                     return
                 except ResourceNotFoundError:
                     continue  # go to the outer looper to write the file again
                 except HttpResponseError as e:
-                    if e.status_code == 409 and e.error_code == 'LeaseAlreadyPresent':  # pylint: disable=no-member
+                    if (
+                        e.status_code == 409 and e.error_code == "LeaseAlreadyPresent"
+                    ):  # pylint: disable=no-member
                         # Having a lease held by others. Continue to wait.
                         # This may happen when another client placed the lease
                         # on this blob right after we've created it, that is,
@@ -198,7 +205,9 @@ class AzureBlobUpath(BlobUpath):
                     else:
                         raise
             except HttpResponseError as e:
-                if e.status_code == 412 and e.error_code == 'LeaseIdMissing':  # pylint: disable=no-member
+                if (
+                    e.status_code == 412 and e.error_code == "LeaseIdMissing"
+                ):  # pylint: disable=no-member
                     # Blob exists and has a lease on it. Wait and try again.
                     pass
                 else:
@@ -212,10 +221,10 @@ class AzureBlobUpath(BlobUpath):
     @contextmanager
     @overrides
     def lock(self, *, timeout=None):
-        '''
+        """
         References:
         https://docs.microsoft.com/en-us/azure/storage/blobs/concurrency-manage?tabs=dotnet
-        '''
+        """
         with self._provide_blob_client():
             if self._lease is None:
                 self._acquire_lease(timeout)
@@ -252,7 +261,7 @@ class AzureBlobUpath(BlobUpath):
     #                 self._lease = None
     #                 self._lock_count = 0
 
-    @ contextmanager
+    @contextmanager
     def _provide_blob_client(self):
         if self._blob_client is None:
             bc = BlobClient(
@@ -273,7 +282,7 @@ class AzureBlobUpath(BlobUpath):
     # TODO: how to optimize this part so that
     # new objects can reuse the ContainerClient?
 
-    @ contextmanager
+    @contextmanager
     def _provide_container_client(self):
         if self._container_client is None:
             cc = ContainerClient(
@@ -304,18 +313,17 @@ class AzureBlobUpath(BlobUpath):
             try:
 
                 self._blob_client.delete_blob(
-                    delete_snapshots='include',
-                    lease=self._lease)
+                    delete_snapshots="include", lease=self._lease
+                )
             except ResourceNotFoundError:
                 raise FileNotFoundError(self)
 
     @overrides
     def riterdir(self):
         with self._provide_container_client():
-            prefix = self.blob_name + '/'
+            prefix = self.blob_name + "/"
             k = len(prefix)
-            for p in self._container_client.list_blobs(
-                    name_starts_with=prefix):
+            for p in self._container_client.list_blobs(name_starts_with=prefix):
                 yield self / p.name[k:]
 
     @overrides
@@ -330,15 +338,13 @@ class AzureBlobUpath(BlobUpath):
 
     @overrides
     def write_bytes(self, data: bytes, *, overwrite=False) -> None:
-        if self._path == '/':
-            raise UnsupportedOperation(
-                "can not write to root as a blob", self)
+        if self._path == "/":
+            raise UnsupportedOperation("can not write to root as a blob", self)
 
         with self._provide_blob_client():
             try:
                 self._blob_client.upload_blob(
-                    data,
-                    overwrite=overwrite,
-                    lease=self._lease)
+                    data, overwrite=overwrite, lease=self._lease
+                )
             except ResourceExistsError as e:
                 raise FileExistsError(self) from e
