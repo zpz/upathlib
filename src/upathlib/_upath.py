@@ -77,7 +77,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             10, thread_name_prefix="UpathExecutor1"
         ),
     }
-    tqdm_bar_color = "##FFA500"  # Orange. Set to `None` to use the default.
+    tqdm_bar_color = None
+    # Color of the tqdm progress bar. `None` means the tqdm default.
+    # A few color names are accepted,
+    # including 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
+    # as well as hex values (#00ff00). For example, '#FFA500' (orange) looks good.
 
     @classmethod
     def _run_in_executor(
@@ -113,13 +117,14 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             executor = cls._thread_executor_["nest1"]
             pbar = None
         else:
-            print(description)
             executor = cls._thread_executor_["nest0"]
             pbar = tqdm(
                 total=n_tasks,
                 colour=cls.tqdm_bar_color,
-                bar_format="{percentage:3.0f}%|{bar}|{n_fmt}/{total_fmt} {elapsed}",
+                bar_format="{percentage:3.0f}%|{bar}|{n:.0f}/{total_fmt} {elapsed}",
             )
+            pdesc = tqdm(bar_format="     {desc}", leave=False)
+            pdesc.set_description_str(description)
 
         try:
             q = queue.Queue(executor._max_workers + 4)
@@ -158,6 +163,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 task.join()
         finally:
             if pbar is not None:
+                pdesc.close()
                 pbar.close()
 
     @classmethod
