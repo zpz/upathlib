@@ -429,7 +429,6 @@ class GcpBlobUpath(BlobUpath):
             blob = self.blob()
             k = 0
             p = 0
-            self_name = self.name
             while True:
                 kk = min(k + MEGABYTES32, file_size)
                 p += 1
@@ -437,15 +436,13 @@ class GcpBlobUpath(BlobUpath):
                     _download,
                     (client, blob, k, kk - 1),
                     {},
-                    f"downloading {self_name} - part {p}",
+                    f"part {p}",
                 )
                 k = kk
                 if k >= file_size:
                     break
 
-        for buf, k in self._run_in_executor(
-            _do_download(), f"downloading {self.name} - "
-        ):
+        for buf, k in self._run_in_executor(_do_download(), f"Downloading {self!r}"):
             n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(

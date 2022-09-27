@@ -3,7 +3,7 @@
 ## Release 0.6.6 (forthcoming)
 
 - Improvement to robustness in large directory upload to Gcp.
-- Improved progress bar when downloading/uploading a folder.
+- Improved progress report when downloading/uploading a folder.
 
 
 ## Release 0.6.5

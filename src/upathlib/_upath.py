@@ -77,11 +77,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             10, thread_name_prefix="UpathExecutor1"
         ),
     }
-    tqdm_bar_color = None
-    # Color of the tqdm progress bar. `None` means the tqdm default.
-    # A few color names are accepted,
-    # including 'black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white',
-    # as well as hex values (#00ff00). For example, '#FFA500' (orange) looks good.
 
     @classmethod
     def _run_in_executor(
@@ -94,7 +89,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         by splitting the work into multiple segments.
 
         `tasks`: each element is a tuple of (func, args, kwargs, description).
-        `description`: used at the beginning of the tqdm progress bar.
+        `description`: description of the entire set of tasks.
         """
         if not isinstance(tasks, list):
             tasks = list(tasks)
@@ -112,19 +107,17 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 q.put((t, desc))
             q.put(None)
 
+        pbar = None
         if threading.current_thread().name.startswith("UpathExecutor0"):
             # This is the case when GCP downloads a large file by multiple parts.
             executor = cls._thread_executor_["nest1"]
-            pbar = None
         else:
             executor = cls._thread_executor_["nest0"]
+            print(description)
             pbar = tqdm(
                 total=n_tasks,
-                colour=cls.tqdm_bar_color,
-                bar_format="{percentage:3.0f}%|{bar}|{n:.0f}/{total_fmt} {elapsed}",
+                bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
             )
-            pdesc = tqdm(bar_format="     {desc}", leave=False)
-            pdesc.set_description_str(description)
 
         try:
             q = queue.Queue(executor._max_workers + 4)
@@ -140,7 +133,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     if z is None:
                         break
                     t, desc = z
-                    pbar.update(0.5)
+                    if pbar:
+                        pbar.set_description_str(desc)
+                        pbar.update(0.5)
                     try:
                         yield t.result()
                     except Exception:
@@ -158,12 +153,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                             # This may not succeed, but there isn't a good way to
                             # guarantee cancellation here.
                         raise
-                    pbar.update(0.5)
+                    if pbar:
+                        pbar.update(0.5)
             finally:
                 task.join()
         finally:
-            if pbar is not None:
-                pdesc.close()
+            if pbar:
                 pbar.close()
 
     @classmethod
@@ -276,7 +271,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         return self.joinpath(key)
 
-    def copy_dir(self, target: str, *, overwrite: bool = False) -> int:
+    def copy_dir(
+        self, target: str, *, overwrite: bool = False, desc: str = None
+    ) -> int:
         """Analogous to `copy_file`.
 
         Return the number of files copied.
@@ -296,7 +293,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo(), f"copying dir {self.name}/"):
+        for _ in self._run_in_executor(
+            foo(), desc or f"Copying from {self._path} into {target_._path}"
+        ):
             n += 1
         return n
 
@@ -347,7 +346,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         return self.is_file() or self.is_dir()
 
-    def export_dir(self, target: Upath, *, overwrite: bool = False) -> int:
+    def export_dir(
+        self, target: Upath, *, overwrite: bool = False, desc: str = None
+    ) -> int:
         """Copy the content of the current directory recursively
         to the specified `target`, which is typically in another store.
 
@@ -378,7 +379,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo(), f"exporting dir {self.name}/"):
+        for _ in self._run_in_executor(
+            foo(), desc or f"Exporting from {self!r} into {target!r}"
+        ):
             n += 1
         return n
 
@@ -415,7 +418,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         raise NotImplementedError
 
-    def import_dir(self, source: Upath, *, overwrite: bool = False) -> int:
+    def import_dir(
+        self, source: Upath, *, overwrite: bool = False, desc: str = None
+    ) -> int:
         """Analogous to `export_dir`."""
 
         def foo():
@@ -430,7 +435,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 )
 
         n = 0
-        for _ in self._run_in_executor(foo(), f"importing dir {self.name}/"):
+        for _ in self._run_in_executor(
+            foo(), desc or f"Importing from {source!r} into {self!r}"
+        ):
             n += 1
         return n
 
@@ -589,7 +596,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
     # TODO: rename 'remove' to 'delete'?
 
-    def remove_dir(self) -> int:
+    def remove_dir(self, *, desc: str = None) -> int:
         """Remove the directory pointed to by `self`,
         along with all its contents, recursively.
 
@@ -604,7 +611,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
         n = 0
-        for _ in self._run_in_executor(foo(), f"removing dir {self.name}/"):
+        for _ in self._run_in_executor(foo(), desc or f"Removing {self!r}"):
             n += 1
         return n
 
@@ -618,7 +625,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         raise NotImplementedError
 
-    def rename_dir(self: T, target: str, *, overwrite: bool = False) -> T:
+    def rename_dir(
+        self: T, target: str, *, overwrite: bool = False, desc: str = None
+    ) -> T:
         """Analogous to `rename_file`.
 
         `overwrite` is applied per file, which suggests that if there are
@@ -645,7 +654,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
-        for _ in self._run_in_executor(foo(), f"renaming dir {self.name}/"):
+        for _ in self._run_in_executor(
+            foo(), desc or f"Renaming {self!r} to {target_!r}"
+        ):
             pass
         return target_
 
