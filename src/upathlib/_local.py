@@ -50,12 +50,12 @@ class LocalUpath(Upath):
         return target.import_dir(self, overwrite=overwrite, desc=desc)
 
     @overrides
-    def _export_file(self, target: Upath, *, overwrite=False):
+    def export_file(self, target: Upath, *, overwrite=False):
         if isinstance(target, LocalUpath):
             return self._copy_file(target, overwrite=overwrite)
         # `target` is a cloud store; it might have implemented
         # efficient 'upload' functionality.
-        target._import_file(self, overwrite=overwrite)
+        target.import_file(self, overwrite=overwrite)
 
     @overrides
     def file_info(self):
@@ -81,12 +81,12 @@ class LocalUpath(Upath):
         return source.export_dir(self, overwrite=overwrite, desc=desc)
 
     @overrides
-    def _import_file(self, source: Upath, *, overwrite=False):
+    def import_file(self, source: Upath, *, overwrite=False):
         if isinstance(source, LocalUpath):
             return source._copy_file(self, overwrite=overwrite)
         # Call the other side in case it implements an efficient
         # file download.
-        source._export_file(self, overwrite=overwrite)
+        source.export_file(self, overwrite=overwrite)
 
     @overrides
     def is_dir(self) -> bool:

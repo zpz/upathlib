@@ -95,10 +95,11 @@ class Page:
 
 
 class BlobLists:
-    def __init__(self, bucket, prefix, delimiter=None):
+    def __init__(self, bucket, prefix, delimiter=None, max_results=None):
         self._bucket = bucket
         self._prefix = prefix
         self._delimiter = delimiter
+        self._max_results = max_results
 
     def __iter__(self):
         zz = [x for x in self._bucket._blobs
@@ -135,8 +136,8 @@ class Client:
     def bucket(self, name):
         return Bucket(name)
 
-    def list_blobs(self, bucket, prefix, delimiter=None):
-        return BlobLists(bucket, prefix, delimiter)
+    def list_blobs(self, bucket, prefix, delimiter=None, max_results=None, page_size=None, fields=None):
+        return BlobLists(bucket, prefix, delimiter, max_results=max_results)
 
 
 
