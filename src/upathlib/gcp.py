@@ -306,8 +306,13 @@ class GcpBlobUpath(BlobUpath):
     @overrides
     def is_dir(self) -> bool:
         prefix = self.blob_name + "/"
-        blobs = self.client.list_blobs(self.bucket, prefix=prefix,
-                max_results=1, page_size=1, fields='items(name),nextPageToken')
+        blobs = self.client.list_blobs(
+            self.bucket,
+            prefix=prefix,
+            max_results=1,
+            page_size=1,
+            fields="items(name),nextPageToken",
+        )
         return len(list(blobs)) > 0
 
     @overrides

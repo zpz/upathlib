@@ -438,10 +438,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return n
 
     def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
-        '''
+        """
         If `self` is a LocalUpath object representing an existing *directory*,
         `IsADirectoryError` is raised.
-        '''
+        """
         # When `source` is a `LocalUpath`, subclass may implement this
         # in more efficient ways for uploading, and rename it to `upload_file`.
         self.write_bytes(source.read_bytes(), overwrite=overwrite)
