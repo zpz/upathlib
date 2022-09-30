@@ -236,14 +236,19 @@ class GcpBlobUpath(BlobUpath):
             raise FileExistsError(target)
 
     @overrides
-    def _export_file(self, target: Upath, *, overwrite=False) -> None:
+    def export_file(self, target: Upath, *, overwrite=False) -> None:
         if not isinstance(target, LocalUpath):
-            return super()._export_file(target, overwrite=overwrite)
+            return super().export_file(target, overwrite=overwrite)
+
+        # File download.
+
         if not overwrite and target.is_file():
             raise FileExistsError(target)
         os.makedirs(str(target.parent), exist_ok=True)
         try:
             with open(target.localpath, "wb") as file_obj:
+                # If `target` is an existing directory,
+                # will raise `IsADirectoryError`.
                 self._read_into_buffer(file_obj)
             updated = self.blob().updated
             if updated is not None:
@@ -271,9 +276,11 @@ class GcpBlobUpath(BlobUpath):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
-    def _import_file(self, source: Upath, *, overwrite=False) -> None:
+    def import_file(self, source: Upath, *, overwrite=False) -> None:
         if not isinstance(source, LocalUpath):
-            return super()._import_file(source, overwrite=overwrite)
+            return super().import_file(source, overwrite=overwrite)
+
+        # File upload.
 
         filename = str(source)
         content_type = self.blob()._get_content_type(None, filename=filename)
@@ -295,6 +302,18 @@ class GcpBlobUpath(BlobUpath):
         # This is not cached, in case the object is modified anytime
         # by other clients.
         return self.blob().exists(self.client)
+
+    @overrides
+    def is_dir(self) -> bool:
+        prefix = self.blob_name + "/"
+        blobs = self.client.list_blobs(
+            self.bucket,
+            prefix=prefix,
+            max_results=1,
+            page_size=1,
+            fields="items(name),nextPageToken",
+        )
+        return len(list(blobs)) > 0
 
     @overrides
     def iterdir(self):
@@ -429,7 +448,6 @@ class GcpBlobUpath(BlobUpath):
             blob = self.blob()
             k = 0
             p = 0
-            self_name = self.name
             while True:
                 kk = min(k + MEGABYTES32, file_size)
                 p += 1
@@ -437,15 +455,13 @@ class GcpBlobUpath(BlobUpath):
                     _download,
                     (client, blob, k, kk - 1),
                     {},
-                    f"downloading {self_name} - part {p}",
+                    f"part {p}",
                 )
                 k = kk
                 if k >= file_size:
                     break
 
-        for buf, k in self._run_in_executor(
-            _do_download(), f"downloading {self.name} - "
-        ):
+        for buf, k in self._run_in_executor(_do_download(), f"Downloading {self!r}"):
             n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(

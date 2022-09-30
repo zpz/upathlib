@@ -1,3 +1,7 @@
+"""
+This module defines a base class for paths in a *cloud* storage, aka "blob store".
+This is in contrast to a *local* disk storage, which is the subject of `_local.py`.
+"""
 import pathlib
 from ._upath import Upath
 from ._local import LocalUpath
@@ -20,9 +24,13 @@ class BlobUpath(Upath, EnforceOverrides):
     def blob_name(self) -> str:
         return self._path.lstrip("/")
 
-    def download_dir(self, target, *, overwrite=False) -> int:
+    def download_dir(self, target, *, overwrite=False, desc=None) -> int:
         target_ = _resolve_local_path(target)
-        return self.export_dir(target_, overwrite=overwrite)
+        return self.export_dir(
+            target_,
+            overwrite=overwrite,
+            desc=desc or f"Downloading from {self!r} into {target_!r}",
+        )
 
     def download_file(self, target, *, overwrite=False) -> None:
         target_ = _resolve_local_path(target)
@@ -72,9 +80,11 @@ class BlobUpath(Upath, EnforceOverrides):
                 yield self / tail
                 subdirs.add(tail)
 
-    def upload_dir(self, source, *, overwrite=False) -> int:
+    def upload_dir(self, source, *, overwrite=False, desc=None) -> int:
         s = _resolve_local_path(source)
-        return self.import_dir(s, overwrite=overwrite)
+        return self.import_dir(
+            s, overwrite=overwrite, desc=desc or f"Uploading from {s!r} into {self!r}"
+        )
 
     def upload_file(self, source, *, overwrite=False) -> None:
         s = _resolve_local_path(source)

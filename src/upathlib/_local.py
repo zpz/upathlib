@@ -42,20 +42,20 @@ class LocalUpath(Upath):
         # If target already exists, it will be overwritten.
 
     @overrides
-    def export_dir(self, target: Upath, *, overwrite=False) -> int:
+    def export_dir(self, target: Upath, *, overwrite=False, desc=None) -> int:
         if isinstance(target, LocalUpath):
-            return super().export_dir(target, overwrite=overwrite)
+            return super().export_dir(target, overwrite=overwrite, desc=desc)
         # `target` is a cloud store; it might have implemented
         # efficient 'download' functionality.
-        return target.import_dir(self, overwrite=overwrite)
+        return target.import_dir(self, overwrite=overwrite, desc=desc)
 
     @overrides
-    def _export_file(self, target: Upath, *, overwrite=False):
+    def export_file(self, target: Upath, *, overwrite=False):
         if isinstance(target, LocalUpath):
             return self._copy_file(target, overwrite=overwrite)
         # `target` is a cloud store; it might have implemented
         # efficient 'upload' functionality.
-        target._import_file(self, overwrite=overwrite)
+        target.import_file(self, overwrite=overwrite)
 
     @overrides
     def file_info(self):
@@ -75,18 +75,18 @@ class LocalUpath(Upath):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
-    def import_dir(self, source: Upath, *, overwrite=False) -> int:
+    def import_dir(self, source: Upath, *, overwrite=False, desc=None) -> int:
         if isinstance(source, LocalUpath):
-            return super().import_dir(source, overwrite=overwrite)
-        return source.export_dir(self, overwrite=overwrite)
+            return super().import_dir(source, overwrite=overwrite, desc=desc)
+        return source.export_dir(self, overwrite=overwrite, desc=desc)
 
     @overrides
-    def _import_file(self, source: Upath, *, overwrite=False):
+    def import_file(self, source: Upath, *, overwrite=False):
         if isinstance(source, LocalUpath):
             return source._copy_file(self, overwrite=overwrite)
         # Call the other side in case it implements an efficient
         # file download.
-        source._export_file(self, overwrite=overwrite)
+        source.export_file(self, overwrite=overwrite)
 
     @overrides
     def is_dir(self) -> bool:
@@ -129,8 +129,8 @@ class LocalUpath(Upath):
             raise FileNotFoundError(self) from e
 
     @overrides
-    def remove_dir(self) -> int:
-        n = super().remove_dir()
+    def remove_dir(self, *, desc=None) -> int:
+        n = super().remove_dir(desc=desc)
 
         def _remove_empty_dir(path):
             for p in path.iterdir():
@@ -147,8 +147,8 @@ class LocalUpath(Upath):
         self.localpath.unlink()
 
     @overrides
-    def rename_dir(self, target, *, overwrite=False):
-        target_ = super().rename_dir(target, overwrite=overwrite)
+    def rename_dir(self, target, *, overwrite=False, desc=None):
+        target_ = super().rename_dir(target, overwrite=overwrite, desc=desc)
 
         def _remove_empty_dir(path):
             k = 0
@@ -186,8 +186,7 @@ class LocalUpath(Upath):
         if self.is_file():
             if not overwrite:
                 raise FileExistsError(self)
-        elif self.is_dir():
-            raise IsADirectoryError(self)
-        else:
-            self.parent.localpath.mkdir(exist_ok=True, parents=True)
+        self.parent.localpath.mkdir(exist_ok=True, parents=True)
         self.localpath.write_bytes(data)
+        # If `self` is an existing directory, will raise `IsADirectoryError`.
+        # If `self` is an existing file, will overwrite.
