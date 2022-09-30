@@ -385,31 +385,27 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             n += 1
         return n
 
-    def _export_file(self, target: Upath, *, overwrite: bool = False) -> None:
-        # Reference implementation.
-        # Subclass may customize this to perform file download
-        # when `target` is a `LocalUpath`.
-        target.write_bytes(self.read_bytes(), overwrite=overwrite)
-
     def export_file(self, target: Upath, *, overwrite: bool = False) -> None:
         """Copy the file to the specified `target`, which is typically
         in another store.
 
         The `target` specifies a blob corresponding to `self`.
-        If `target` is an existing directory, a `IsADirectoryError` is raised.
-        A copy is not placed *into* the target directory. This behavior
-        differs from the Linux command `cp`.
 
-        If `target` is a `LocalUpath` object, then a subclass may implement more
-        efficient ways to "download", and also renaming this method to "download_file".
+        If `target` is a LocalUpath object representing an existing *directory*,
+        `IsADirectoryError` is raised. A copy is not placed *into* the target directory.
+        This behavior differs from the Linux command `cp`.
+
+        If `target` is a path in a cloud store, and is an existing *directory*,
+        a new blob may be created as a result of this "export", because in cloud stores
+        a path can be both a "file" and a "directory", although user is recommended
+        to avoid such situations.
 
         Compare with `copy_file`, which makes copies within the same store.
         """
-        if target.is_dir():
-            # Do not delete.
-            raise IsADirectoryError(target)
-
-        self._export_file(target, overwrite=overwrite)
+        # Reference implementation.
+        # Subclass may customize this to perform file download
+        # when `target` is a `LocalUpath`.
+        target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
     @abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
@@ -441,16 +437,14 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             n += 1
         return n
 
-    def _import_file(self, source: Upath, *, overwrite: bool = False) -> None:
-        self.write_bytes(source.read_bytes(), overwrite=overwrite)
-
     def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
-        # When `target` is a `LocalUpath`, subclass may implement this
+        '''
+        If `self` is a LocalUpath object representing an existing *directory*,
+        `IsADirectoryError` is raised.
+        '''
+        # When `source` is a `LocalUpath`, subclass may implement this
         # in more efficient ways for uploading, and rename it to `upload_file`.
-        if self.is_dir():
-            # Do not delete.
-            raise IsADirectoryError(self)
-        self._import_file(source, overwrite=overwrite)
+        self.write_bytes(source.read_bytes(), overwrite=overwrite)
 
     @abc.abstractmethod
     def is_dir(self) -> bool:

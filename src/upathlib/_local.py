@@ -186,8 +186,7 @@ class LocalUpath(Upath):
         if self.is_file():
             if not overwrite:
                 raise FileExistsError(self)
-        elif self.is_dir():
-            raise IsADirectoryError(self)
-        else:
-            self.parent.localpath.mkdir(exist_ok=True, parents=True)
+        self.parent.localpath.mkdir(exist_ok=True, parents=True)
         self.localpath.write_bytes(data)
+        # If `self` is an existing directory, will raise `IsADirectoryError`.
+        # If `self` is an existing file, will overwrite.

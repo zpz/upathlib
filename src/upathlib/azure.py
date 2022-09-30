@@ -123,9 +123,9 @@ class AzureBlobUpath(BlobUpath):
         target._copy_file_from(self, overwrite=overwrite)
 
     @overrides
-    def _export_file(self, target: Upath, *, overwrite=False) -> None:
+    def export_file(self, target: Upath, *, overwrite=False) -> None:
         if not isinstance(target, LocalUpath):
-            return super()._export_file(target, overwrite=overwrite)
+            return super().export_file(target, overwrite=overwrite)
         with self._provide_blob_client():
             # TODO: check behavior of `download_blob` about
             # overwrite.
@@ -155,9 +155,9 @@ class AzureBlobUpath(BlobUpath):
             return None
 
     @overrides
-    def _import_file(self, source: Upath, *, overwrite: bool = False):
+    def import_file(self, source: Upath, *, overwrite: bool = False):
         if not isinstance(source, LocalUpath):
-            return super()._import_file(source, overwrite=overwrite)
+            return super().import_file(source, overwrite=overwrite)
         if not overwrite and self.is_file():
             # TODO: check the behavior of `upload_blob` related to
             # behavior about overwrite.
