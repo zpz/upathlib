@@ -43,7 +43,6 @@ gcs = [
 test = [
     "bandit",
     "coverage[toml]",
-    "Faker",
     "flake8",
     "mypy",
     "numpy",
