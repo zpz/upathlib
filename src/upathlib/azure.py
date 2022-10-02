@@ -5,7 +5,6 @@ from __future__ import annotations
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
 
-import logging
 import os
 import random
 import time
@@ -31,10 +30,9 @@ from ._upath import LockAcquisitionTimeoutError, FileInfo, Upath
 from ._blob import BlobUpath
 from ._local import LocalUpath
 
-logging.getLogger("azure.storage").setLevel(logging.WARNING)
-logging.getLogger("azure.core.pipeline.policies").setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
+# End user may want to do this:
+# logging.getLogger("azure.storage").setLevel(logging.WARNING)
+# logging.getLogger("azure.core.pipeline.policies").setLevel(logging.WARNING)
 
 
 class AzureBlobUpath(BlobUpath):
@@ -67,7 +65,7 @@ class AzureBlobUpath(BlobUpath):
         )
 
     def __str__(self) -> str:
-        return f"{self._container_name}://{self._path}"
+        return f"{self._container_name}://{self._path.lstrip('/')}"
 
     def __eq__(self, other) -> bool:
         if other.__class__ is not self.__class__:
