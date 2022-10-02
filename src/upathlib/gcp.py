@@ -373,7 +373,11 @@ class GcpBlobUpath(BlobUpath):
             timeout = 300  # seconds
 
         @opnieuw.retry(
-            retry_on_exceptions=(*RETRY_WRITE_ON_EXCEPTIONS, PreconditionFailed, FileExistsError),
+            retry_on_exceptions=(
+                *RETRY_WRITE_ON_EXCEPTIONS,
+                PreconditionFailed,
+                FileExistsError,
+            ),
             max_calls_total=10,
             retry_window_after_first_call_in_seconds=timeout,
         )
