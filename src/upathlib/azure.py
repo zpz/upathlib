@@ -26,7 +26,7 @@ from azure.core.exceptions import (
 )
 from overrides import overrides
 
-from ._upath import LockAcquisitionTimeoutError, FileInfo, Upath
+from ._upath import LockAcquireError, FileInfo, Upath
 from ._blob import BlobUpath
 from ._local import LocalUpath
 
@@ -213,7 +213,7 @@ class AzureBlobUpath(BlobUpath):
 
             t1 = time.perf_counter()
             if t1 - t0 >= timeout:
-                raise LockAcquisitionTimeoutError(self, t1 - t0)
+                raise LockAcquireError(self, t1 - t0)
             time.sleep(random.uniform(0.05, 1.0))
 
     @contextmanager

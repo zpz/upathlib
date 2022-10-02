@@ -52,7 +52,11 @@ from .serializer import (
 T = TypeVar("T", bound="Upath")
 
 
-class LockAcquisitionTimeoutError(TimeoutError):
+class LockAcquireError(TimeoutError):
+    pass
+
+
+class LockReleaseError(RuntimeError):
     pass
 
 
@@ -515,9 +519,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """Lock the file pointed to, in order to have exclusive access.
 
         `timeout`: if the lock can't be acquired within *timeout* seconds,
-        raise `LockAcquisitionTimeoutError`. If `None`, wait for ever until
-        a lock is acquired. Once a lease is acquired,
-        it will not expire until this contexmanager exits.
+        raise `LockAcquireError`. If `None`, wait for a default
+        reasonably long time. To wait "forever", just pass in a large number.
+        Once a lease is acquired, it will not expire until this contexmanager exits.
         In other words, this is timeout for the "wait", not for the
         lease itself. Actual waiting time may be slightly longer.
 

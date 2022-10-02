@@ -26,7 +26,7 @@ from google.api_core.exceptions import (
 )
 from overrides import overrides
 
-from ._upath import FileInfo, Upath, LockAcquisitionTimeoutError
+from ._upath import FileInfo, Upath, LockAcquireError, LockReleaseError
 from ._blob import BlobUpath
 from ._local import LocalUpath
 
@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 # 67108864 = 256 * 1024 * 256 = 64 MB
 MEGABYTES32 = 33554432
 MEGABYTES64 = 67108864
+LARGE_FILE_SIZE = MEGABYTES64
 
 
 RETRY_WRITE_ON_EXCEPTIONS = (
@@ -369,22 +370,22 @@ class GcpBlobUpath(BlobUpath):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
-            timeout = 3600  # seconds
+            timeout = 300  # seconds
 
         @opnieuw.retry(
-            retry_on_exceptions=(PreconditionFailed, FileExistsError),
+            retry_on_exceptions=(*RETRY_WRITE_ON_EXCEPTIONS, PreconditionFailed, FileExistsError),
             max_calls_total=10,
             retry_window_after_first_call_in_seconds=timeout,
         )
         def _acquire_():
-            self._blob_rate_limit(self._write_bytes, b"0")
+            self._write_bytes(b"0")
             self._generation = self.blob().generation
 
         t0 = time.perf_counter()
         try:
             _acquire_()
         except Exception as e:
-            raise LockAcquisitionTimeoutError(self, time.perf_counter() - t0) from e
+            raise LockAcquireError(self, time.perf_counter() - t0) from e
 
     @contextlib.contextmanager
     @overrides
@@ -414,7 +415,7 @@ class GcpBlobUpath(BlobUpath):
                         if_generation_match=self._generation,
                     )
                 except Exception as e:
-                    logger.error(e)
+                    raise LockReleaseError(f"failed to delete lock file {self}") from e
 
     def open(self, mode="r", **kwargs):
         """
@@ -428,7 +429,7 @@ class GcpBlobUpath(BlobUpath):
         if not file_info:
             raise FileNotFoundError(self)
         file_size = file_info.size  # bytes
-        if file_size <= MEGABYTES32:
+        if file_size <= LARGE_FILE_SIZE:
             try:
                 self.blob().download_to_file(file_obj, client=self.client)
                 return
@@ -452,7 +453,7 @@ class GcpBlobUpath(BlobUpath):
             k = 0
             p = 0
             while True:
-                kk = min(k + MEGABYTES32, file_size)
+                kk = min(k + LARGE_FILE_SIZE, file_size)
                 p += 1
                 yield (
                     _download,

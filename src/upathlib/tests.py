@@ -5,7 +5,7 @@ import concurrent.futures
 import pathlib
 import time
 import pytest
-from upathlib import Upath, LocalUpath, LockAcquisitionTimeoutError
+from upathlib import Upath, LocalUpath, LockAcquireError
 
 
 def test_basic(p: Upath):
@@ -189,7 +189,7 @@ def _access_in_mp(root: Upath, path: str, timeout):
     try:
         with p.lock(timeout=timeout):
             return time.perf_counter() - t0
-    except LockAcquisitionTimeoutError:
+    except LockAcquireError:
         return t0 - time.perf_counter()
 
 
