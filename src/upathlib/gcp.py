@@ -39,6 +39,14 @@ MEGABYTES32 = 33554432
 MEGABYTES64 = 67108864
 
 
+RETRY_WRITE_ON_EXCEPTIONS = (
+    TooManyRequests,
+    GatewayTimeout,
+    ServiceUnavailable,
+    requests.ReadTimeout,
+)
+
+
 class GcpBlobUpath(BlobUpath):
     def __init__(
         self,
@@ -105,7 +113,7 @@ class GcpBlobUpath(BlobUpath):
         )
 
     def __str__(self) -> str:
-        return self.__repr__()
+        return f"gs://{self.bucket_name}/{self._path.lstrip('/')}"
 
     def __eq__(self, other) -> bool:
         if other.__class__ is not self.__class__:
@@ -203,12 +211,7 @@ class GcpBlobUpath(BlobUpath):
             return None
 
     @opnieuw.retry(
-        retry_on_exceptions=(
-            TooManyRequests,
-            GatewayTimeout,
-            ServiceUnavailable,
-            requests.ReadTimeout,
-        ),
+        retry_on_exceptions=RETRY_WRITE_ON_EXCEPTIONS,
         max_calls_total=10,
         retry_window_after_first_call_in_seconds=100,
     )
@@ -501,8 +504,8 @@ class GcpBlobUpath(BlobUpath):
             project_id=self._project_id,
             credentials=self._credentials,
         )
-        obj._client = self._client
-        obj._bucket = self._bucket
+        obj._client = self.client
+        obj._bucket = self.bucket
         return obj
 
     def _write_from_buffer(

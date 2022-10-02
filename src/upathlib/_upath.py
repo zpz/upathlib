@@ -9,11 +9,11 @@ import abc
 import concurrent.futures
 import contextlib
 import datetime
-import logging
 import os
 import os.path
 import pathlib
 import queue
+import sys
 import threading
 from dataclasses import dataclass
 from io import UnsupportedOperation
@@ -30,7 +30,7 @@ from typing import (
 )
 
 from overrides import EnforceOverrides
-from tqdm import tqdm
+from tqdm.auto import tqdm
 from .serializer import (
     ByteSerializer,
     TextSerializer,
@@ -45,12 +45,10 @@ from .serializer import (
     ZstdOrjsonSerializer,
 )
 
-# User may want to do this:
+# End user may want to do this:
 #  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
 # to suppress the "urllib3 connection lost" warning.
-# `upathlib` as a library does not make such changes.
 
-logger = logging.getLogger(__name__)
 T = TypeVar("T", bound="Upath")
 
 
@@ -113,7 +111,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             executor = cls._thread_executor_["nest1"]
         else:
             executor = cls._thread_executor_["nest0"]
-            print(description)
+            print(description, file=sys.stderr)
             pbar = tqdm(
                 total=n_tasks,
                 bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",

@@ -1,6 +1,5 @@
 import contextlib
 import datetime
-import logging
 import os
 import os.path
 import pathlib
@@ -19,9 +18,8 @@ from overrides import overrides
 from ._upath import Upath, LockAcquisitionTimeoutError, FileInfo
 
 
-logging.getLogger("filelock").setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
+# End user may want to do this:
+# logging.getLogger("filelock").setLevel(logging.WARNING)
 
 
 class LocalUpath(Upath):
