@@ -79,6 +79,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             10, thread_name_prefix="UpathExecutor1"
         ),
     }
+    # Currently there can be two "layers" of threads running during `download_dir`.
+    # In `download_dir`, the download of each file runs in the threads provided
+    # by `nest0`. If a file is large, `GcpBlobUpath` will split the work into chunks
+    # and download each chunk in a thread provided by `nest1`.
+    # We dedicate the two executors mainly so that the second layer of chunk downloads
+    # do not starve for threads.
 
     @classmethod
     def _run_in_executor(
@@ -87,11 +93,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         This method is used to run multiple I/O jobs concurrently, e.g.
         uploading/downloading all files in a folder recursively.
-        Where supported, this may also be used to download a large blob
-        by splitting the work into multiple segments.
 
         `tasks`: each element is a tuple of (func, args, kwargs, description).
-        `description`: description of the entire set of tasks.
+
+        `description`: description of the entire set of tasks, such as "Downloading directory 'abc'".
         """
         if not isinstance(tasks, list):
             tasks = list(tasks)
@@ -169,7 +174,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         For example, if `serde` is a ByteSerializer subclass and `name` is 'myway',
         then this method adds isinstance methods `write_myway` and `read_myway`.
 
-        `name`: needs to be valid method name, e.g. can't contain space or dash.
+        `name`: usually is a slight variation of the name of the class `serde`,
+            with changes such as lower-casing and separating words by underscores.
+            Needs to be a valid method name, e.g. can't contain space or dash.
         """
 
         def _write(self, data, *, overwrite=False, **kwargs):
@@ -218,9 +225,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
             If missing, the path constructed is the "root".
 
-        For a local POSIX file system, the root is the regular `/`.
-        For Azure blob store, the root is that of a "container".
-        For AWS and GCP blob stores, the root is that of a "bucket".
+        For a local POSIX file system, the root is the usual `/`.
+        For Azure blob store, the root is that in a "container".
+        For AWS and GCP blob stores, the root is that in a "bucket".
+
+        Subclasses for cloud blob stores may need to add additional parameters
+        representing, e.g. credentials, container/bucket name, etc.
         """
 
         self._path = os.path.normpath(
@@ -296,7 +306,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         n = 0
         for _ in self._run_in_executor(
-            foo(), desc or f"Copying from {self._path} into {target_._path}"
+            foo(), desc or f"Copying from {self} into {target_}"
         ):
             n += 1
         return n
@@ -319,16 +329,13 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         If `target` is an existing file and `overwrite` is `False`,
         raise `FileExistsError`.
 
-        If `target` is an existing directory, raise `IsADirectoryError`.
-        Note: this behavior is different from the Unix command `cp`
-        in this situation---it does not *copy into* the target directory.
+        If `target` is an existing directory and `type(self)` is `LocalUpath`,
+        raise `IsADirectoryError`. In a cloud blob store, this operation may be
+        allowed, although the user is recommended to avoid such naming.
         """
         target_ = self.parent / target
         if target_ == self:
             return
-
-        if target_.is_dir():
-            raise IsADirectoryError(target_)
 
         self._copy_file(target_, overwrite=overwrite)
 
@@ -357,14 +364,15 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         `target` corresponds to `self`, that is, direct children of `self`
         are copied directly into `target`.
 
-        Compare with `copy_dir`, which make copies within the same store.
+        Compare with `copy_dir`, which makes copies within the *same store*.
 
         Overwriting happens file-wise. For example, if the target directory
         contains files that do not exist in the source directory, they
         are left untouched.
 
-        If `target` is a `LocalUpath` object, then a subclass may implement more
-        efficient ways to "download", and also renaming this method to "download_dir".
+        If `target` is a `LocalUpath` object and `self` is a `BlobUpath` object,
+        then a subclass may implement more efficient ways to "download",
+        along with renaming this method to "download_dir".
 
         Return the number of files copied.
         """
@@ -393,14 +401,14 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         The `target` specifies a blob corresponding to `self`.
 
-        If `target` is a LocalUpath object representing an existing *directory*,
+        If `target` is a `LocalUpath` object representing an existing *directory*,
         `IsADirectoryError` is raised. A copy is not placed *into* the target directory.
         This behavior differs from the Linux command `cp`.
 
         If `target` is a path in a cloud store, and is an existing *directory*,
         a new blob may be created as a result of this "export", because in cloud stores
         a path can be both a "file" and a "directory", although user is recommended
-        to avoid such situations.
+        to avoid such namings.
 
         Compare with `copy_file`, which makes copies within the same store.
         """
@@ -441,11 +449,13 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
     def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
         """
-        If `self` is a LocalUpath object representing an existing *directory*,
+        If `self` is a `LocalUpath` object representing an existing *directory*,
         `IsADirectoryError` is raised.
+
+        When `source` is a `LocalUpath` and `self` is a `BlobUpath` object,
+        subclass may implement this in more efficient ways for uploading,
+        along with renaming it to `upload_file`.
         """
-        # When `source` is a `LocalUpath`, subclass may implement this
-        # in more efficient ways for uploading, and rename it to `upload_file`.
         self.write_bytes(source.read_bytes(), overwrite=overwrite)
 
     @abc.abstractmethod
@@ -465,7 +475,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         attached to it.
         We interpret the name `/a/b` as a directory
         to emulate the familiar concept in a local file system because
-        there exist files named `/a/b/...`.
+        there exist files named `/a/b/*`.
 
         In a local file system, there can be empty directories.
         However, it is recommended to not have empty directories.
