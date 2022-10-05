@@ -15,7 +15,7 @@ import filelock
 # `oslo.concurrency`, `pylocker`, `portalocker`.
 from overrides import overrides
 
-from ._upath import Upath, LockAcquisitionTimeoutError, FileInfo
+from ._upath import Upath, LockAcquireError, FileInfo
 
 
 # End user may want to do this:
@@ -115,7 +115,7 @@ class LocalUpath(Upath):
             lock.acquire(timeout=timeout)
             yield
         except filelock.Timeout as e:
-            raise LockAcquisitionTimeoutError(str(self)) from e
+            raise LockAcquireError(str(self)) from e
         finally:
             lock.release()
 

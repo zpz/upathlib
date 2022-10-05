@@ -6,6 +6,8 @@
 - Improved progress report when downloading/uploading a directory.
 - Fine-tuned methods `import_file` and `export_file`.
 - Bug fix in `GcpBlotUpath.with_path`. The bug causes scalability (when operating on upwards of 56000 files) and speed issues in `upload_dir`, because every blob will create its own `Client`.
+- Removed `LockAcquisitionTimeoutError`. Added `LockAcquireError`, `LockReleaseError`.
+- `GcpBlobUpath.lock` reduces default wait time to improve responsiveness.
 
 
 ## Release 0.6.5
