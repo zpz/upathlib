@@ -1,4 +1,4 @@
-__version__ = "0.6.6b8"
+__version__ = "0.6.6"
 
 from ._upath import Upath, FileInfo, LockAcquireError, LockReleaseError
 from ._local import LocalUpath
