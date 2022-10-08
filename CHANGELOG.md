@@ -1,6 +1,6 @@
 # Changelog
 
-## Release 0.6.6 (forthcoming)
+## Release 0.6.6
 
 - Improvement to robustness in large directory upload to Gcp.
 - Improved progress report when downloading/uploading a directory.
