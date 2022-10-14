@@ -77,11 +77,8 @@ class GcpBlobUpath(BlobUpath):
 
             google.oauth2.service_account.Credentials.from_service_account_info(account_info)
 
-        If this code is used on a GCP machine, already in the context of an account/project, then
-        `project_id` and `credentials` are not needed (but not harmful either).
-
-        TODO: check out github repo `googleapis/python-cloud-core` to see whether there is
-        a way or a need to infer these values. In particular, see class `google.cloud.client.ClientWithProject`.
+        Code that runs on a GCP machine may be able to infer `credentials` and `project_id`
+        via `google.auth.default()`.
         """
         if bucket_name is None:
             assert len(paths) == 1
