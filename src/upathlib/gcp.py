@@ -77,11 +77,8 @@ class GcpBlobUpath(BlobUpath):
 
             google.oauth2.service_account.Credentials.from_service_account_info(account_info)
 
-        If this code is used on a GCP machine, already in the context of an account/project, then
-        `project_id` and `credentials` are not needed (but not harmful either).
-
-        TODO: check out github repo `googleapis/python-cloud-core` to see whether there is
-        a way or a need to infer these values. In particular, see class `google.cloud.client.ClientWithProject`.
+        Code that runs on a GCP machine may be able to infer `credentials` and `project_id`
+        via `google.auth.default()`.
         """
         if bucket_name is None:
             assert len(paths) == 1
@@ -350,16 +347,28 @@ class GcpBlobUpath(BlobUpath):
         #     a/b/
         #
         # Search "List the objects in a bucket using a prefix filter | Cloud Storage"
+        #
+        # You can "create folder" on the Google Cloud Storage dashboard. What it does
+        # seems to create a dummy blob named with a '/' at the end and sized 0.
+        # This case is handled in this function.
 
         prefix = self.blob_name + "/"
         k = len(prefix)
         blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/")
         for p in blobs:
+            if p.name == prefix:
+                # This happens if users has used the dashboard to "create a folder".
+                # This seems to be a valid blob except its size is 0.
+                # If user deliberately created a blob with this name and with content,
+                # it's ignored. Do not use this name for a blob!
+                continue
             obj = self / p.name[k:]  # files
             obj._blob = p
             yield obj
         for p in blobs.prefixes:
             yield self / p[k:].rstrip("/")  # "subdirectories"
+            # If this is an "empty subfolder", it is counted but it can be
+            # misleading. User should avoid creating such empty folders.
 
     def _acquire_lease(self, *, timeout: int = None):
         # Note: `timeout = None` does not mean infinite wait.
@@ -484,10 +493,24 @@ class GcpBlobUpath(BlobUpath):
         return buffer.getvalue()
 
     @overrides
+    def remove_dir(self, *, desc: str = None) -> int:
+        z = super().remove_dir(desc=desc)
+
+        prefix = self.blob_name + "/"
+        for p in self.client.list_blobs(self.bucket, prefix=prefix):
+            assert p.name.endswith("/")
+            p.delete()
+
+        return z
+
+    @overrides
     def remove_file(self):
         try:
             self._blob_rate_limit(self.blob().delete, client=self.client)
             self._blob = None
+            b = self.bucket.blob(self.parent.blob_name + "/")
+            if b.exists():
+                b.delete()
         except NotFound:
             self._blob = None
             raise FileNotFoundError(self)
@@ -497,6 +520,10 @@ class GcpBlobUpath(BlobUpath):
         prefix = self.blob_name + "/"
         k = len(prefix)
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
+            if p.name.endswith("/"):
+                # This can be an "empty folder"---better not create them!
+                # Worse, this is an actual blob name---do not do this!
+                continue
             obj = self / p.name[k:]
             obj._blob = p
             yield obj
