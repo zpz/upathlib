@@ -1,5 +1,10 @@
 # Changelog
 
+## <unreleased>
+
+- Handle "empty folders" in GCP.
+
+
 ## Release 0.6.6
 
 - Improvement to robustness in large directory upload to Gcp.
