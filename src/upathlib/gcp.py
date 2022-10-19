@@ -498,7 +498,7 @@ class GcpBlobUpath(BlobUpath):
 
         prefix = self.blob_name + "/"
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
-            assert p.name.endswith('/')
+            assert p.name.endswith("/")
             p.delete()
 
         return z
@@ -508,7 +508,7 @@ class GcpBlobUpath(BlobUpath):
         try:
             self._blob_rate_limit(self.blob().delete, client=self.client)
             self._blob = None
-            b = self.bucket.blob(self.parent.blob_name + '/')
+            b = self.bucket.blob(self.parent.blob_name + "/")
             if b.exists():
                 b.delete()
         except NotFound:
@@ -520,7 +520,7 @@ class GcpBlobUpath(BlobUpath):
         prefix = self.blob_name + "/"
         k = len(prefix)
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
-            if p.name.endswith('/'):
+            if p.name.endswith("/"):
                 # This can be an "empty folder"---better not create them!
                 # Worse, this is an actual blob name---do not do this!
                 continue
