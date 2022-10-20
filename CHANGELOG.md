@@ -1,6 +1,6 @@
 # Changelog
 
-## <unreleased>
+## In progress
 
 - Handle "empty folders" in GCP.
 

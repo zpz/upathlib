@@ -306,6 +306,9 @@ class GcpBlobUpath(BlobUpath):
 
     @overrides
     def is_dir(self) -> bool:
+        # If there is a dummy blob with name f"{self.name}/",
+        # this will return True.
+        # This is the case after creating a "folder" on the dashboard.
         prefix = self.blob_name + "/"
         blobs = self.client.list_blobs(
             self.bucket,
@@ -495,12 +498,10 @@ class GcpBlobUpath(BlobUpath):
     @overrides
     def remove_dir(self, *, desc: str = None) -> int:
         z = super().remove_dir(desc=desc)
-
         prefix = self.blob_name + "/"
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
             assert p.name.endswith("/")
             p.delete()
-
         return z
 
     @overrides
@@ -508,9 +509,6 @@ class GcpBlobUpath(BlobUpath):
         try:
             self._blob_rate_limit(self.blob().delete, client=self.client)
             self._blob = None
-            b = self.bucket.blob(self.parent.blob_name + "/")
-            if b.exists():
-                b.delete()
         except NotFound:
             self._blob = None
             raise FileNotFoundError(self)

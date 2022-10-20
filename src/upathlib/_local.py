@@ -129,15 +129,8 @@ class LocalUpath(Upath):
     @overrides
     def remove_dir(self, *, desc=None) -> int:
         n = super().remove_dir(desc=desc)
-
-        def _remove_empty_dir(path):
-            for p in path.iterdir():
-                assert p.is_dir()
-                _remove_empty_dir(p)
-            path.rmdir()
-
-        if self.is_dir():
-            _remove_empty_dir(self.localpath)
+        if self.localpath.is_dir():
+            shutil.rmtree(self.localpath)
         return n
 
     @overrides
