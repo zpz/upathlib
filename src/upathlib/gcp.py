@@ -12,10 +12,10 @@ import time
 from io import BufferedReader, UnsupportedOperation, BytesIO
 from typing import Union
 
+import google.auth
 import opnieuw
 import requests
 from google import resumable_media
-from google.oauth2 import service_account
 from google.cloud import storage
 from google.api_core.exceptions import (
     NotFound,
@@ -54,7 +54,7 @@ class GcpBlobUpath(BlobUpath):
         *paths: str,
         bucket_name: str = None,
         project_id: str = None,
-        credentials: service_account.Credentials = None,
+        credentials: google.auth.credentials.Credentials = None,
     ):
         """
         If you have GCP account_info in a dict with these elements:
@@ -102,6 +102,9 @@ class GcpBlobUpath(BlobUpath):
         self._blob = None
         self._lock_count: int = 0
         self._generation = -1
+
+        if project_id is None or credentials is None:
+            self._credentials, self._project_id = google.auth.default()
 
     def __repr__(self) -> str:
         return "{}('gs://{}/{}')".format(
