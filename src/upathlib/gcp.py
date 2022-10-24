@@ -57,7 +57,8 @@ class GcpBlobUpath(BlobUpath):
         credentials: google.auth.credentials.Credentials = None,
     ):
         """
-        If you have GCP account_info in a dict with these elements:
+        If you have GCP account_info in a dict with these elements
+        (not sure everything here is required):
 
             'type': 'service_account',
             'project_id':
@@ -104,7 +105,11 @@ class GcpBlobUpath(BlobUpath):
         self._generation = -1
 
         if project_id is None or credentials is None:
-            self._credentials, self._project_id = google.auth.default()
+            cred, pid = google.auth.default()
+            if credentials is None:
+                self._credentials = cred
+            if project_id is None:
+                self._project_id = pid
 
     def __repr__(self) -> str:
         return "{}('gs://{}/{}')".format(

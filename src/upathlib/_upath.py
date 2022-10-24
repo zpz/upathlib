@@ -600,8 +600,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding="utf-8", errors="strict")
 
-    # TODO: rename 'remove' to 'delete'?
-
     def remove_dir(self, *, desc: str = None) -> int:
         """Remove the directory pointed to by `self`,
         along with all its contents, recursively.
