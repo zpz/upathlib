@@ -143,7 +143,7 @@ class Client:
 
 @pytest.fixture()
 def gcp(mocker):
-    mocker.patch('upathlib.gcp.service_account')
+    # mocker.patch('upathlib.gcp.service_account')
     mocker.patch('upathlib.gcp.storage.Client', Client)
     c = GcpBlobUpath(
             '/tmp/test',

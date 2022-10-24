@@ -36,8 +36,7 @@ $ pip3 install upathlib[gcs]
 
 ## Status
 
-The style of the API is largely stable. The implementations for local file system and for Google Cloud Storage
-are production ready.
+The style of the API is largely stable. The implementations for local file system and for Google Cloud Storage are production ready.
 
 The implementation for Azure was once in production use, but not anymore by myself, hence is unreliable.
 There is a much older implementation for AWS, which was moved to "archive", because it was not updated to the current API.
