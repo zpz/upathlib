@@ -3,7 +3,7 @@
 ## in progress
 
 - Handle "empty folders" in GCP.
-
+- Use Google's standard way (via `google.auth.default`) to get GCP credentials if needed.
 
 ## Release 0.6.6
 
