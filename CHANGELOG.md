@@ -1,9 +1,11 @@
 # Changelog
 
-## in progress
+## Release 0.6.7 (forthcoming)
 
 - Handle "empty folders" in GCP.
 - Use Google's standard way (via `google.auth.default`) to get GCP credentials if needed.
+- Allow disabling progress bar in most cases by setting `desc` to `False`.
+
 
 ## Release 0.6.6
 
