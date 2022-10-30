@@ -120,11 +120,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             executor = cls._thread_executor_["nest1"]
         else:
             executor = cls._thread_executor_["nest0"]
-            print(description, file=sys.stderr)
-            pbar = tqdm(
-                total=n_tasks,
-                bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
-            )
+            if description:
+                print(description, file=sys.stderr)
+                pbar = tqdm(
+                    total=n_tasks,
+                    bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
+                )
 
         try:
             q = queue.Queue(executor._max_workers + 4)
@@ -304,10 +305,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
+        if desc is None:
+            desc = f"Copying from {self} into {target_}"
+
         n = 0
-        for _ in self._run_in_executor(
-            foo(), desc or f"Copying from {self} into {target_}"
-        ):
+        for _ in self._run_in_executor(foo(), desc):
             n += 1
         return n
 
@@ -388,10 +390,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
+        if desc is None:
+            desc = f"Exporting from {self!r} into {target!r}"
+
         n = 0
-        for _ in self._run_in_executor(
-            foo(), desc or f"Exporting from {self!r} into {target!r}"
-        ):
+        for _ in self._run_in_executor(foo(), desc):
             n += 1
         return n
 
@@ -440,10 +443,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
+        if desc is None:
+            desc = f"Importing from {source!r} into {self!r}"
+
         n = 0
-        for _ in self._run_in_executor(
-            foo(), desc or f"Importing from {source!r} into {self!r}"
-        ):
+        for _ in self._run_in_executor(foo(), desc):
             n += 1
         return n
 
@@ -614,8 +618,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             for p in self.riterdir():
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
+        if desc is None:
+            desc = f"Removing {self!r}"
+
         n = 0
-        for _ in self._run_in_executor(foo(), desc or f"Removing {self!r}"):
+        for _ in self._run_in_executor(foo(), desc):
             n += 1
         return n
 
@@ -658,9 +665,10 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
-        for _ in self._run_in_executor(
-            foo(), desc or f"Renaming {self!r} to {target_!r}"
-        ):
+        if desc is None:
+            desc = f"Renaming {self!r} to {target_!r}"
+
+        for _ in self._run_in_executor(foo(), desc):
             pass
         return target_
 

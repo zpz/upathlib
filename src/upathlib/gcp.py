@@ -45,6 +45,7 @@ RETRY_WRITE_ON_EXCEPTIONS = (
     GatewayTimeout,
     ServiceUnavailable,
     requests.ReadTimeout,
+    requests.ConnectionError,
 )
 
 
