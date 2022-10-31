@@ -43,8 +43,9 @@ class AzureBlobUpath(BlobUpath):
         account_key: str,
         sas_token: str,
         container_name: str,
+        **kwargs,
     ):
-        super().__init__(*paths)
+        super().__init__(*paths, **kwargs)
 
         self._account_name = account_name
         self._account_key = account_key
@@ -58,6 +59,29 @@ class AzureBlobUpath(BlobUpath):
         # self._a_blob_client: Optional[aBlobClient] = None
         self._lease: BlobLeaseClient = None
         self._lock_count: int = 0
+
+    def __getstate__(self):
+        return (
+            self._account_name,
+            self._account_key,
+            self._sas_token,
+            self._container_name,
+        ), super().__getstate__()
+
+    def __setstate__(self, data):
+        z0, z1 = data
+        (
+            self._account_name,
+            self._account_key,
+            self._sas_token,
+            self._container_name,
+        ) = z0
+        self._account_url = f"https://{self._account_name}.blob.core.windows.net"
+        self._container_client = None
+        self._blob_client = None
+        self._lease = None
+        self._lock_count = 0
+        return super().__setstate__(z1)
 
     def __repr__(self) -> str:
         return "{}('{}', container_name='{}')".format(
@@ -332,6 +356,7 @@ class AzureBlobUpath(BlobUpath):
             account_key=self._account_key,
             sas_token=self._sas_token,
             container_name=self._container_name,
+            thread_pool_executors=self._thread_pools,
         )
 
     @overrides

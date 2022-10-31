@@ -5,6 +5,7 @@
 - Handle "empty folders" in GCP.
 - Use Google's standard way (via `google.auth.default`) to get GCP credentials if needed.
 - Allow disabling progress bar in most cases by setting `desc` to `False`.
+- Thread-pool management; `_run_in_executor` became an instance method (as opposed to classmethod).
 
 
 ## Release 0.6.6

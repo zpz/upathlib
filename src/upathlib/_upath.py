@@ -6,7 +6,6 @@ from __future__ import annotations
 # Will no longer be needed in Python 3.10.
 
 import abc
-import concurrent.futures
 import contextlib
 import datetime
 import os
@@ -15,6 +14,7 @@ import pathlib
 import queue
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
 from typing import (
@@ -71,24 +71,167 @@ class FileInfo:
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
-    _thread_executor_ = {
-        "nest0": concurrent.futures.ThreadPoolExecutor(
-            min(32, (os.cpu_count() or 1) + 4), thread_name_prefix="UpathExecutor0"
-        ),
-        "nest1": concurrent.futures.ThreadPoolExecutor(
-            10, thread_name_prefix="UpathExecutor1"
-        ),
-    }
-    # Currently there can be two "layers" of threads running during `download_dir`.
-    # In `download_dir`, the download of each file runs in the threads provided
-    # by `nest0`. If a file is large, `GcpBlobUpath` will split the work into chunks
-    # and download each chunk in a thread provided by `nest1`.
-    # We dedicate the two executors mainly so that the second layer of chunk downloads
-    # do not starve for threads.
+    @classmethod
+    def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
+        """
+        For example, if `serde` is a ByteSerializer subclass and `name` is 'myway',
+        then this method adds isinstance methods `write_myway` and `read_myway`.
+
+        `name`: usually is a slight variation of the name of the class `serde`,
+            with changes such as lower-casing and separating words by underscores.
+            Needs to be a valid method name, e.g. can't contain space or dash.
+        """
+
+        def _write(self, data, *, overwrite=False, **kwargs):
+            return self.write_bytes(
+                serde.serialize(data, **kwargs), overwrite=overwrite
+            )
+
+        def _read(self, **kwargs):
+            z = self.read_bytes()
+            return serde.deserialize(z, **kwargs)
+
+        setattr(_write, "__name__", f"write_{name}")
+        setattr(_read, "__name__", f"read_{name}")
+        setattr(cls, f"write_{name}", _write)
+        setattr(cls, f"read_{name}", _read)
 
     @classmethod
+    def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
+        """
+        Anologous to `register_read_write_byte_format`.
+        """
+
+        def _write(self, data, *, overwrite=False, **kwargs):
+            return self.write_text(serde.serialize(data, **kwargs), overwrite=overwrite)
+
+        def _read(self, **kwargs):
+            z = self.read_text()
+            return serde.deserialize(z, **kwargs)
+
+        setattr(_write, "__name__", f"write_{name}")
+        setattr(_read, "__name__", f"read_{name}")
+        setattr(cls, f"write_{name}", _write)
+        setattr(cls, f"read_{name}", _read)
+
+    def __init__(
+        self, *pathsegments: str, thread_pool_executors: List[ThreadPoolExecutor] = None
+    ):
+        """`Upath` is the base class for a client to a blob store,
+        including local file system as a special case.
+
+        `*pathsegments`: analogous to the input to `pathleib.Path`.
+        The first segment may or may not start with `/`; it makes
+        no difference. The path constructed with `*pathsegments`
+        is always "absolute" under a known "root".
+
+            Note that if one segment starts with '/', it will reset to the "root"
+            and discard all the segments that have come before it.
+
+            If missing, the path constructed is the "root".
+
+        For a local POSIX file system, the root is the usual `/`.
+        For Azure blob store, the root is that in a "container".
+        For AWS and GCP blob stores, the root is that in a "bucket".
+
+        `thread_pool_executors`: if there are a large number of Upath instances active
+        at the same time, you may pass in two thread-pool-executors to control
+        the total number of threads created by this object. This parameter consists
+        of two *separate* executors---don't pass in a single executor twice.
+
+        Subclasses for cloud blob stores may need to add additional parameters
+        representing, e.g. credentials, container/bucket name, etc.
+        """
+
+        self._path = os.path.normpath(
+            os.path.join("/", *pathsegments)
+        )  # pylint: disable=no-value-for-parameter
+        # The path is always "absolute" starting with '/'.
+        # It does not have a trailing `/` unless the path is just `/` itself.
+
+        if thread_pool_executors is None:
+            self._thread_pools = []
+        elif thread_pool_executors == []:
+            self._thread_pools = thread_pool_executors
+        else:
+            assert len(thread_pool_executors) == 2
+            e0, e1 = thread_pool_executors
+            e0._thread_name_prefix = "UpathExecutor0"
+            e1._thread_name_prefix = "UpathExecutor1"
+            self._thread_pools = thread_pool_executors
+
+    def __getstate__(self):
+        return (self._path,)
+
+    def __setstate__(self, data):
+        self._path = data[0]
+        self._thread_pools = []
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}('{self._path}')"
+        # Subclass may want to customize this method to add more info,
+        # e.g. "bucket" name.
+
+    def __str__(self) -> str:
+        return self._path
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self._path == other._path
+        # Subclass may want to customize this method to check more things,
+        # e.g. whether `self` and `other` are in the same "bucket".
+
+    def __lt__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self._path < other._path
+
+    def __le__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self._path <= other._path
+
+    def __gt__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self._path > other._path
+
+    def __ge__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self._path >= other._path
+
+    def __hash__(self) -> int:
+        return hash(repr(self))
+
+    def __truediv__(self: T, key: str) -> T:
+        """
+        This is called by `self / key`.
+        """
+        return self.joinpath(key)
+
+    @property
+    def _thread_pool_executors(self):
+        if not self._thread_pools:
+            self._thread_pools.append(
+                ThreadPoolExecutor(thread_name_prefix="UpathExecutor0")
+            )
+            self._thread_pools.append(
+                ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1")
+            )
+        return self._thread_pools
+        # Currently there can be two "layers" of threads running during `download_dir`.
+        # In `download_dir`, the download of each file runs in the threads provided
+        # by `nest0`. If a file is large, `GcpBlobUpath` will split the work into chunks
+        # and download each chunk in a thread provided by `nest1`.
+        # We dedicate the two executors mainly so that the second layer of chunk downloads
+        # do not starve for threads.
+
     def _run_in_executor(
-        cls, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description: str
+        self,
+        tasks: Iterable[Tuple[Callable, tuple, dict, str]],
+        description: str,
     ):
         """
         This method is used to run multiple I/O jobs concurrently, e.g.
@@ -117,9 +260,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         pbar = None
         if threading.current_thread().name.startswith("UpathExecutor0"):
             # This is the case when GCP downloads a large file by multiple parts.
-            executor = cls._thread_executor_["nest1"]
+            executor = self._thread_pool_executors[1]
         else:
-            executor = cls._thread_executor_["nest0"]
+            executor = self._thread_pool_executors[0]
             if description:
                 print(description, file=sys.stderr)
                 pbar = tqdm(
@@ -168,121 +311,6 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         finally:
             if pbar:
                 pbar.close()
-
-    @classmethod
-    def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
-        """
-        For example, if `serde` is a ByteSerializer subclass and `name` is 'myway',
-        then this method adds isinstance methods `write_myway` and `read_myway`.
-
-        `name`: usually is a slight variation of the name of the class `serde`,
-            with changes such as lower-casing and separating words by underscores.
-            Needs to be a valid method name, e.g. can't contain space or dash.
-        """
-
-        def _write(self, data, *, overwrite=False, **kwargs):
-            return self.write_bytes(
-                serde.serialize(data, **kwargs), overwrite=overwrite
-            )
-
-        def _read(self, **kwargs):
-            z = self.read_bytes()
-            return serde.deserialize(z, **kwargs)
-
-        setattr(_write, "__name__", f"write_{name}")
-        setattr(_read, "__name__", f"read_{name}")
-        setattr(cls, f"write_{name}", _write)
-        setattr(cls, f"read_{name}", _read)
-
-    @classmethod
-    def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
-        """
-        Anologous to `register_read_write_byte_format`.
-        """
-
-        def _write(self, data, *, overwrite=False, **kwargs):
-            return self.write_text(serde.serialize(data, **kwargs), overwrite=overwrite)
-
-        def _read(self, **kwargs):
-            z = self.read_text()
-            return serde.deserialize(z, **kwargs)
-
-        setattr(_write, "__name__", f"write_{name}")
-        setattr(_read, "__name__", f"read_{name}")
-        setattr(cls, f"write_{name}", _write)
-        setattr(cls, f"read_{name}", _read)
-
-    def __init__(self, *pathsegments: str):
-        """`Upath` is the base class for a client to a blob store,
-        including local file system as a special case.
-
-        `*pathsegments`: analogous to the input to `pathlib.Path`.
-        The first segment may or may not start with `/`; it makes
-        no difference. The path constructed with `*pathsegments`
-        is always "absolute" under a known "root".
-
-            Note that if one segment starts with '/', it will reset to the "root"
-            and discard all the segments that have come before it.
-
-            If missing, the path constructed is the "root".
-
-        For a local POSIX file system, the root is the usual `/`.
-        For Azure blob store, the root is that in a "container".
-        For AWS and GCP blob stores, the root is that in a "bucket".
-
-        Subclasses for cloud blob stores may need to add additional parameters
-        representing, e.g. credentials, container/bucket name, etc.
-        """
-
-        self._path = os.path.normpath(
-            os.path.join("/", *pathsegments)
-        )  # pylint: disable=no-value-for-parameter
-        # The path is always "absolute" starting with '/'.
-        # It does not have a trailing `/` unless the path is just `/` itself.
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self._path}')"
-        # Subclass may want to customize this method to add more info,
-        # e.g. "bucket" name.
-
-    def __str__(self) -> str:
-        return self._path
-
-    def __eq__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path == other._path
-        # Subclass may want to customize this method to check more things,
-        # e.g. whether `self` and `other` are in the same "bucket".
-
-    def __lt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path < other._path
-
-    def __le__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path <= other._path
-
-    def __gt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path > other._path
-
-    def __ge__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path >= other._path
-
-    def __hash__(self) -> int:
-        return hash(repr(self))
-
-    def __truediv__(self: T, key: str) -> T:
-        """
-        This is called by `self / key`.
-        """
-        return self.joinpath(key)
 
     def copy_dir(
         self, target: str, *, overwrite: bool = False, desc: str = None
@@ -766,7 +794,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         Subclass needs to reimplement this method
         if its `__init__` expects additional args.
         """
-        return self.__class__(*paths)
+        return self.__class__(*paths, thread_pool_executors=self._thread_pools)
 
     # def with_stem(self: T, stem: str) -> T:
     #     # Available in Python 3.9+.

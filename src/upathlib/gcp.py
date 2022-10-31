@@ -56,6 +56,7 @@ class GcpBlobUpath(BlobUpath):
         bucket_name: str = None,
         project_id: str = None,
         credentials: google.auth.credentials.Credentials = None,
+        **kwargs,
     ):
         """
         If you have GCP account_info in a dict with these elements
@@ -95,7 +96,7 @@ class GcpBlobUpath(BlobUpath):
                 bucket_name = path[:k]
                 paths = (path[k:],)
 
-        super().__init__(*paths)
+        super().__init__(*paths, **kwargs)
         self.bucket_name = bucket_name
         self._project_id = project_id
         self._credentials = credentials
@@ -161,22 +162,20 @@ class GcpBlobUpath(BlobUpath):
         # Customize pickle because `self._client` and `self._bucket`
         # (when not None) can't be pickled.
         # the `service_account.Credentials` class object can be pickled.
-        return {
-            "_path": self._path,
-            "bucket_name": self.bucket_name,
-            "_project_id": self._project_id,
-            "_credentials": self._credentials,
-        }
+        return (
+            self.bucket_name,
+            self._project_id,
+            self._credentials,
+        ), super().__getstate__()
 
     def __setstate__(self, data):
-        self._path = data["_path"]
-        self.bucket_name = data["bucket_name"]
-        self._project_id = data["_project_id"]
-        self._credentials = data["_credentials"]
+        z0, z1 = data
+        self.bucket_name, self._project_id, self._credentials = z0
         self._client = None
         self._bucket = None
         self._blob = None
         self._lock_count = 0
+        return super().__setstate__(z1)
 
     @property
     def client(self):
@@ -542,6 +541,7 @@ class GcpBlobUpath(BlobUpath):
             bucket_name=self.bucket_name,
             project_id=self._project_id,
             credentials=self._credentials,
+            thread_pool_executors=self._thread_pools,
         )
         obj._client = self.client
         obj._bucket = self.bucket
