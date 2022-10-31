@@ -23,13 +23,14 @@ from ._upath import Upath, LockAcquireError, FileInfo
 
 
 class LocalUpath(Upath):
-    def __init__(self, *pathsegments: str):
+    def __init__(self, *pathsegments: str, **kwargs):
         assert os.name == "posix"
         if pathsegments:
             parts = [str(pathlib.Path(*pathsegments).absolute())]
         else:
             parts = [str(pathlib.Path.cwd().absolute())]
-        super().__init__(*parts)
+
+        super().__init__(*parts, **kwargs)
 
     @overrides
     def _copy_file(self, target, *, overwrite=False):
