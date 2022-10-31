@@ -71,7 +71,6 @@ class FileInfo:
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
-
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
         """
@@ -115,8 +114,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         setattr(cls, f"write_{name}", _write)
         setattr(cls, f"read_{name}", _read)
 
-    def __init__(self, *pathsegments: str,
-                 thread_pool_executors: List[ThreadPoolExecutor] = None):
+    def __init__(
+        self, *pathsegments: str, thread_pool_executors: List[ThreadPoolExecutor] = None
+    ):
         """`Upath` is the base class for a client to a blob store,
         including local file system as a special case.
 
@@ -156,12 +156,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         else:
             assert len(thread_pool_executors) == 2
             e0, e1 = thread_pool_executors
-            e0._thread_name_prefix = 'UpathExecutor0'
-            e1._thread_name_prefix = 'UpathExecutor1'
+            e0._thread_name_prefix = "UpathExecutor0"
+            e1._thread_name_prefix = "UpathExecutor1"
             self._thread_pools = thread_pool_executors
 
     def __getstate__(self):
-        return (self._path, )
+        return (self._path,)
 
     def __setstate__(self, data):
         self._path = data[0]
@@ -214,8 +214,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
     @property
     def _thread_pool_executors(self):
         if not self._thread_pools:
-            self._thread_pools.append(ThreadPoolExecutor(thread_name_prefix='UpathExecutor0'))
-            self._thread_pools.append(ThreadPoolExecutor(10, thread_name_prefix='UpathExecutor1'))
+            self._thread_pools.append(
+                ThreadPoolExecutor(thread_name_prefix="UpathExecutor0")
+            )
+            self._thread_pools.append(
+                ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1")
+            )
         return self._thread_pools
         # Currently there can be two "layers" of threads running during `download_dir`.
         # In `download_dir`, the download of each file runs in the threads provided
@@ -225,7 +229,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         # do not starve for threads.
 
     def _run_in_executor(
-        self, tasks: Iterable[Tuple[Callable, tuple, dict, str]], description: str,
+        self,
+        tasks: Iterable[Tuple[Callable, tuple, dict, str]],
+        description: str,
     ):
         """
         This method is used to run multiple I/O jobs concurrently, e.g.

@@ -61,11 +61,21 @@ class AzureBlobUpath(BlobUpath):
         self._lock_count: int = 0
 
     def __getstate__(self):
-        return (self._account_name, self._account_key, self._sas_token, self._container_name), super().__getstate__()
+        return (
+            self._account_name,
+            self._account_key,
+            self._sas_token,
+            self._container_name,
+        ), super().__getstate__()
 
     def __setstate__(self, data):
         z0, z1 = data
-        self._account_name, self._account_key, self._sas_token, self._container_name = z0
+        (
+            self._account_name,
+            self._account_key,
+            self._sas_token,
+            self._container_name,
+        ) = z0
         self._account_url = f"https://{self._account_name}.blob.core.windows.net"
         self._container_client = None
         self._blob_client = None

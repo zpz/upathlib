@@ -162,7 +162,11 @@ class GcpBlobUpath(BlobUpath):
         # Customize pickle because `self._client` and `self._bucket`
         # (when not None) can't be pickled.
         # the `service_account.Credentials` class object can be pickled.
-        return (self.bucket_name, self._project_id, self._credentials), super().__getstate__()
+        return (
+            self.bucket_name,
+            self._project_id,
+            self._credentials,
+        ), super().__getstate__()
 
     def __setstate__(self, data):
         z0, z1 = data
