@@ -195,7 +195,7 @@ class GcpBlobUpath(BlobUpath):
 
     def blob(self):
         """
-        This constructs a Blob object irrespecitive of whether the blob
+        This constructs a Blob object irrespective of whether the blob
         exists in cloud storage.
         """
         if self._blob is None:
