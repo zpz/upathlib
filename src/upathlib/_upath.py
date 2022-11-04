@@ -240,6 +240,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         `tasks`: each element is a tuple of (func, args, kwargs, description).
 
         `description`: description of the entire set of tasks, such as "Downloading directory 'abc'".
+            Note: if `description` is a false value, progress printouts will be suppressed.
         """
         if not isinstance(tasks, list):
             tasks = list(tasks)
