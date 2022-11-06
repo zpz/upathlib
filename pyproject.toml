@@ -40,6 +40,7 @@ gcs = [
     "google-auth",
     "google-api-python-client >=2.13.9,<3.0",
     "google-cloud-storage >=2.0,<3.0",
+    "requests",
 ]
 test = [
     "bandit",
