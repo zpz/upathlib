@@ -1,5 +1,10 @@
 # Changelog
 
+## in progress
+
+- New module `util`.
+
+
 ## Release 0.6.7
 
 - Handle "empty folders" in GCP.
