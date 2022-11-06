@@ -9,6 +9,11 @@ from .gcp import GcpBlobUpath
 PathType = Union[str, Path, Upath]
 
 
+def is_path(path):
+    # In 3.10, will be able to use `isinstance(path, PathType)`.
+    return isinstance(path, str) or isinstance(path, Path) or isinstance(path, Upath)
+
+
 def resolve_path(
     path: PathType,
     *,
