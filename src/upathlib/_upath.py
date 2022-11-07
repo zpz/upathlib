@@ -741,7 +741,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         raise NotImplementedError
 
-    def rmrf(self, desc=None) -> int:
+    def rmrf(self, *, quiet: bool = False) -> int:
         """Analogous to `rm -rf`. Remove the file or dir pointed to
         by `self`.
 
@@ -764,7 +764,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         else:
             n = 1
         try:
-            m = self.remove_dir(desc=desc)
+            m = self.remove_dir(desc=False if quiet else None)
         except FileNotFoundError:
             m = 0
         return n + m
