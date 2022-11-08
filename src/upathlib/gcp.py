@@ -448,7 +448,7 @@ class GcpBlobUpath(BlobUpath):
         """
         return self.blob().open(mode, **kwargs)
 
-    def _read_into_buffer(self, file_obj):
+    def _read_into_buffer(self, file_obj, *, quiet: bool = False):
         file_info = self.file_info()
         if not file_info:
             raise FileNotFoundError(self)
@@ -489,7 +489,11 @@ class GcpBlobUpath(BlobUpath):
                 if k >= file_size:
                     break
 
-        for buf, k in self._run_in_executor(_do_download(), f"Downloading {self!r}"):
+        if quiet:
+            desc = False
+        else:
+            desc = f"Downloading {self!r}"
+        for buf, k in self._run_in_executor(_do_download(), desc):
             n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(
@@ -498,14 +502,14 @@ class GcpBlobUpath(BlobUpath):
             buf.close()
 
     @overrides
-    def read_bytes(self) -> bytes:
+    def read_bytes(self, **kwargs) -> bytes:
         buffer = BytesIO()
-        self._read_into_buffer(buffer)
+        self._read_into_buffer(buffer, **kwargs)
         return buffer.getvalue()
 
     @overrides
-    def remove_dir(self, *, desc: str = None) -> int:
-        z = super().remove_dir(desc=desc)
+    def remove_dir(self, **kwargs) -> int:
+        z = super().remove_dir(**kwargs)
         prefix = self.blob_name + "/"
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
             assert p.name.endswith("/")

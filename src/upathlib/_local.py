@@ -41,12 +41,12 @@ class LocalUpath(Upath):
         # If target already exists, it will be overwritten.
 
     @overrides
-    def export_dir(self, target: Upath, *, overwrite=False, desc=None) -> int:
+    def export_dir(self, target: Upath, **kwargs) -> int:
         if isinstance(target, LocalUpath):
-            return super().export_dir(target, overwrite=overwrite, desc=desc)
+            return super().export_dir(target, **kwargs)
         # `target` is a cloud store; it might have implemented
         # efficient 'download' functionality.
-        return target.import_dir(self, overwrite=overwrite, desc=desc)
+        return target.import_dir(self, **kwargs)
 
     @overrides
     def export_file(self, target: Upath, *, overwrite=False):
@@ -74,10 +74,10 @@ class LocalUpath(Upath):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
-    def import_dir(self, source: Upath, *, overwrite=False, desc=None) -> int:
+    def import_dir(self, source: Upath, **kwargs) -> int:
         if isinstance(source, LocalUpath):
-            return super().import_dir(source, overwrite=overwrite, desc=desc)
-        return source.export_dir(self, overwrite=overwrite, desc=desc)
+            return super().import_dir(source, **kwargs)
+        return source.export_dir(self, **kwargs)
 
     @overrides
     def import_file(self, source: Upath, *, overwrite=False):
@@ -128,8 +128,8 @@ class LocalUpath(Upath):
             raise FileNotFoundError(self) from e
 
     @overrides
-    def remove_dir(self, *, desc=None) -> int:
-        n = super().remove_dir(desc=desc)
+    def remove_dir(self, **kwargs) -> int:
+        n = super().remove_dir(**kwargs)
         if self.localpath.is_dir():
             shutil.rmtree(self.localpath)
         return n
@@ -139,8 +139,8 @@ class LocalUpath(Upath):
         self.localpath.unlink()
 
     @overrides
-    def rename_dir(self, target, *, overwrite=False, desc=None):
-        target_ = super().rename_dir(target, overwrite=overwrite, desc=desc)
+    def rename_dir(self, target, **kwargs):
+        target_ = super().rename_dir(target, **kwargs)
 
         def _remove_empty_dir(path):
             k = 0
