@@ -78,10 +78,12 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         if isinstance(path, str):
             if path.startswith("gs://"):
                 from upathlib.gcp import GcpBlobUpath
+
                 return GcpBlobUpath(path)
             path = Path(path)
         if isinstance(path, Path):
             from upathlib import LocalUpath
+
             return LocalUpath(str(path.absolute()))
         assert isinstance(path, Upath)
         return path
@@ -329,7 +331,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 pbar.close()
 
     def copy_dir(
-        self, target: str, *, overwrite: bool = False, quiet: bool = False,
+        self,
+        target: str,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> int:
         """Analogous to `copy_file`.
 
@@ -404,7 +410,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return self.is_file() or self.is_dir()
 
     def export_dir(
-        self, target: Upath, *, overwrite: bool = False, quiet: bool = False,
+        self,
+        target: Upath,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> int:
         """Copy the content of the current directory recursively
         to the specified `target`, which is typically in another store.
@@ -476,7 +486,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         raise NotImplementedError
 
     def import_dir(
-        self, source: Upath, *, overwrite: bool = False, quiet: bool = False,
+        self,
+        source: Upath,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> int:
         """Analogous to `export_dir`."""
 
@@ -689,7 +703,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         raise NotImplementedError
 
     def rename_dir(
-        self: T, target: str, *, overwrite: bool = False, quiet: bool = False,
+        self: T,
+        target: str,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> T:
         """Analogous to `rename_file`.
 

@@ -18,5 +18,5 @@ __all__ = [
     "FileInfo",
     "LockAcquireError",
     "LockReleaseError",
-    'PathType',
+    "PathType",
 ]
