@@ -17,6 +17,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
+from pathlib import Path
 from typing import (
     List,
     Iterable,
@@ -27,6 +28,7 @@ from typing import (
     Optional,
     Tuple,
     Callable,
+    Union,
 )
 
 from overrides import EnforceOverrides
@@ -71,6 +73,21 @@ class FileInfo:
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
+    @staticmethod
+    def resolve_path(path: Union[str, Path, Upath]):
+        if isinstance(path, str):
+            if path.startswith("gs://"):
+                from upathlib.gcp import GcpBlobUpath
+
+                return GcpBlobUpath(path)
+            path = Path(path)
+        if isinstance(path, Path):
+            from upathlib import LocalUpath
+
+            return LocalUpath(str(path.absolute()))
+        assert isinstance(path, Upath)
+        return path
+
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
         """
@@ -314,7 +331,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                 pbar.close()
 
     def copy_dir(
-        self, target: str, *, overwrite: bool = False, desc: str = None
+        self,
+        target: str,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> int:
         """Analogous to `copy_file`.
 
@@ -334,7 +355,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
-        if desc is None:
+        if quiet:
+            desc = False
+        else:
             desc = f"Copying from {self} into {target_}"
 
         n = 0
@@ -387,7 +410,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return self.is_file() or self.is_dir()
 
     def export_dir(
-        self, target: Upath, *, overwrite: bool = False, desc: str = None
+        self,
+        target: Upath,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> int:
         """Copy the content of the current directory recursively
         to the specified `target`, which is typically in another store.
@@ -419,7 +446,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
-        if desc is None:
+        if quiet:
+            desc = False
+        else:
             desc = f"Exporting from {self!r} into {target!r}"
 
         n = 0
@@ -457,7 +486,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         raise NotImplementedError
 
     def import_dir(
-        self, source: Upath, *, overwrite: bool = False, desc: str = None
+        self,
+        source: Upath,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> int:
         """Analogous to `export_dir`."""
 
@@ -472,7 +505,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
-        if desc is None:
+        if quiet:
+            desc = False
+        else:
             desc = f"Importing from {source!r} into {self!r}"
 
         n = 0
@@ -633,7 +668,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding="utf-8", errors="strict")
 
-    def remove_dir(self, *, desc: str = None) -> int:
+    def remove_dir(self, *, quiet: bool = False) -> int:
         """Remove the directory pointed to by `self`,
         along with all its contents, recursively.
 
@@ -647,7 +682,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
             for p in self.riterdir():
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
-        if desc is None:
+        if quiet:
+            desc = False
+        else:
             desc = f"Removing {self!r}"
 
         n = 0
@@ -666,7 +703,11 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         raise NotImplementedError
 
     def rename_dir(
-        self: T, target: str, *, overwrite: bool = False, desc: str = None
+        self: T,
+        target: str,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
     ) -> T:
         """Analogous to `rename_file`.
 
@@ -694,7 +735,9 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
                     extra,
                 )
 
-        if desc is None:
+        if quiet:
+            desc = False
+        else:
             desc = f"Renaming {self!r} to {target_!r}"
 
         for _ in self._run_in_executor(foo(), desc):
@@ -741,7 +784,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         raise NotImplementedError
 
-    def rmrf(self) -> int:
+    def rmrf(self, *, quiet: bool = False) -> int:
         """Analogous to `rm -rf`. Remove the file or dir pointed to
         by `self`.
 
@@ -764,7 +807,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         else:
             n = 1
         try:
-            m = self.remove_dir()
+            m = self.remove_dir(quiet=quiet)
         except FileNotFoundError:
             m = 0
         return n + m

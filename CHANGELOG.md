@@ -2,7 +2,8 @@
 
 ## in progress
 
-- New module `util`.
+- New method `Upath.resolve_path`.
+- Many directory operations lost the `desc` parameter but gained the `quiet` parameter, default to `False`. (This does not yet cover GCP `download_dir` if large files print messages of chunked downloading.)
 
 
 ## Release 0.6.7
