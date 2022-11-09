@@ -15,6 +15,7 @@ def resolve_path(path: PathType):
     if isinstance(path, str):
         if path.startswith("gs://"):
             from upathlib.gcp import GcpBlobUpath
+
             return GcpBlobUpath(path)
         path = Path(path)
     if isinstance(path, Path):
@@ -31,5 +32,5 @@ __all__ = [
     "LockAcquireError",
     "LockReleaseError",
     "PathType",
-    "resolve_path"
+    "resolve_path",
 ]

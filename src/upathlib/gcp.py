@@ -173,7 +173,12 @@ class GcpBlobUpath(BlobUpath):
 
     def __setstate__(self, data):
         z0, z1 = data
-        self.bucket_name, self._project_id, self._credentials, self._quiet_multidownload = z0
+        (
+            self.bucket_name,
+            self._project_id,
+            self._credentials,
+            self._quiet_multidownload,
+        ) = z0
         self._client = None
         self._bucket = None
         self._blob = None
