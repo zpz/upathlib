@@ -8,6 +8,7 @@ from typing import Union
 from ._upath import Upath, FileInfo, LockAcquireError, LockReleaseError
 from ._local import LocalUpath
 from ._blob import BlobUpath
+
 try:
     from .gcp import GcpBlobUpath
 except ImportError:
