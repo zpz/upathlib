@@ -2,8 +2,8 @@
 
 ## in progress
 
-- New method `Upath.resolve_path`.
-- Many directory operations lost the `desc` parameter but gained the `quiet` parameter, default to `False`. (This does not yet cover GCP `download_dir` if large files print messages of chunked downloading.)
+- New helper function `upathlib.resolve_path`.
+- Many directory operations dropped the `desc` parameter but gained the `quiet` parameter, defaulting to `False`. But, `rmdir` and `rmrf` default to `quiet=True`.
 
 
 ## Release 0.6.7

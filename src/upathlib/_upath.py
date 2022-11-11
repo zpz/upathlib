@@ -17,7 +17,6 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
-from pathlib import Path
 from typing import (
     List,
     Iterable,
@@ -28,7 +27,6 @@ from typing import (
     Optional,
     Tuple,
     Callable,
-    Union,
 )
 
 from overrides import EnforceOverrides
@@ -73,21 +71,6 @@ class FileInfo:
 
 
 class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-methods
-    @staticmethod
-    def resolve_path(path: Union[str, Path, Upath]):
-        if isinstance(path, str):
-            if path.startswith("gs://"):
-                from upathlib.gcp import GcpBlobUpath
-
-                return GcpBlobUpath(path)
-            path = Path(path)
-        if isinstance(path, Path):
-            from upathlib import LocalUpath
-
-            return LocalUpath(str(path.absolute()))
-        assert isinstance(path, Upath)
-        return path
-
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
         """
@@ -668,7 +651,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         # Refer to https://docs.python.org/3/library/functions.html#open
         return self.read_bytes().decode(encoding="utf-8", errors="strict")
 
-    def remove_dir(self, *, quiet: bool = False) -> int:
+    def remove_dir(self, *, quiet: bool = True) -> int:
         """Remove the directory pointed to by `self`,
         along with all its contents, recursively.
 
@@ -784,7 +767,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """
         raise NotImplementedError
 
-    def rmrf(self, *, quiet: bool = False) -> int:
+    def rmrf(self, *, quiet: bool = True) -> int:
         """Analogous to `rm -rf`. Remove the file or dir pointed to
         by `self`.
 

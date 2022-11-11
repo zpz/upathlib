@@ -78,7 +78,8 @@ class GcpBlobUpath(BlobUpath):
 
         then `credentials` are obtained by
 
-            google.oauth2.service_account.Credentials.from_service_account_info(account_info)
+            google.oauth2.service_account.Credentials.from_service_account_info(
+                account_info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
 
         Code that runs on a GCP machine may be able to infer `credentials` and `project_id`
         via `google.auth.default()`.
@@ -105,6 +106,7 @@ class GcpBlobUpath(BlobUpath):
         self._blob = None
         self._lock_count: int = 0
         self._generation = -1
+        self._quiet_multidownload = True
 
         if project_id is None or credentials is None:
             cred, pid = google.auth.default()
@@ -166,11 +168,17 @@ class GcpBlobUpath(BlobUpath):
             self.bucket_name,
             self._project_id,
             self._credentials,
+            self._quiet_multidownload,
         ), super().__getstate__()
 
     def __setstate__(self, data):
         z0, z1 = data
-        self.bucket_name, self._project_id, self._credentials = z0
+        (
+            self.bucket_name,
+            self._project_id,
+            self._credentials,
+            self._quiet_multidownload,
+        ) = z0
         self._client = None
         self._bucket = None
         self._blob = None
@@ -448,7 +456,7 @@ class GcpBlobUpath(BlobUpath):
         """
         return self.blob().open(mode, **kwargs)
 
-    def _read_into_buffer(self, file_obj, *, quiet: bool = False):
+    def _read_into_buffer(self, file_obj):
         file_info = self.file_info()
         if not file_info:
             raise FileNotFoundError(self)
@@ -489,7 +497,7 @@ class GcpBlobUpath(BlobUpath):
                 if k >= file_size:
                     break
 
-        if quiet:
+        if self._quiet_multidownload:
             desc = False
         else:
             desc = f"Downloading {self!r}"

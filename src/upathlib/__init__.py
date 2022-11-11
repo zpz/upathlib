@@ -1,4 +1,6 @@
-__version__ = "0.6.8b2"
+# flake8: noqa
+
+__version__ = "0.6.8b4"
 
 from pathlib import Path
 from typing import Union
@@ -7,16 +9,23 @@ from ._upath import Upath, FileInfo, LockAcquireError, LockReleaseError
 from ._local import LocalUpath
 from ._blob import BlobUpath
 
+try:
+    from .gcp import GcpBlobUpath
+except ImportError:
+    pass
+
 
 PathType = Union[str, Path, Upath]
 
 
-__all__ = [
-    "Upath",
-    "LocalUpath",
-    "BlobUpath",
-    "FileInfo",
-    "LockAcquireError",
-    "LockReleaseError",
-    "PathType",
-]
+def resolve_path(path: PathType):
+    if isinstance(path, str):
+        if path.startswith("gs://"):
+            from upathlib.gcp import GcpBlobUpath
+
+            return GcpBlobUpath(path)
+        path = Path(path)
+    if isinstance(path, Path):
+        return LocalUpath(str(path.absolute()))
+    assert isinstance(path, Upath)
+    return path
