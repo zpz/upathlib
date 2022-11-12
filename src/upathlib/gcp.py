@@ -88,8 +88,7 @@ class GcpBlobUpath(BlobUpath):
                 cls._CREDENTIALS = cred
             if cls._PROJECT_ID is None:
                 cls._PROJECT_ID = pid
-        return {'project': cls._PROJECT_ID,
-                'credentials': cls._CREDENTIALS}
+        return {"project": cls._PROJECT_ID, "credentials": cls._CREDENTIALS}
 
     def __init__(
         self,
@@ -100,8 +99,11 @@ class GcpBlobUpath(BlobUpath):
         **kwargs,
     ):
         if project_id or credentials:
-            warnings.warn("`project_id` and `credentials` have been deprecated and will be removed in 0.6.9",
-                          DeprecationWarning, stacklevel=2)
+            warnings.warn(
+                "`project_id` and `credentials` have been deprecated and will be removed in 0.6.9",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if bucket_name is None:
             assert len(paths) == 1
             path = paths[0]

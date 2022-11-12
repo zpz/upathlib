@@ -47,8 +47,8 @@ class AzureBlobUpath(BlobUpath):
         # TODO: does Azure have a way to infer this info if the code
         # is running on an Azure machine?
         return {
-            'account_url': f"https://{cls._ACCOUNT_NAME}.blob.core.windows.net",
-            'credential': cls._SAS_TOKEN or cls._ACCOUNT_KEY
+            "account_url": f"https://{cls._ACCOUNT_NAME}.blob.core.windows.net",
+            "credential": cls._SAS_TOKEN or cls._ACCOUNT_KEY,
         }
 
     def __init__(
