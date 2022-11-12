@@ -9,6 +9,7 @@ import contextlib
 import logging
 import os
 import time
+import warnings
 from io import BufferedReader, UnsupportedOperation, BytesIO
 from typing import Union
 
@@ -50,14 +51,11 @@ RETRY_WRITE_ON_EXCEPTIONS = (
 
 
 class GcpBlobUpath(BlobUpath):
-    def __init__(
-        self,
-        *paths: str,
-        bucket_name: str = None,
-        project_id: str = None,
-        credentials: google.auth.credentials.Credentials = None,
-        **kwargs,
-    ):
+    _PROJECT_ID: str = None
+    _CREDENTIALS: google.auth.credentials.Credentials = None
+
+    @classmethod
+    def get_account_info(cls):
         """
         If you have GCP account_info in a dict with these elements
         (not sure everything here is required):
@@ -84,6 +82,26 @@ class GcpBlobUpath(BlobUpath):
         Code that runs on a GCP machine may be able to infer `credentials` and `project_id`
         via `google.auth.default()`.
         """
+        if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
+            cred, pid = google.auth.default()
+            if cls._CREDENTIALS is None:
+                cls._CREDENTIALS = cred
+            if cls._PROJECT_ID is None:
+                cls._PROJECT_ID = pid
+        return {'project': cls._PROJECT_ID,
+                'credentials': cls._CREDENTIALS}
+
+    def __init__(
+        self,
+        *paths: str,
+        bucket_name: str = None,
+        project_id=None,
+        credentials=None,
+        **kwargs,
+    ):
+        if project_id or credentials:
+            warnings.warn("`project_id` and `credentials` have been deprecated and will be removed in 0.6.9",
+                          DeprecationWarning, stacklevel=2)
         if bucket_name is None:
             assert len(paths) == 1
             path = paths[0]
@@ -99,21 +117,12 @@ class GcpBlobUpath(BlobUpath):
 
         super().__init__(*paths, **kwargs)
         self.bucket_name = bucket_name
-        self._project_id = project_id
-        self._credentials = credentials
         self._client = None
         self._bucket = None
         self._blob = None
         self._lock_count: int = 0
         self._generation = -1
         self._quiet_multidownload = True
-
-        if project_id is None or credentials is None:
-            cred, pid = google.auth.default()
-            if credentials is None:
-                self._credentials = cred
-            if project_id is None:
-                self._project_id = pid
 
     def __repr__(self) -> str:
         return "{}('gs://{}/{}')".format(
@@ -166,19 +175,11 @@ class GcpBlobUpath(BlobUpath):
         # the `service_account.Credentials` class object can be pickled.
         return (
             self.bucket_name,
-            self._project_id,
-            self._credentials,
             self._quiet_multidownload,
         ), super().__getstate__()
 
     def __setstate__(self, data):
-        z0, z1 = data
-        (
-            self.bucket_name,
-            self._project_id,
-            self._credentials,
-            self._quiet_multidownload,
-        ) = z0
+        (self.bucket_name, self._quiet_multidownload), z1 = data
         self._client = None
         self._bucket = None
         self._blob = None
@@ -188,10 +189,7 @@ class GcpBlobUpath(BlobUpath):
     @property
     def client(self):
         if self._client is None:
-            self._client = storage.Client(
-                project=self._project_id,
-                credentials=self._credentials,
-            )
+            self._client = storage.Client(**self.get_account_info())
         return self._client
 
     @property
@@ -551,8 +549,6 @@ class GcpBlobUpath(BlobUpath):
         obj = self.__class__(
             *paths,
             bucket_name=self.bucket_name,
-            project_id=self._project_id,
-            credentials=self._credentials,
             thread_pool_executors=self._thread_pools,
         )
         obj._client = self.client

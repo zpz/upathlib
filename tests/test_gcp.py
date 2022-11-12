@@ -145,11 +145,12 @@ class Client:
 def gcp(mocker):
     # mocker.patch('upathlib.gcp.service_account')
     mocker.patch('upathlib.gcp.storage.Client', Client)
+    mocker.patch('upathlib.gcp.GcpBlobUpath._PROJECT_ID', 'abc')
+    mocker.patch('upathlib.gcp.GcpBlobUpath._CREDENTIALS', 'xyz')
+    
     c = GcpBlobUpath(
             '/tmp/test',
             bucket_name='test',
-            project_id='abc',
-            credentials='xyz',
             )
     yield c
 

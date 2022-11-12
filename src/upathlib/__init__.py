@@ -1,6 +1,6 @@
 # flake8: noqa
 
-__version__ = "0.6.8b4"
+__version__ = "0.6.8b5"
 
 from pathlib import Path
 from typing import Union
@@ -11,6 +11,10 @@ from ._blob import BlobUpath
 
 try:
     from .gcp import GcpBlobUpath
+except ImportError:
+    pass
+try:
+    from .azure import AzureBlobUpath
 except ImportError:
     pass
 

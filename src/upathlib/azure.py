@@ -36,21 +36,29 @@ from ._local import LocalUpath
 
 
 class AzureBlobUpath(BlobUpath):
+    _ACCOUNT_NAME = None
+    _ACCOUNT_KEY = None
+    _SAS_TOKEN = None
+
+    @classmethod
+    def get_account_info(cls):
+        # Subclass needs to customize this method or
+        # hard-code relevant class attributes directly.
+        # TODO: does Azure have a way to infer this info if the code
+        # is running on an Azure machine?
+        return {
+            'account_url': f"https://{cls._ACCOUNT_NAME}.blob.core.windows.net",
+            'credential': cls._SAS_TOKEN or cls._ACCOUNT_KEY
+        }
+
     def __init__(
         self,
         *paths: str,
-        account_name: str,
-        account_key: str,
-        sas_token: str,
         container_name: str,
         **kwargs,
     ):
         super().__init__(*paths, **kwargs)
 
-        self._account_name = account_name
-        self._account_key = account_key
-        self._sas_token = sas_token
-        self._account_url = f"https://{account_name}.blob.core.windows.net"
         self._container_name = container_name
 
         self._container_client: ContainerClient = None
@@ -61,22 +69,10 @@ class AzureBlobUpath(BlobUpath):
         self._lock_count: int = 0
 
     def __getstate__(self):
-        return (
-            self._account_name,
-            self._account_key,
-            self._sas_token,
-            self._container_name,
-        ), super().__getstate__()
+        return self._container_name, super().__getstate__()
 
     def __setstate__(self, data):
-        z0, z1 = data
-        (
-            self._account_name,
-            self._account_key,
-            self._sas_token,
-            self._container_name,
-        ) = z0
-        self._account_url = f"https://{self._account_name}.blob.core.windows.net"
+        self._container_name, z1 = data
         self._container_client = None
         self._blob_client = None
         self._lease = None
@@ -287,10 +283,9 @@ class AzureBlobUpath(BlobUpath):
     def _provide_blob_client(self):
         if self._blob_client is None:
             bc = BlobClient(
-                account_url=self._account_url,
                 container_name=self._container_name,
                 blob_name=self.blob_name,
-                credential=self._sas_token or self._account_key,
+                **self.get_account_info(),
             )
             self._blob_client = bc
             try:
@@ -308,9 +303,8 @@ class AzureBlobUpath(BlobUpath):
     def _provide_container_client(self):
         if self._container_client is None:
             cc = ContainerClient(
-                account_url=self._account_url,
                 container_name=self._container_name,
-                credential=self._sas_token or self._account_key,
+                **self.get_account_info(),
             )
             self._container_client = cc
             try:
@@ -352,9 +346,6 @@ class AzureBlobUpath(BlobUpath):
     def with_path(self, *paths):
         return self.__class__(
             *paths,
-            account_name=self._account_name,
-            account_key=self._account_key,
-            sas_token=self._sas_token,
             container_name=self._container_name,
             thread_pool_executors=self._thread_pools,
         )

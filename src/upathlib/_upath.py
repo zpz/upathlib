@@ -134,13 +134,15 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         For Azure blob store, the root is that in a "container".
         For AWS and GCP blob stores, the root is that in a "bucket".
 
-        `thread_pool_executors`: if there are a large number of Upath instances active
-        at the same time, you may pass in two thread-pool-executors to control
-        the total number of threads created by this object. This parameter consists
-        of two *separate* executors---don't pass in a single executor twice.
+        `thread_pool_executors`: some operations may use threads. If there are
+        a large number of Upath instances active at the same time, the number of
+        threads could be large. You may pass in two thread-pool-executors to use,
+        hence controlling the total number of threads created by this object.
+        This parameter consists of two *separate* executors---don't pass in
+        a single executor twice.
 
         Subclasses for cloud blob stores may need to add additional parameters
-        representing, e.g. credentials, container/bucket name, etc.
+        representing, e.g., container/bucket name, etc.
         """
 
         self._path = os.path.normpath(
