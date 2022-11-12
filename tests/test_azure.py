@@ -3,7 +3,6 @@ from datetime import datetime
 from types import SimpleNamespace
 import upathlib.tests
 from upathlib.azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
-from azure.storage.blob import BlobProperties
 
 import pytest
 
@@ -122,11 +121,12 @@ def azure(mocker):
     mocker.patch('upathlib.azure.ContainerClient', ContainerClient)
     mocker.patch('upathlib.azure.BlobClient', BlobClient)
     mocker.patch('upathlib.azure.BlobLeaseClient', BlobLeaseClient)
+    mocker.patch('upathlib.azure.AzureBlobUpath._ACCOUNT_NAME', 'abc')
+    mocker.patch('upathlib.azure.AzureBlobUpath._ACCOUNT_KEY', 'xyz')
+    mocker.patch('upathlib.azure.AzureBlobUpath._SAS_TOKEN', '1010')
+
     c = AzureBlobUpath(
             '/tmp/test',
-            account_name='abc',
-            account_key='xyz',
-            sas_token='1010',
             container_name='test',
             )
     yield c
