@@ -2,10 +2,10 @@
 
 ## in progress
 
-- New helper function `upathlib.resolve_path`.
+- New helper function `resolve_path`.
 - Many directory operations dropped the `desc` parameter but gained the `quiet` parameter, defaulting to `False`. But, `rmdir` and `rmrf` default to `quiet=True`.
 - `GcpBlobUpath` is also exposed in `__init__.py`.
-- Parameters `project_id` and `credentials` of `GcpBlobUpath` are deprecated. This info is moved to a classmethod. Similar change to `AzureBlobUpath`.
+- Parameters `project_id` and `credentials` of `GcpBlobUpath` are deprecated. This info is moved to a classmethod. Similar changes to `AzureBlobUpath`.
 
 
 ## Release 0.6.7

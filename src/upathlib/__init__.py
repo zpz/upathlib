@@ -1,6 +1,6 @@
 # flake8: noqa
 
-__version__ = "0.6.8b5"
+__version__ = "0.6.8b6"
 
 from pathlib import Path
 from typing import Union
@@ -25,11 +25,12 @@ PathType = Union[str, Path, Upath]
 def resolve_path(path: PathType):
     if isinstance(path, str):
         if path.startswith("gs://"):
-            from upathlib.gcp import GcpBlobUpath
-
+            # If you encounter a "gs://..." path but
+            # you haven't installed GCS dependencies,
+            # you'll get an exception!
             return GcpBlobUpath(path)
         path = Path(path)
     if isinstance(path, Path):
-        return LocalUpath(str(path.absolute()))
+        return LocalUpath(str(path.resolve().absolute()))
     assert isinstance(path, Upath)
     return path
