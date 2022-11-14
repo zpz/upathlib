@@ -29,6 +29,12 @@ def resolve_path(path: PathType):
             # you haven't installed GCS dependencies,
             # you'll get an exception!
             return GcpBlobUpath(path)
+        if path.startswith("s3://"):
+            raise NotImplementedError("AWS S3 storage is not implemented")
+        if path.startswith("https://"):
+            if "blob.core.windows.net" in path:
+                return AzureBlobUpath(path)
+            raise ValueError(path)            
         path = Path(path)
     if isinstance(path, Path):
         return LocalUpath(str(path.resolve().absolute()))
