@@ -34,7 +34,7 @@ def resolve_path(path: PathType):
         if path.startswith("https://"):
             if "blob.core.windows.net" in path:
                 return AzureBlobUpath(path)
-            raise ValueError(path)            
+            raise ValueError(path)
         path = Path(path)
     if isinstance(path, Path):
         return LocalUpath(str(path.resolve().absolute()))
