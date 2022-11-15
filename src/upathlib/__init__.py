@@ -1,6 +1,6 @@
 # flake8: noqa
 
-__version__ = "0.6.8b6"
+__version__ = "0.6.8b7"
 
 from pathlib import Path
 from typing import Union
@@ -10,7 +10,7 @@ from ._local import LocalUpath
 from ._blob import BlobUpath
 
 try:
-    from .gcp import GcpBlobUpath
+    from .gcs import GcsBlobUpath
 except ImportError:
     pass
 try:
@@ -28,7 +28,13 @@ def resolve_path(path: PathType):
             # If you encounter a "gs://..." path but
             # you haven't installed GCS dependencies,
             # you'll get an exception!
-            return GcpBlobUpath(path)
+            return GcsBlobUpath(path)
+        if path.startswith("s3://"):
+            raise NotImplementedError("AWS S3 storage is not implemented")
+        if path.startswith("https://"):
+            if "blob.core.windows.net" in path:
+                return AzureBlobUpath(path)
+            raise ValueError(path)
         path = Path(path)
     if isinstance(path, Path):
         return LocalUpath(str(path.resolve().absolute()))

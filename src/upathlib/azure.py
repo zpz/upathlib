@@ -54,9 +54,23 @@ class AzureBlobUpath(BlobUpath):
     def __init__(
         self,
         *paths: str,
-        container_name: str,
+        container_name: str = None,
         **kwargs,
     ):
+        if container_name is None:
+            assert len(paths) == 1
+            path = paths[0]
+            account_url = self.get_account_info()["account_url"]
+            assert path.startswith(account_url)
+            path = path[len(account_url) :]
+            k = path.find("/")
+            if k < 0:
+                container_name = path
+                paths = ("/",)
+            else:
+                container_name = path[:k]
+                paths = (path[k:],)
+
         super().__init__(*paths, **kwargs)
 
         self._container_name = container_name

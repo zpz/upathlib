@@ -16,7 +16,7 @@ Local (POSIX) file system is treated as one particular case with the same API,
 and is implemented by `LocalUpath`, which subclasses `Upath`.
 
 Client for Google Cloud Storage (i.e. blob store on GCP) is implemented by a `Upath` subclass
-`GcpBlobUpath`. Users may want to
+`GcsBlobUpath`. Users may want to
 add very thin wrappers in their application code to handle credentials for their cloud accounts.
 
 One use case is the package [`biglist`](https://github.com/zpz/biglist).

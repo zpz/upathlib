@@ -13,7 +13,7 @@ def _resolve_local_path(p):
     if isinstance(p, str):
         p = pathlib.Path(p)
     if isinstance(p, pathlib.Path):
-        p = LocalUpath(str(p.absolute()))
+        p = LocalUpath(str(p.resolve().absolute()))
     else:
         assert isinstance(p, LocalUpath)
     return p

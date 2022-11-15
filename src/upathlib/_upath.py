@@ -225,7 +225,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         return self._thread_pools
         # Currently there can be two "layers" of threads running during `download_dir`.
         # In `download_dir`, the download of each file runs in the threads provided
-        # by `nest0`. If a file is large, `GcpBlobUpath` will split the work into chunks
+        # by `nest0`. If a file is large, `GcsBlobUpath` will split the work into chunks
         # and download each chunk in a thread provided by `nest1`.
         # We dedicate the two executors mainly so that the second layer of chunk downloads
         # do not starve for threads.
