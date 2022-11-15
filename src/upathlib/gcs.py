@@ -50,7 +50,7 @@ RETRY_WRITE_ON_EXCEPTIONS = (
 )
 
 
-class GcpBlobUpath(BlobUpath):
+class GcsBlobUpath(BlobUpath):
     _PROJECT_ID: str = None
     _CREDENTIALS: google.auth.credentials.Credentials = None
 
@@ -237,7 +237,7 @@ class GcpBlobUpath(BlobUpath):
         return func(*args, **kwargs)
 
     @overrides
-    def _copy_file(self, target: GcpBlobUpath, *, overwrite=False) -> None:
+    def _copy_file(self, target: GcsBlobUpath, *, overwrite=False) -> None:
         # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
         try:
             self.bucket.copy_blob(
