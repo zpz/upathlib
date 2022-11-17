@@ -1,6 +1,6 @@
 # flake8: noqa
 
-__version__ = "0.6.8b7"
+__version__ = "0.6.8"
 
 from pathlib import Path
 from typing import Union
