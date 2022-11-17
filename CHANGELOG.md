@@ -1,6 +1,6 @@
 # Changelog
 
-## Release 0.6.8 (in progress)
+## Release 0.6.8
 
 - New helper function `resolve_path`.
 - Many directory operations dropped the `desc` parameter but gained the `quiet` parameter, defaulting to `False`. But, `rmdir` and `rmrf` default to `quiet=True`.
