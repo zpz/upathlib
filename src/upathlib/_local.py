@@ -113,7 +113,7 @@ class LocalUpath(Upath):
         os.makedirs(self.localpath.parent, exist_ok=True)
         lock = filelock.FileLock(str(self.localpath))
         try:
-            lock.acquire(timeout=timeout)
+            lock.acquire(timeout=timeout or 300)
             yield
         except filelock.Timeout as e:
             raise LockAcquireError(str(self)) from e

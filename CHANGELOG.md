@@ -1,6 +1,11 @@
 # Changelog
 
-## Release 0.6.8
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+
+## [0.6.8] - 2022-11-16
 
 - New helper function `resolve_path`.
 - Many directory operations dropped the `desc` parameter but gained the `quiet` parameter, defaulting to `False`. But, `rmdir` and `rmrf` default to `quiet=True`.
@@ -9,7 +14,7 @@
 - Renamed `upathlib.gcp` to `upathlib.gcs`, and `GcpBlobUpath` to `GcsBlobUpath`.
 
 
-## Release 0.6.7
+## [0.6.7] - 2022-11-03
 
 - Handle "empty folders" in GCP.
 - Use Google's standard way (via `google.auth.default`) to get GCP credentials if needed.
@@ -17,7 +22,7 @@
 - Thread-pool management; `_run_in_executor` became an instance method (as opposed to classmethod).
 
 
-## Release 0.6.6
+## [0.6.6] - 2022-10-07
 
 - Improvement to robustness in large directory upload to Gcp.
 - Improved progress report when downloading/uploading a directory.
@@ -27,14 +32,14 @@
 - `GcpBlobUpath.lock` reduces default wait time to improve responsiveness.
 
 
-## Release 0.6.5
+## [0.6.5] - 2022-07-30
 
 - Make GCP info to `GcpBlobUpath` optional.
 - Remove home-made retrying utility `Backoff`. Use `opnieumw`.
 - Bug fix related to concurrent downloading involving large files.
 
 
-## Release 0.6.4
+## [0.6.4] - 2022-07-10
 
 - GCP download of large blobs uses threading concurrency.
 - API change: `write_bytes` and `write_text` return `None`.
@@ -50,7 +55,7 @@
   - New serializers `ZJsonSerializer`, `ZstdJsonSerializer`, `ZstdPickleSerializer`, `ZstdOrjsonSerializer`.
 
 
-## Release 0.6.3
+## [0.6.3] - 2022-03-06
 
 - Use `overrides` to enforce sanity in class inheritance.
 - Add tests on Azure and GCP using mocks.
@@ -58,79 +63,79 @@
 - Refactor and simplify test/build process.
 
 
-## Release 0.6.2
+## [0.6.2] - 2022-02-22
 
 - GcpUpath: refresh cache upon timeout error.
 
 
-## Release 0.6.1.post1
+## [0.6.1.post1] - 2021-12-31
 
 - Relax version requirements on dependencies.
 
 
-## Release 0.6.1
+## [0.6.1] - 2021-11-11
 
 - Minor fine-tuning.
 
 
-## Release 0.6.0.post1
+## [0.6.0.post1] - 2021-11-05
 
 - Bug fix.
 
 
-## Release 0.6.0
+## [0.6.0] - 2021-11-04
 
 - Bug fix in GcpBlobUpath
 
 
-## Release 0.5.9
+## [0.5.9] - 2021-10-15
 
 - Removed async methods, since the current simplementations are simply wrappers around thread-pool executions.
 
 
-## Release 0.5.8
+## [0.5.8] - 2021-10-15
 
 - Refactor the `__init__` method.
 - Efficiency improvements for GCP.
 
 
-## Release 0.5.7
+## [0.5.7] - 2021-10-10
 
 - Capture use-specified exceptions and retry in operations on multiple blobs.
 
 
-## Release 0.5.6
+## [0.5.6] - 2021-10-04
 
 - Bug fixes and improvements to GcpBlobUpath.
 
 
-## Release 0.5.5
+## [0.5.5] - 2021-09-07
 
 - Bug fix related to GCP.
 
 
-## Release 0.5.4
+## [0.5.4] - 2021-09-06
 
 - Implement blob locking for GCP.
 
 
-## Release 0.5.3
+## [0.5.3] - 2021-08-22
 
 - Improvements to 'lock' methods.
 
 
-## Release 0.5.2
+## [0.5.2] - 2021-08-14
 
 - Skip thread pool when `concurrency <= 1`.
 - Support extra dependencies via `options.extras_require` in `setup.cfg`.
 
 
-## Release 0.5.1
+## [0.5.1] - 2021-07-22
 
 - Reworked `AzureBlobUpath.lock` and `AzureBlobUpath.a_lock`.
 
 
-## Release 0.5.0
+## [0.5.0] - 2021-07-19
 
 - `remove_file` loses argument `missing_ok`. Return 0 if file is not found.
 - `GcpBlobUpath` copy, download, upload, rename.
@@ -138,7 +143,7 @@
   around export and import methods.
 
 
-## Release 0.4.9
+## [0.4.9] - 2021-07-18
 
 - Another round of API fine tuning. There are some improvements to naming,
   consistency, and simplicity.
@@ -146,49 +151,48 @@
 - Improvements to tests.
 
 
-## Release 0.4.5
+## [0.4.5] - 2021-07-10
 
 - Remove `AzureBlobUpath` and `GcpBlobUpath` from package `__init__.py`,
   making their dependencies optional in a future release.
 
 
-## Release 0.4.3
+## [0.4.3] - 2021-07-04
 
 - More "native" implementation of async methods.
 
 
-
-## Release 0.4.0
+## [0.4.0] - 2021-07-03
 
 - API refinements.
 
 
-## Release 0.3.7
+## [0.3.7] - 2021-06-26
 
 - Bug fix.
 
 
-## Release 0.3.4
+## [0.3.4] - 2021-06-23
 
 - Add implementations for Azure and GCP blob stores.
 
 
-## Release 0.2.2
+## [0.2.2] - 2021-06-08
 
 - Add JSON and pickle convenience methods to API.
 
 
-## Release 0.2.1
+## [0.2.1] - 2021-06-05
 
 - Add preliminary `lock` API.
 
 
-## Release 0.2.0
+## [0.2.0] - 2021-05-31
 
 - API iterations.
 - `LocalUpath` implementation
 
 
-## Release 0.1.0
+## [0.1.0] - 2021-05-24
 
 First draft of API and LocalUpath.

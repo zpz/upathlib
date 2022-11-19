@@ -213,7 +213,7 @@ class AzureBlobUpath(BlobUpath):
 
     def _acquire_lease(self, timeout: int = None):
         if timeout is None:
-            timeout = 3600
+            timeout = 300
         t0 = time.perf_counter()
         while True:
             try:
