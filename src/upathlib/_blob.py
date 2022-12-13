@@ -38,10 +38,14 @@ class BlobUpath(Upath, EnforceOverrides):
         "directory". Here we emulate the concept in a local file
         system. If there is a blob named like
 
+        ::
+
             /ab/cd/ef/g.txt
 
         we say there exists directory "/ab/cd/ef".
         We should never have a trailing `/` in a blob's name, like
+
+        ::
 
             /ab/cd/ef/
 

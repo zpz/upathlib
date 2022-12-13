@@ -17,7 +17,7 @@ dependencies = [
     "zstandard >=0.18.0",
 ]
 requires-python = ">=3.8"
-readme = "README.md"
+readme = "README.rst"
 license = {file = "LICENSE"}
 classifiers = [
     "Intended Audience :: Developers",
@@ -41,6 +41,11 @@ gcs = [
     "google-api-python-client >=2.13.9,<3.0",
     "google-cloud-storage >=2.0,<3.0",
     "requests",
+]
+doc = [
+    "sphinx",
+    "numpydoc",
+    "pydata-sphinx-theme",
 ]
 test = [
     "bandit",

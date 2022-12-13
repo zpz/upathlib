@@ -58,7 +58,7 @@ class GcsBlobUpath(BlobUpath):
     def get_account_info(cls):
         """
         If you have GCP account_info in a dict with these elements
-        (not sure everything here is required):
+        (not sure everything here is required)::
 
             'type': 'service_account',
             'project_id':
@@ -75,6 +75,8 @@ class GcsBlobUpath(BlobUpath):
             'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
 
         then `credentials` are obtained by
+
+        ::
 
             google.oauth2.service_account.Credentials.from_service_account_info(
                 account_info, scopes=['https://www.googleapis.com/auth/cloud-platform'])

@@ -384,6 +384,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         In a blobstore with blobs
 
+        ::
+
             /a/b/cd
             /a/b/cd/e.txt
 
@@ -517,6 +519,8 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         If there exists a file named like
 
+        ::
+
             /a/b/c/d.txt
 
         we say `/a`, `/a/b`, `/a/b/c` are existing directories.
@@ -545,7 +549,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         """Return `True` if the path is an existing file, `False` otherwise.
 
         In a cloud blob store, a path can be both a file and a dir. For
-        example, if these blobs exist:
+        example, if these blobs exist::
 
             /a/b/c/d.txt
             /a/b/c
@@ -597,14 +601,18 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
         The `yield` statement is not required to yield anything,
         that is, it may be simply
 
+        ::
+
             yield
 
         rather than, say,
 
+        ::
+
             yield self
 
         One way to achive cooperative locking on a file via this mandatory
-        lock is like this:
+        lock is like this::
 
             f = Upath('abc.txt')
             with f.with_suffix('.txt.lock').lock():
@@ -775,7 +783,7 @@ class Upath(abc.ABC, EnforceOverrides):  # pylint: disable=too-many-public-metho
 
         Return the number of files removed.
 
-        For example, if these blobs are present:
+        For example, if these blobs are present::
 
             /a/b/c/d/e.txt
             /a/b/c/kk.data
