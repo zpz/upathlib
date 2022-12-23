@@ -17,15 +17,14 @@ dependencies = [
     "zstandard >=0.18.0",
 ]
 requires-python = ">=3.8"
-readme = "README.md"
+readme = "README.rst"
 license = {file = "LICENSE"}
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
-dynamic = ['version']
-description = "upathlib"
+dynamic = ['version', 'description']
 
 
 [project.urls]
@@ -42,6 +41,11 @@ gcs = [
     "google-cloud-storage >=2.0,<3.0",
     "requests",
 ]
+doc = [
+    "sphinx",
+    "numpydoc",
+    "pydata-sphinx-theme",
+]
 test = [
     "bandit",
     "coverage[toml]",
@@ -54,15 +58,28 @@ test = [
 ]
 
 
+[tool.flit.module]
+name = "upathlib"
+
+
+[tool.flake8]
+ignore = ["E203", "E231", "E501", "W503"]
+
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-sv --log-cli-level info -p no:cacheprovider"
+asyncio_mode = "auto"
 
 
 [tool.coverage.report]
 fail_under = 70
 show_missing = true
 skip_empty = true
+
+
+[tool.coverage.run]
+data_file = "/tmp/.coverage"
 
 
 [tool.pylint.messages_control]
@@ -74,6 +91,7 @@ disable = [
     "line-too-long",
     "fixme",
     "too-few-public-methods",
+    "too-many-public-methods",
     "too-many-branches",
     "too-many-return-statements",
 ]
