@@ -133,7 +133,9 @@ class Upath(abc.ABC, EnforceOverrides):
         setattr(cls, f"read_{name}", _read)
 
     def __init__(
-        self, *pathsegments: str, thread_pool_executors: Optional[List[ThreadPoolExecutor]] = None
+        self,
+        *pathsegments: str,
+        thread_pool_executors: Optional[List[ThreadPoolExecutor]] = None,
     ):
         """
         Subclasses for cloud blob stores may need to add additional parameters
@@ -150,7 +152,7 @@ class Upath(abc.ABC, EnforceOverrides):
             For a local POSIX file system, the root is the usual ``'/'``.
 
             For Azure blob store, the root is that in a "container".
-            
+
             For AWS and GCP blob stores, the root is that in a "bucket".
 
             If missing, the path constructed is the "root".
@@ -167,7 +169,7 @@ class Upath(abc.ABC, EnforceOverrides):
         thread_pool_executors
             Some operations may use threads. If there are
             a large number of ``Upath`` instances active at the same time, the number of
-            threads could be too large. 
+            threads could be too large.
             To control the total number of threads created by this object,
             you may pass in two thread-pool-executors.
             This parameter consists of two *separate* executors---don't pass in
