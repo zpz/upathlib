@@ -52,7 +52,7 @@ class BlobUpath(Upath, EnforceOverrides):
         (I don't know whether the blob stores allow
         such blob names.)
 
-        Consequently, `is_dir` is equivalent
+        Consequently, ``is_dir`` is equivalent
         to "having stuff in the dir". There is no such thing as
         an "empty directory" in blob stores.
         """

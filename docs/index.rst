@@ -3,13 +3,12 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-:tocdepth: 3
+:tocdepth: 2
 
-============
-``upathlib``
-============
+========
+upathlib
+========
 
-*(This documentation is in early stage of construction.)*
 
 .. automodule:: upathlib
    :no-members:
@@ -17,11 +16,20 @@
    :no-special-members:
 
 
-.. toctree::
-   :maxdepth: 2
+To install, do one of the following::
 
-   install
+   $ pip3 install upathlib
+   $ pip3 install upathlib[gcs]
+
+
+.. toctree::
+   :maxdepth: 1
+
+   quickstart
    upath
+   local
+   blob
+   gcs
 
 
 

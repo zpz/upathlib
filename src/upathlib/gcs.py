@@ -74,15 +74,15 @@ class GcsBlobUpath(BlobUpath):
             'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
             'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
 
-        then `credentials` are obtained by
+        then ``credentials`` are obtained by
 
         ::
 
             google.oauth2.service_account.Credentials.from_service_account_info(
                 account_info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
 
-        Code that runs on a GCP machine may be able to infer `credentials` and `project_id`
-        via `google.auth.default()`.
+        Code that runs on a GCP machine may be able to infer ``credentials`` and ``project_id``
+        via ``google.auth.default()``.
         """
         if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
             cred, pid = google.auth.default()
@@ -214,10 +214,10 @@ class GcsBlobUpath(BlobUpath):
 
     def get_blob(self):
         """
-        While `.blob` simply constructs a Blob object,
-        `.get_blob` makes network calls to refresh properties
+        While :meth:`blob` simply constructs a Blob object,
+        ``get_blob()`` makes network calls to refresh properties
         of the object in cloud storage. If the blob does not exist,
-        return `None`.
+        return ``None``.
         """
         b = self.blob()
         try:
@@ -318,15 +318,19 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def is_file(self) -> bool:
-        # This is not cached, in case the object is modified anytime
-        # by other clients.
+        '''
+        The result of this call is not cached, in case the object is modified anytime
+        by other clients.
+        '''
         return self.blob().exists(self.client)
 
     @overrides
     def is_dir(self) -> bool:
-        # If there is a dummy blob with name f"{self.name}/",
-        # this will return True.
-        # This is the case after creating a "folder" on the dashboard.
+        '''
+        If there is a dummy blob with name ``f"{self.name}/"``,
+        this will return ``True``.
+        This is the case after creating a "folder" on the GCP dashboard.
+        '''
         prefix = self.blob_name + "/"
         blobs = self.client.list_blobs(
             self.bucket,
@@ -424,15 +428,16 @@ class GcsBlobUpath(BlobUpath):
     @contextlib.contextmanager
     @overrides
     def lock(self, *, timeout=None):
+        '''
+        This implementation does not prevent the file from being deleted
+        by other workers that does not use the 'if-generation-match' condition.
+        It relies on the assumption that this blob
+        is used solely in this locking logic.
+        '''
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
-
-        # This implementation does not prevent the file from being deleted
-        # by other workers that does not use the 'if-generation-match' condition.
-        # It relies on the assumption that this blob
-        # is used solely in this locking logic.
 
         if self._lock_count == 0:
             self._acquire_lease(timeout=timeout)
