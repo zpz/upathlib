@@ -8,12 +8,12 @@ End user should look to the class ``Upath`` for documentation on the API.
 Local file system and Google Cloud Storage are implemented by subclasses
 ``LocalUpath`` and ``GcsBlobUpath``, respectively.
 
-To install, do one of the following:
+To install, do one of the following::
 
-```
-$ pip3 install upathlib
-$ pip3 install upathlib[gcs]
-```
+
+    $ pip3 install upathlib
+    $ pip3 install upathlib[gcs]
+
 
 Read the `documentation <https://upathlib.readthedocs.io/en/latest/>`_.
 

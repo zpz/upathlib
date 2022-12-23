@@ -81,12 +81,18 @@ class Upath(abc.ABC, EnforceOverrides):
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
         """
-        For example, if ``serde`` is a ByteSerializer subclass and ``name`` is 'myway',
+        Register a new binary format based on the serializer ``serde`` and the methods
+        :meth:`write_bytes` and :meth:`read_bytes`.
+
+        For example, if ``serde`` is a ``upathlib.serializer.ByteSerializer`` subclass and ``name`` is 'myway',
         then this method adds isinstance methods ``write_myway`` and ``read_myway``.
 
         ``name`` usually is a slight variation of the name of the class ``serde``,
         with changes such as lower-casing and separating words by underscores.
-        Needs to be a valid method name, e.g. can't contain space or dash.
+        This needs to be a valid method name, e.g. it can't contain space or dash.
+
+        At the end of this module, this method is called to register a number of common formats including
+        'pickle', 'pickle_z', 'pickle_zstd', 'orjson', 'orjson_z', 'orjson_zstd'.
         """
 
         def _write(self, data, *, overwrite=False, **kwargs):
@@ -106,7 +112,12 @@ class Upath(abc.ABC, EnforceOverrides):
     @classmethod
     def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
         """
+        Register a new textual format based on the serializer ``serde`` and the methods
+        :meth:`write_text` and :meth:`read_text`.
+
         Anologous to :meth:`register_read_write_byte_format`.
+
+        At the end of this module, this method is called to register the 'json' format.
         """
 
         def _write(self, data, *, overwrite=False, **kwargs):
@@ -122,9 +133,12 @@ class Upath(abc.ABC, EnforceOverrides):
         setattr(cls, f"read_{name}", _read)
 
     def __init__(
-        self, *pathsegments: str, thread_pool_executors: List[ThreadPoolExecutor] = None
+        self, *pathsegments: str, thread_pool_executors: Optional[List[ThreadPoolExecutor]] = None
     ):
         """
+        Subclasses for cloud blob stores may need to add additional parameters
+        representing, e.g., container/bucket name, etc.
+
         Parameters
         ----------
         *pathsegments
@@ -133,25 +147,31 @@ class Upath(abc.ABC, EnforceOverrides):
             no difference. The path constructed with ``*pathsegments``
             is always "absolute" under a known "root".
 
-                Note that if one segment starts with ``'/'``, it will reset to the "root"
-                and discard all the segments that have come before it.
-
-                If missing, the path constructed is the "root".
-
             For a local POSIX file system, the root is the usual ``'/'``.
+
             For Azure blob store, the root is that in a "container".
+            
             For AWS and GCP blob stores, the root is that in a "bucket".
 
+            If missing, the path constructed is the "root".
+
+            .. note:: If one segment starts with ``'/'``, it will reset to the "root"
+                and discard all the segments that have come before it. For example,
+                ``Upath('work', 'projects', '/', 'projects')``
+                is the same as ``Upath('/', 'projects)``.
+
+            .. note:: This explanation of ``*pathsegments`` is mostly centered around
+                a POSIX file system. For Google Cloud storage, the first part of the path
+                can be ``'gs://bucket-name/'``. For Windows and other cloud storages,
+                this documentation likely will need some update.
         thread_pool_executors
             Some operations may use threads. If there are
-            a large number of Upath instances active at the same time, the number of
-            threads could be large. You may pass in two thread-pool-executors to use,
-            hence controlling the total number of threads created by this object.
+            a large number of ``Upath`` instances active at the same time, the number of
+            threads could be too large. 
+            To control the total number of threads created by this object,
+            you may pass in two thread-pool-executors.
             This parameter consists of two *separate* executors---don't pass in
             a single executor twice.
-
-            Subclasses for cloud blob stores may need to add additional parameters
-            representing, e.g., container/bucket name, etc.
         """
 
         self._path = os.path.normpath(
