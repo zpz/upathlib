@@ -1,9 +1,9 @@
-'''
+"""
 :class:`Upath` is an abstract base class that defines the APIs and some of the implementation.
 Subclasses tailor to particular storage systems.
 Currently there are two production-ready subclasses; they implement ``Upath``
 for local file system and Google Cloud Storage, respectively.
-'''
+"""
 
 from __future__ import annotations
 

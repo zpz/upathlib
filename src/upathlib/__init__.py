@@ -1,4 +1,4 @@
-'''
+"""
 The package `upathlib <https://github.com/zpz/upathlib>`_
 defines a unified API for cloud blob store (aka "object store") as well as local file systems.
 
@@ -18,7 +18,7 @@ One use case is the package `biglist <https://biglist.readthedocs.io/en/latest/>
 where the class `Biglist <https://biglist.readthedocs.io/en/latest/#biglist.Biglist>`_ takes a Upath object to indicate its location of storage.
 It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
-'''
+"""
 
 # flake8: noqa
 

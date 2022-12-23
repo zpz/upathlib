@@ -318,19 +318,19 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def is_file(self) -> bool:
-        '''
+        """
         The result of this call is not cached, in case the object is modified anytime
         by other clients.
-        '''
+        """
         return self.blob().exists(self.client)
 
     @overrides
     def is_dir(self) -> bool:
-        '''
+        """
         If there is a dummy blob with name ``f"{self.name}/"``,
         this will return ``True``.
         This is the case after creating a "folder" on the GCP dashboard.
-        '''
+        """
         prefix = self.blob_name + "/"
         blobs = self.client.list_blobs(
             self.bucket,
@@ -428,12 +428,12 @@ class GcsBlobUpath(BlobUpath):
     @contextlib.contextmanager
     @overrides
     def lock(self, *, timeout=None):
-        '''
+        """
         This implementation does not prevent the file from being deleted
         by other workers that does not use the 'if-generation-match' condition.
         It relies on the assumption that this blob
         is used solely in this locking logic.
-        '''
+        """
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions
