@@ -12,7 +12,7 @@ as symbolic links, fine-grained permissions, and various access modes---are igno
 End user should look to the class :class:`~upathlib.Upath` for documentation of the API.
 Local (POSIX) file system is implemented by :class:`LocalUpath`, which subclasses Upath.
 Client for Google Cloud Storage (i.e. blob store on GCP) is implemented by another Upath subclass,
-namely :class:`GcsBlobUpath`.
+namely :class:`~upathlib.GcsBlobUpath`.
 
 One use case is the package `biglist <https://biglist.readthedocs.io/en/latest/>`_,
 where the class `Biglist <https://biglist.readthedocs.io/en/latest/#biglist.Biglist>`_ takes a Upath object to indicate its location of storage.
