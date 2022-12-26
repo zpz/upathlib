@@ -83,7 +83,7 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         Register a new binary format backed by the serializer ``serde``,
         which is a subclass of :class:`~upathlib.serializer.ByteSerializer`.
-        
+
         For example, if ``serde`` is the class :class:`~upathlib.serializer.PickleSerializer` and
         ``name`` is ``'pickle'``, then this method adds isinstance methods
         ``write_pickle`` and ``read_pickle``.
@@ -91,7 +91,7 @@ class Upath(abc.ABC, EnforceOverrides):
         the :meth:`~upathlib.serializer.PickleSerializer.serialize` method of the ``serde``;
         the reader method is implemented using :meth:`read_bytes` along with
         the :meth:`~upathlib.serializer.PickleSerializer.deserialize` method of the ``serde``.
-        
+
         ``name`` usually is a slight variation of the name of the class ``serde``,
         with changes such as lower-casing and separating words by underscores.
         This needs to be a valid method name, e.g. it can't contain space or dash.
@@ -144,7 +144,9 @@ class Upath(abc.ABC, EnforceOverrides):
     def __init__(
         self,
         *pathsegments: str,
-        thread_pool_executors: Optional[tuple[ThreadPoolExecutor, ThreadPoolExecutor]] = None,
+        thread_pool_executors: Optional[
+            tuple[ThreadPoolExecutor, ThreadPoolExecutor]
+        ] = None,
     ):
         """
         Create a ``Upath`` instance. Because ``Upath`` is an abstract class,
@@ -260,7 +262,10 @@ class Upath(abc.ABC, EnforceOverrides):
     def _thread_pool_executors(self):
         if not self._thread_pools:
             self._thread_pools.append(
-                ThreadPoolExecutor(min(32, (os.cpu_count() or 1) + 4), thread_name_prefix="UpathExecutor0")
+                ThreadPoolExecutor(
+                    min(32, (os.cpu_count() or 1) + 4),
+                    thread_name_prefix="UpathExecutor0",
+                )
             )
             self._thread_pools.append(
                 ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1")
@@ -369,7 +374,7 @@ class Upath(abc.ABC, EnforceOverrides):
         quiet: bool = False,
     ) -> int:
         """Copy the content of the current directory (i.e. ``self``) recursively to ``target`` in the same store.
-        
+
         Analogous to :meth:`copy_file`,
         ``target`` is either absolute, or relative to ``self.parent``.
         The directory created by this operation will be the path ``self.parent / target``.
@@ -489,12 +494,12 @@ class Upath(abc.ABC, EnforceOverrides):
 
         ``target`` corresponds to ``self``, that is, immediate children of ``self``
         are copied as immediate children of ``target``.
-        
+
         This method is similar to :meth:`copy_dir` except for the following difference:
         ``export_dir`` is intended for copying to a different store (e.g. from Google Cloud Storage to Azure Blob Storage,
         or from local disk to Google Cloud Storage), hence ``target`` is a full ``Upath`` object;
         ``copy_dir`` is intended for copying to another location in the same store,
-        hence ``target`` is a string (possibly relative to ``self.parent``), and the full target path 
+        hence ``target`` is a string (possibly relative to ``self.parent``), and the full target path
         is resolved internally.
 
         ``quiet`` controls whether to print out progress info.
@@ -647,7 +652,7 @@ class Upath(abc.ABC, EnforceOverrides):
 
     def joinpath(self: T, *other: str) -> T:
         """Join this path with more segments, return the new path object.
-        
+
         If ``self`` was created by ``Upath(*segs)``, then this method essentially
         returns ``Upath(*segs, *other)``.
         """
@@ -705,10 +710,10 @@ class Upath(abc.ABC, EnforceOverrides):
         raise NotImplementedError
 
     def ls(self: T) -> List[T]:
-        '''Return the elements yield by :meth:`iterdir` in a sorted list.
-        
+        """Return the elements yield by :meth:`iterdir` in a sorted list.
+
         The returned list may be empty.
-        '''
+        """
         return sorted(self.iterdir())
 
     @property
