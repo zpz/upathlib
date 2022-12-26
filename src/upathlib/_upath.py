@@ -198,7 +198,7 @@ class Upath(abc.ABC, EnforceOverrides):
         # The path is always "absolute" starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
 
-        if not thread_pool_executors is None:
+        if not thread_pool_executors:
             self._thread_pools = []
         else:
             assert len(thread_pool_executors) == 2
