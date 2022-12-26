@@ -20,7 +20,10 @@ extensions = [
     "numpydoc",
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
+    'sphinx.ext.todo',
     ]
+
+todo_include_todos = True
 
 # Disable autosummary stuff, which is enabled by numpydoc by default.
 numpydoc_show_class_members = False
@@ -56,6 +59,11 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'links.rst']
 #  no toc panel
 #   scrolls  (good for very small, single-page doc)
 html_theme = 'pydata_sphinx_theme'
+
+html_theme_options = {
+    "github_url": "https://github.com/zpz/upathlib",
+    "footer_items": ["copyright"],
+}
 
 
 html_static_path = ['_static']
