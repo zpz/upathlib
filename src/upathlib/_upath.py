@@ -2,7 +2,7 @@
 :class:`Upath` is an abstract base class that defines the APIs and some of the implementation.
 Subclasses tailor to particular storage systems.
 Currently there are two production-ready subclasses; they implement ``Upath``
-for local file system and Google Cloud Storage, respectively.
+for local POSIX file system and Google Cloud Storage, respectively.
 """
 
 from __future__ import annotations
@@ -81,18 +81,27 @@ class Upath(abc.ABC, EnforceOverrides):
     @classmethod
     def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
         """
-        Register a new binary format based on the serializer ``serde`` and the methods
-        :meth:`write_bytes` and :meth:`read_bytes`.
+        Register a new binary format backed by the serializer ``serde``,
+        which is a subclass of :class:`~upathlib.serializer.ByteSerializer`.
 
-        For example, if ``serde`` is a ``upathlib.serializer.ByteSerializer`` subclass and ``name`` is 'myway',
-        then this method adds isinstance methods ``write_myway`` and ``read_myway``.
+        For example, if ``serde`` is the class :class:`~upathlib.serializer.PickleSerializer` and
+        ``name`` is ``'pickle'``, then this method adds isinstance methods
+        ``write_pickle`` and ``read_pickle``.
+        The writer method is implemented using :meth:`write_bytes` along with
+        the :meth:`~upathlib.serializer.PickleSerializer.serialize` method of the ``serde``;
+        the reader method is implemented using :meth:`read_bytes` along with
+        the :meth:`~upathlib.serializer.PickleSerializer.deserialize` method of the ``serde``.
 
         ``name`` usually is a slight variation of the name of the class ``serde``,
         with changes such as lower-casing and separating words by underscores.
         This needs to be a valid method name, e.g. it can't contain space or dash.
 
         At the end of this module, this method is called to register a number of common formats including
-        'pickle', 'pickle_z', 'pickle_zstd', 'orjson', 'orjson_z', 'orjson_zstd'.
+        'pickle', 'pickle_z', 'pickle_zstd', 'orjson', 'orjson_z', and 'orjson_zstd'.
+        Consequently, this class has instance methods
+        ``write_pickle``, ``read_pickle``, ``write_pickle_z``, ``read_pickle_z``, etc.
+
+        User may register custom formats by this method.
         """
 
         def _write(self, data, *, overwrite=False, **kwargs):
@@ -112,8 +121,8 @@ class Upath(abc.ABC, EnforceOverrides):
     @classmethod
     def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
         """
-        Register a new textual format based on the serializer ``serde`` and the methods
-        :meth:`write_text` and :meth:`read_text`.
+        Register a new textual format backed by the serializer ``serde``,
+        which is a subclass of :class:`~upathlib.serializer.TextSerializer`.
 
         Anologous to :meth:`register_read_write_byte_format`.
 
@@ -135,9 +144,15 @@ class Upath(abc.ABC, EnforceOverrides):
     def __init__(
         self,
         *pathsegments: str,
-        thread_pool_executors: Optional[List[ThreadPoolExecutor]] = None,
+        thread_pool_executors: Optional[
+            tuple[ThreadPoolExecutor, ThreadPoolExecutor]
+        ] = None,
     ):
         """
+        Create a ``Upath`` instance. Because ``Upath`` is an abstract class,
+        this is always called on a subclass to instantiate a path on the specific
+        storage system.
+
         Subclasses for cloud blob stores may need to add additional parameters
         representing, e.g., container/bucket name, etc.
 
@@ -145,8 +160,8 @@ class Upath(abc.ABC, EnforceOverrides):
         ----------
         *pathsegments
             Analogous to the input to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
-            The first segment may or may not start with ``'/'``; it makes
-            no difference. The path constructed with ``*pathsegments``
+            The first segment may or may not start with ``'/'``.
+            The path constructed with ``*pathsegments``
             is always "absolute" under a known "root".
 
             For a local POSIX file system, the root is the usual ``'/'``.
@@ -164,16 +179,17 @@ class Upath(abc.ABC, EnforceOverrides):
 
             .. note:: This explanation of ``*pathsegments`` is mostly centered around
                 a POSIX file system. For Google Cloud storage, the first part of the path
-                can be ``'gs://bucket-name/'``. For Windows and other cloud storages,
-                this documentation likely will need some update.
+                can be ``'gs://bucket-name/'``. For other cloud storages or Windows,
+                this documentation will need some update.
         thread_pool_executors
-            Some operations may use threads. If there are
-            a large number of ``Upath`` instances active at the same time, the number of
-            threads could be too large.
-            To control the total number of threads created by this object,
-            you may pass in two thread-pool-executors.
-            This parameter consists of two *separate* executors---don't pass in
-            a single executor twice.
+            The methods that work on "directories" use threads to operate on files concurrently.
+            If there are a large number of ``Upath`` instances active at the same time,
+            the total number of threads created by these methods could be too large.
+            This parameter, if specified, provides a pool of threads to be used by
+            said methods, hence controls the total number of threads.
+
+            If specified, this must be two independent executors.
+            Typically, the second pool should be smaller than the first.
         """
 
         self._path = os.path.normpath(
@@ -182,10 +198,8 @@ class Upath(abc.ABC, EnforceOverrides):
         # The path is always "absolute" starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
 
-        if thread_pool_executors is None:
+        if not thread_pool_executors:
             self._thread_pools = []
-        elif thread_pool_executors == []:
-            self._thread_pools = thread_pool_executors
         else:
             assert len(thread_pool_executors) == 2
             e0, e1 = thread_pool_executors
@@ -248,7 +262,10 @@ class Upath(abc.ABC, EnforceOverrides):
     def _thread_pool_executors(self):
         if not self._thread_pools:
             self._thread_pools.append(
-                ThreadPoolExecutor(thread_name_prefix="UpathExecutor0")
+                ThreadPoolExecutor(
+                    min(32, (os.cpu_count() or 1) + 4),
+                    thread_name_prefix="UpathExecutor0",
+                )
             )
             self._thread_pools.append(
                 ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1")
@@ -256,8 +273,8 @@ class Upath(abc.ABC, EnforceOverrides):
         return self._thread_pools
         # Currently there can be two "layers" of threads running during `download_dir`.
         # In `download_dir`, the download of each file runs in the threads provided
-        # by `nest0`. If a file is large, `GcsBlobUpath` will split the work into chunks
-        # and download each chunk in a thread provided by `nest1`.
+        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
+        # and download each chunk in a thread provided by `UpathExecutor1`.
         # We dedicate the two executors mainly so that the second layer of chunk downloads
         # do not starve for threads.
 
@@ -356,10 +373,32 @@ class Upath(abc.ABC, EnforceOverrides):
         overwrite: bool = False,
         quiet: bool = False,
     ) -> int:
-        """Analogous to :meth:`copy_file`.
+        """Copy the content of the current directory (i.e. ``self``) recursively to ``target`` in the same store.
 
-        Return the number of files copied.
+        Analogous to :meth:`copy_file`,
+        ``target`` is either absolute, or relative to ``self.parent``.
+        The directory created by this operation will be the path ``self.parent / target``.
+        Immediate children of ``self`` will be copied as immediate children of this target path.
+
+        There is no such error as "target directory exists" as the copy-operation
+        only concerns invidivual files.
+        If the target "directory" contains files that do not have counterparts
+        in the source directory, they will stay untouched.
+
+        ``overwrite`` is file-wise. If ``False``, any existing target file will raise ``FileExistsError`` and
+        halt the operation. If ``True``, any existing target file will be overwritten by the source file.
+
+        .. todo:: If one file raises ``FileExistsError``, will the copying of other files happening in other threads
+            be stopped? Most likely this is not implemented yet.
+
+        ``quiet`` controls whether to print out progress info.
+
+        Returns
+        -------
+        int
+            The number of files copied.
         """
+
         target_ = self.parent / target
         if target_ == self:
             return 0
@@ -391,20 +430,31 @@ class Upath(abc.ABC, EnforceOverrides):
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
     def copy_file(self, target: str, *, overwrite: bool = False) -> None:
-        """Copy file to ``target`` in the same store.
+        """Copy the current file (i.e. ``self``) to ``target`` in the same store.
 
         ``target`` is either absolute, or relative to ``self.parent``.
         For example, if ``self`` is ``'/a/b/c/d.txt'``, then
         ``target='e.txt'`` means ``'/a/b/c/e.txt'``.
 
-        If ``self`` is not an existing file, raise ``FileNotFoundError``.
+        ``target`` is the target file, *not* a target directory to "copy into".
+        The file created by this operation will the path ``self.parent / target``.
+
+        If ``self`` is not an existing file, ``FileNotFoundError`` is raised.
 
         If ``target`` is an existing file and ``overwrite`` is ``False``,
-        raise ``FileExistsError``.
+        ``FileExistsError`` is raised. If ``overwrite`` is ``True``,
+        then the file will be overwritten.
 
-        If ``target`` is an existing directory and ``type(self)`` is ``LocalUpath``,
-        raise ``IsADirectoryError``. In a cloud blob store, this operation may be
-        allowed, although the user is recommended to avoid such naming.
+        If ``type(self)`` is ``LocalUpath`` and ``target`` is an existing directory,
+        then ``IsADirectoryError`` is raised. In a cloud blob store, there is no concrete "directory".
+        For example, suppose ``self`` is the path 'gs://mybucket/experiment/data' on
+        Google Cloud Storage, and ``target`` is '/backup/record', then
+        the target path is 'gs://mybucket/backup/record'.
+        If there exists blob 'gs://mybucket/backup/record/y', then we say 'gs://mybucket/backup/record'
+        is a "directory". However, this is merely a "virtual" concept, or an emulation
+        of the "directory" concept on local disk. As long as this path is not an
+        existing blob, the copy will proceed with no problem.
+        Nevertheless, such naming is confusing and better avoided.
         """
         target_ = self.parent / target
         if target_ == self:
@@ -413,9 +463,11 @@ class Upath(abc.ABC, EnforceOverrides):
         self._copy_file(target_, overwrite=overwrite)
 
     def exists(self) -> bool:
-        """Return ``True`` if the path is an existing file or dir,
+        """Return ``True`` if the path is an existing file or dir;
         ``False`` otherwise.
 
+        Examples
+        --------
         In a blobstore with blobs
 
         ::
@@ -437,23 +489,25 @@ class Upath(abc.ABC, EnforceOverrides):
         overwrite: bool = False,
         quiet: bool = False,
     ) -> int:
-        """Copy the content of the current directory recursively
+        """Copy the content of the current directory (i.e. ``self``) recursively
         to the specified ``target``, which is typically in another store.
 
-        ``target`` corresponds to ``self``, that is, direct children of ``self``
-        are copied directly into ``target``.
+        ``target`` corresponds to ``self``, that is, immediate children of ``self``
+        are copied as immediate children of ``target``.
 
-        Compare with ``copy_dir``, which makes copies within the *same store*.
+        This method is similar to :meth:`copy_dir` except for the following difference:
+        ``export_dir`` is intended for copying to a different store (e.g. from Google Cloud Storage to Azure Blob Storage,
+        or from local disk to Google Cloud Storage), hence ``target`` is a full ``Upath`` object;
+        ``copy_dir`` is intended for copying to another location in the same store,
+        hence ``target`` is a string (possibly relative to ``self.parent``), and the full target path
+        is resolved internally.
 
-        Overwriting happens file-wise. For example, if the target directory
-        contains files that do not exist in the source directory, they
-        are left untouched.
+        ``quiet`` controls whether to print out progress info.
 
-        If ``target`` is a ``LocalUpath`` object and ``self`` is a ``BlobUpath`` object,
-        then a subclass may implement more efficient ways to "download",
-        along with renaming this method to "download_dir".
-
-        Return the number of files copied.
+        Returns
+        -------
+        int
+            The number of files exported.
         """
 
         def foo():
@@ -481,18 +535,12 @@ class Upath(abc.ABC, EnforceOverrides):
         """Copy the file to the specified ``target``, which is typically
         in another store.
 
-        The ``target`` specifies a blob corresponding to ``self``.
-
         If ``target`` is a ``LocalUpath`` object representing an existing *directory*,
-        ``IsADirectoryError`` is raised. A copy is not placed *into* the target directory.
+        ``IsADirectoryError`` is raised. A copy is not placed *into* the directory.
         This behavior differs from the Linux command ``cp``.
 
-        If ``target`` is a path in a cloud store, and is an existing *directory*,
-        a new blob may be created as a result of this "export", because in cloud stores
-        a path can be both a "file" and a "directory", although user is recommended
-        to avoid such namings.
-
-        Compare with :meth:`copy_file`, which makes copies within the same store.
+        ``export_file`` is similar to :meth:`copy_file` as :meth:`export_dir`
+        is similar to :meth:`copy_dir`.
         """
         # Reference implementation.
         # Subclass may customize this to perform file download
@@ -502,7 +550,7 @@ class Upath(abc.ABC, EnforceOverrides):
     @abc.abstractmethod
     def file_info(self) -> Optional[FileInfo]:
         """
-        If :meth:`is_file` is ``False``, return ``None``.
+        If :meth:`is_file` is ``False``, return ``None``; otherwise, return file info.
         """
         raise NotImplementedError
 
@@ -513,7 +561,7 @@ class Upath(abc.ABC, EnforceOverrides):
         overwrite: bool = False,
         quiet: bool = False,
     ) -> int:
-        """Analogous to :meth:`export_dir`."""
+        """Analogous to :meth:`export_dir`, except that ``self`` is the target (receiving) directory."""
 
         def foo():
             source_path = source.path
@@ -537,19 +585,12 @@ class Upath(abc.ABC, EnforceOverrides):
         return n
 
     def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
-        """
-        If ``self`` is a ``LocalUpath`` object representing an existing *directory*,
-        ``IsADirectoryError`` is raised.
-
-        When ``source`` is a ``LocalUpath`` and ``self`` is a ``BlobUpath`` object,
-        subclass may implement this in more efficient ways for uploading,
-        along with renaming it to ``upload_file``.
-        """
+        """Analogous to :meth:`export_file`, except that ``self`` is the target (receiving) file."""
         self.write_bytes(source.read_bytes(), overwrite=overwrite)
 
     @abc.abstractmethod
     def is_dir(self) -> bool:
-        """Return ``True`` if the path is an existing directory, ``False`` otherwise.
+        """Return ``True`` if the path is an existing directory; ``False`` otherwise.
 
         If there exists a file named like
 
@@ -557,30 +598,30 @@ class Upath(abc.ABC, EnforceOverrides):
 
             /a/b/c/d.txt
 
-        we say `/a`, `/a/b`, `/a/b/c` are existing directories.
+        we say ``'/a'``, ``'/a/b'``, ``'/a/b/c'`` are existing directories.
 
         In a cloud blob store, there's no such thing as an
         "empty directory", because there is no concept of "directory".
         A blob store just consists of files (aka blobs) with names,
         which could contain the letter '/', with no special meaning
         attached to it.
-        We interpret the name `/a/b` as a directory
-        to emulate the familiar concept in a local file system because
-        there exist files named `/a/b/*`.
+        We interpret the name ``'/a/b'`` as a directory
+        to emulate the familiar concept in a local file system when
+        there exist files named ``'/a/b/*'``.
 
         In a local file system, there can be empty directories.
         However, it is recommended to not have empty directories.
 
-        There is no method for "creating a dir" (like ``mkdir``).
+        There is no method for "creating an tempty dir" (like ``mkdir``).
         Simply create a file under the dir, and the dir will come into being.
-        This is analogous to our treatment to files---we don't "create" a file
-        in advance; we simply write to a path, intending it to be a file.
+        This is analogous to we create files all the time---we don't "create" an empty file
+        in advance; we simply write to the would-be path of the file to be created.
         """
         raise NotImplementedError
 
     @abc.abstractmethod
     def is_file(self) -> bool:
-        """Return ``True`` if the path is an existing file, ``False`` otherwise.
+        """Return ``True`` if the path is an existing file; ``False`` otherwise.
 
         In a cloud blob store, a path can be both a file and a dir. For
         example, if these blobs exist::
@@ -597,34 +638,37 @@ class Upath(abc.ABC, EnforceOverrides):
 
     @abc.abstractmethod
     def iterdir(self: T) -> Iterator[T]:
-        """Yield the first-level (i.e. non-recursive) children
-        of the current dir.
-
+        """Yield the immediate (i.e. non-recursive) children
+        of the current dir (i.e. ``self``).
         Each yielded element is either a file or a dir.
 
         If ``self`` is not a dir (e.g. maybe it's a file),
-        or does not exist at all, yield nothing (resulting in an
-        empty iterable), but do not raise exception.
+        or does not exist at all, nothing is yielded (resulting in an
+        empty iterable); no exception is raised.
 
         There is no guarantee on the order of the returned elements.
         """
         raise NotImplementedError
 
     def joinpath(self: T, *other: str) -> T:
-        """Join this path with more segments, return the new path object."""
+        """Join this path with more segments, return the new path object.
+
+        If ``self`` was created by ``Upath(*segs)``, then this method essentially
+        returns ``Upath(*segs, *other)``.
+        """
         return self.with_path(self._path, *other)
 
     @contextlib.contextmanager
     @abc.abstractmethod
     def lock(self, *, timeout: int = None):
-        """Lock the file pointed to, in order to have exclusive access.
+        """Lock the current file (i.e. ``self``), in order to have exclusive access.
 
-        ``timeout``: if the lock can't be acquired within *timeout* seconds,
-        raise ``LockAcquireError``. If ``None``, wait for a default
+        ``timeout``: if the lock can't be acquired within ``timeout`` seconds,
+        ``LockAcquireError`` is raised. If ``None``, wait for a default
         reasonably long time. To wait "forever", just pass in a large number.
-        Once a lease is acquired, it will not expire until this contexmanager exits.
+        Once a lock is acquired, it will not expire until this contexmanager exits.
         In other words, this is timeout for the "wait", not for the
-        lease itself. Actual waiting time may be slightly longer.
+        lock itself. Actual waiting time could be slightly longer.
 
         This is a "mandatory lock", as opposed to an "advisory lock".
         However, this API does not specify that the locked file
@@ -632,6 +676,8 @@ class Upath(abc.ABC, EnforceOverrides):
         The intended use case is for this lock to be used
         for implementing a (cooperative) "code lock".
 
+        As this abstract method is to be used as a context manager,
+        a subclass should use ``yield`` in its implementation.
         The ``yield`` statement is not required to yield anything,
         that is, it may be simply
 
@@ -651,12 +697,12 @@ class Upath(abc.ABC, EnforceOverrides):
             f = Upath('abc.txt')
             with f.with_suffix('.txt.lock').lock():
                 ...
-                # now write `f` with exclusive access,
+                # Now write to `f` with exclusive access,
                 # because any other (cooperative) code block
                 # will not be able to get hold of `abc.txt.lock`
-                # in order to write `f` in its context-managed block.
-                # It's up to the program design whether this lock
-                # covers reading as well.
+                # in order to write to `f` using this same code block
+                # (or in another block that deliberately uses the same file lock).
+                # Reading can be made exclusive by this same lock mechanism.
 
         Some storage engines may not provide the capability to implement
         this lock.
@@ -664,6 +710,10 @@ class Upath(abc.ABC, EnforceOverrides):
         raise NotImplementedError
 
     def ls(self: T) -> List[T]:
+        """Return the elements yield by :meth:`iterdir` in a sorted list.
+
+        The returned list may be empty.
+        """
         return sorted(self.iterdir())
 
     @property
