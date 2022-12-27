@@ -110,62 +110,15 @@ class LocalUpath(Upath):
         # If `self` is an existing file, will overwrite.
 
     @overrides
-    def _copy_file(self, target: LocalUpath, *, overwrite: bool = False):
-        if not overwrite and target.is_file():
-            raise FileExistsError(target)
-        os.makedirs(target.localpath.parent, exist_ok=True)
-        shutil.copyfile(self.localpath, target.localpath)
-        # If target already exists, it will be overwritten.
-
-    @overrides
-    def export_dir(self, target: Upath, **kwargs) -> int:
-        """
-        This customizes the ``super`` version in case ``target`` is in a cloud blob store
-        and the corresponding :class:`Upath` subclass has an efficient implementation
-        for "upload".
-        """
+    def _copy_file(self, target: Upath, *, overwrite: bool = False):
         if isinstance(target, LocalUpath):
-            return super().export_dir(target, **kwargs)
-        # `target` is a cloud store; it might have implemented
-        # efficient 'download' functionality.
-        return target.import_dir(self, **kwargs)
-
-    @overrides
-    def export_file(self, target: Upath, *, overwrite=False):
-        """
-        This customizes the ``super`` version in case ``target`` is in a cloud blob store
-        and the corresponding :class:`Upath` subclass has an efficient implementation
-        for "upload".
-        """
-        if isinstance(target, LocalUpath):
-            return self._copy_file(target, overwrite=overwrite)
-        # `target` is a cloud store; it might have implemented
-        # efficient 'upload' functionality.
-        target.import_file(self, overwrite=overwrite)
-
-    @overrides
-    def import_dir(self, source: Upath, **kwargs) -> int:
-        """
-        This customizes the ``super`` version in case ``source`` is in a cloud blob store
-        and the corresponding :class:`Upath` subclass has an efficient implementation
-        for "download".
-        """
-        if isinstance(source, LocalUpath):
-            return super().import_dir(source, **kwargs)
-        return source.export_dir(self, **kwargs)
-
-    @overrides
-    def import_file(self, source: Upath, *, overwrite=False):
-        """
-        This customizes the ``super`` version in case ``source`` is in a cloud blob store
-        and the corresponding :class:`Upath` subclass has an efficient implementation
-        for "download".
-        """
-        if isinstance(source, LocalUpath):
-            return source._copy_file(self, overwrite=overwrite)
-        # Call the other side in case it implements an efficient
-        # file download.
-        source.export_file(self, overwrite=overwrite)
+            if not overwrite and target.is_file():
+                raise FileExistsError(target)
+            os.makedirs(target.localpath.parent, exist_ok=True)
+            shutil.copyfile(self.localpath, target.localpath)
+            # If target already exists, it will be overwritten.
+        else:
+            super()._copy_file(target, overwrite=overwrite)
 
     @overrides
     def remove_dir(self, **kwargs) -> int:

@@ -27,8 +27,7 @@ from azure.core.exceptions import (
 from overrides import overrides
 
 from ._upath import LockAcquireError, FileInfo, Upath
-from ._blob import BlobUpath
-from ._local import LocalUpath
+from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 
 # End user may want to do this:
 # logging.getLogger("azure.storage").setLevel(logging.WARNING)
@@ -151,13 +150,22 @@ class AzureBlobUpath(BlobUpath):
                 assert copy["copy_status"] == "success"
 
     @overrides
-    def _copy_file(self, target: AzureBlobUpath, *, overwrite=False):
-        target._copy_file_from(self, overwrite=overwrite)
+    def _copy_file(self, target: Upath, *, overwrite=False):
+        if isinstance(target, AzureBlobUpath):
+            target._copy_file_from(self, overwrite=overwrite)
+        else:
+            super()._copy_file(target, overwrite=overwrite)
 
     @overrides
-    def export_file(self, target: Upath, *, overwrite=False) -> None:
-        if not isinstance(target, LocalUpath):
-            return super().export_file(target, overwrite=overwrite)
+    def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
+        target = _resolve_local_path(target)
+        if target.is_file():
+            if not overwrite:
+                raise FileExistsError(str(target))
+            target.remove_file()
+        elif target.is_dir():
+            raise IsADirectoryError(str(target))
+
         with self._provide_blob_client():
             # TODO: check behavior of `download_blob` about
             # overwrite.
@@ -187,13 +195,14 @@ class AzureBlobUpath(BlobUpath):
             return None
 
     @overrides
-    def import_file(self, source: Upath, *, overwrite: bool = False):
-        if not isinstance(source, LocalUpath):
-            return super().import_file(source, overwrite=overwrite)
-        if not overwrite and self.is_file():
-            # TODO: check the behavior of `upload_blob` related to
-            # behavior about overwrite.
-            raise FileExistsError(self)
+    def upload_file(self, source: LocalPathType, *, overwrite: bool = False):
+        source = _resolve_local_path(source)
+        if self.is_file():
+            if not overwrite:
+                # TODO: check the behavior of `upload_blob` related to
+                # behavior about overwrite.
+                raise FileExistsError(self)
+            self.remove_file()
         with self._provide_blob_client():
             with open(str(source), "rb") as data:
                 self._blob_client.upload_blob(data)

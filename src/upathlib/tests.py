@@ -127,7 +127,7 @@ def test_read_write_rm_navigate(p: Upath):
     assert p.rmrf() == 0
 
 
-def test_import_export(p: Upath):
+def test_copy(p: Upath):
     source = p
     source.rmrf()
 
@@ -137,28 +137,28 @@ def test_import_export(p: Upath):
     source_file = source / "testfile"
     source_file.write_text("abc", overwrite=True)
 
-    target.import_file(source_file)
+    source_file.copy_file(target)
     assert target.read_text() == "abc"
 
     with pytest.raises(NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
-        target.joinpath("samplefile").import_dir(source)
+        source.copy_dir(target.joinpath("samplefile"))
 
     target.rmrf()
     p2 = target.joinpath("samplefile")
-    p2.import_dir(source)
+    source.copy_dir(p2)
     p3 = p2 / source_file.name
     assert target.ls() == [p2]
     assert p2.ls() == [p3]
     assert p3.read_text() == "abc"
 
     p1 = source / "a" / "b" / "c"
-    assert p2.export_dir(p1) == 1
+    assert p2.copy_dir(p1) == 1
     p4 = p1 / source_file.name
     assert p4.read_text() == "abc"
 
-    assert p2.export_dir(source / "a" / "b") == 1
+    assert p2.copy_dir(source / "a" / "b") == 1
     assert (source / "a" / "b" / source_file.name).read_text() == "abc"
 
 
@@ -189,6 +189,6 @@ def test_all(p: Upath):
     test_compare(p)
 
     test_read_write_rm_navigate(p)
-    test_import_export(p)
+    test_copy(p)
 
     # test_lock(p)

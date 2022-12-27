@@ -16,6 +16,9 @@ Removed
 - Classmethods `register_read_write_byte_format`, `register_read_write_text_format` of `Upath`.
 - Parameter `thread_pool_executors` to `Upath.__init__`.
 - Methods `rename_dir` and `rename_file` in `Upath` (both remain in `LocalUpath`).
+- Classes `ZJsonSerializer`, `ZstdJsonSerializer`.
+- Back-compat module `upathlib.gcp`.
+- Methods `export_dir`, `export_file`, `import_dir`, `import_file`. (Concentrate on the `copy_*` methods.)
 
 
 ## [0.6.8] - 2022-11-16

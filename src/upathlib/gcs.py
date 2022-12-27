@@ -27,9 +27,8 @@ from google.api_core.exceptions import (
 )
 from overrides import overrides
 
-from ._upath import FileInfo, Upath, LockAcquireError, LockReleaseError
-from ._blob import BlobUpath
-from ._local import LocalUpath
+from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
+from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 
 
 logger = logging.getLogger(__name__)
@@ -429,36 +428,37 @@ class GcsBlobUpath(BlobUpath):
         return func(*args, **kwargs)
 
     @overrides
-    def _copy_file(self, target: GcsBlobUpath, *, overwrite=False) -> None:
-        # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
-        try:
-            self.bucket.copy_blob(
-                self.blob(),
-                target.bucket,
-                target.blob_name,
-                client=self.client,
-                if_generation_match=None if overwrite else 0,
-            )
-        except NotFound:
-            raise FileNotFoundError(self)
-        except PreconditionFailed:
-            raise FileExistsError(target)
+    def _copy_file(self, target: Upath, *, overwrite=False) -> None:
+        if isinstance(target, GcsBlobUpath):
+            # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
+            try:
+                self.bucket.copy_blob(
+                    self.blob(),
+                    target.bucket,
+                    target.blob_name,
+                    client=self.client,
+                    if_generation_match=None if overwrite else 0,
+                )
+            except NotFound:
+                raise FileNotFoundError(self)
+            except PreconditionFailed:
+                raise FileExistsError(target)
+        else:
+            super()._copy_file(target, overwrite=overwrite)
 
     @overrides
-    def export_file(self, target: Upath, *, overwrite=False) -> None:
+    def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         """
-        Export the content of the current blob (i.e. ``self``) to ``target``.
-
-        A main specialization in this method is when ``target``
-        is :class:`~upathlib.LocalUpath`, which amounts to "download".
+        Download the content of the current blob (i.e. ``self``) to ``target``.
         """
-        if not isinstance(target, LocalUpath):
-            return super().export_file(target, overwrite=overwrite)
+        target = _resolve_local_path(target)
+        if target.is_file():
+            if not overwrite:
+                raise FileExistsError(target)
+            target.remove_file()
+        elif target.is_dir():
+            raise IsADirectoryError(target)
 
-        # File download.
-
-        if not overwrite and target.is_file():
-            raise FileExistsError(target)
         os.makedirs(str(target.parent), exist_ok=True)
         try:
             with open(target.localpath, "wb") as file_obj:
@@ -474,20 +474,18 @@ class GcsBlobUpath(BlobUpath):
             raise
 
     @overrides
-    def import_file(self, source: Upath, *, overwrite=False) -> None:
+    def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
-        Export the content of the current blob (i.e. ``self``) to ``target``.
-
-        A main specialization in this method is when ``source``
-        is :class:`~upathlib.LocalUpath`, which amounts to "upload".
+        Upload the content of ``source`` to the current blob.
         """
-        if not isinstance(source, LocalUpath):
-            return super().import_file(source, overwrite=overwrite)
-
-        # File upload.
-
+        source = _resolve_local_path(source)
         filename = str(source)
         content_type = self.blob()._get_content_type(None, filename=filename)
+
+        if self.is_file():
+            if not overwrite:
+                raise FileExistsError(self)
+            self.remove_file()
 
         def _upload():
             with open(filename, "rb") as file_obj:
