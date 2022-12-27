@@ -15,6 +15,7 @@ Removed
 - Parameters `project_id` and `credentials` to `GcsBlobUpath.__init__`.
 - Classmethods `register_read_write_byte_format`, `register_read_write_text_format` of `Upath`.
 - Parameter `thread_pool_executors` to `Upath.__init__`.
+- Methods `rename_dir` and `rename_file` in `Upath` (both remain in `LocalUpath`).
 
 
 ## [0.6.8] - 2022-11-16
