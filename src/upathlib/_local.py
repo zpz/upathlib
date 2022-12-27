@@ -182,12 +182,48 @@ class LocalUpath(Upath):
         """Remove the current file."""
         self.localpath.unlink()
 
-    @overrides
-    def rename_dir(self, target: str, **kwargs) -> LocalUpath:
+    def rename_dir(
+        self,
+        target: str,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
+    ) -> LocalUpath:
+        """Rename the current dir (i.e. ``self``) to ``target``.
+
+        ``overwrite`` is applied file-wise. If there are
+        files under ``target`` that do not have counterparts under ``self``,
+        they are left untouched.
+
+        ``quiet`` controls whether to print progress info.
+
+        Return the new path.
         """
-        Rename the current dir to ``target``.
-        """
-        target_ = super().rename_dir(target, **kwargs)
+
+        if not self.is_dir():
+            raise FileNotFoundError(str(self))
+
+        target_ = self.parent / target
+        if target_ == self:
+            return self
+
+        def foo():
+            for p in self.riterdir():
+                extra = str(p.path.relative_to(self.path))
+                yield (
+                    p.rename_file,
+                    [(target_ / extra)._path],
+                    {"overwrite": overwrite},
+                    extra,
+                )
+
+        if quiet:
+            desc = False
+        else:
+            desc = f"Renaming {self!r} to {target_!r}"
+
+        for _ in self._run_in_executor(foo(), desc):
+            pass
 
         def _remove_empty_dir(path):
             k = 0
@@ -204,13 +240,31 @@ class LocalUpath(Upath):
 
         return target_
 
-    @overrides
     def _rename_file(self, target: str, *, overwrite=False):
         target = self.parent / target
         if not overwrite and target.is_file():
             raise FileExistsError(target)
         os.makedirs(target.localpath.parent, exist_ok=True)
         self.localpath.rename(target.localpath)
+
+    def rename_file(self, target: str, *, overwrite: bool = False) -> LocalUpath:
+        """Rename the current file (i.e. ``self``) to ``target`` in the same store.
+
+        ``target`` is either absolute or relative to ``self.parent``.
+        For example, if ``self`` is '/a/b/c/d.txt', then
+        ``target='e.txt'`` means '/a/b/c/e.txt'.
+
+        If ``overwrite`` is ``False`` (the default) and the target file exists,
+        ``FileExistsError`` is raised.
+
+        Return the new path.
+        """
+        target_ = self.parent / target
+        if target_ == self:
+            return self
+
+        self._rename_file(target_._path, overwrite=overwrite)
+        return target_
 
     @overrides
     def iterdir(self) -> Iterator[LocalUpath]:

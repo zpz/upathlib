@@ -162,27 +162,6 @@ def test_import_export(p: Upath):
     assert (source / "a" / "b" / source_file.name).read_text() == "abc"
 
 
-def test_rename(p: Upath):
-    p.rmrf()
-
-    (p / "a/a.txt").write_text("a")
-    (p / "b/b.txt").write_text("b")
-    (p / "c/d/e.txt").write_text("e")
-    (p / "c/d.txt").write_text("d")
-
-    assert (p / "a/a.txt").read_text() == "a"
-
-    p.joinpath("a/a.txt").rename_file("b/a.txt")
-    assert not (p / "a/a.txt").exists()
-    assert (p / "a/b/a.txt").read_text() == "a"
-
-    pp = (p / "c").rename_dir("a/c")
-
-    assert (pp / "d/e.txt").read_text() == "e"
-    assert (pp / "d.txt").read_text() == "d"
-    assert not (p / "c").exists()
-
-
 def _access_in_mp(root: Upath, path: str, timeout):
     p = root / path
     t0 = time.perf_counter()
@@ -211,6 +190,5 @@ def test_all(p: Upath):
 
     test_read_write_rm_navigate(p)
     test_import_export(p)
-    test_rename(p)
 
     # test_lock(p)
