@@ -104,7 +104,10 @@ class FakeBlobUpath(BlobUpath):
 
     @overrides
     def _copy_file(self, target, *, overwrite=False):
-        _store.copy_blob(self._bucket, self._path, target._path, overwrite=overwrite)
+        if isinstance(target, FakeBlobUpath):
+            _store.copy_blob(self._bucket, self._path, target._path, overwrite=overwrite)
+        else:
+            super()._copy_file(target, overwrite=overwrite)
 
     @contextlib.contextmanager
     @overrides

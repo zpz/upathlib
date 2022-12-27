@@ -639,17 +639,18 @@ class Upath(abc.ABC, EnforceOverrides):
 
     def copy_dir(
         self,
-        target: str,
+        target: str | Upath,
         *,
         overwrite: bool = False,
         quiet: bool = False,
     ) -> int:
-        """Copy the content of the current directory (i.e. ``self``) recursively to ``target`` in the same store.
+        """Copy the content of the current directory (i.e. ``self``) recursively to ``target``.
 
-        Analogous to :meth:`copy_file`,
-        ``target`` is either absolute, or relative to ``self.parent``.
-        The directory created by this operation will be the path ``self.parent / target``.
-        Immediate children of ``self`` will be copied as immediate children of this target path.
+        If ``target`` is an string, then it is either absolute, or relative to ``self.parent``.
+        In that case,
+        the directory created by this operation will be the path ``self.parent / target``.
+
+        Immediate children of ``self`` will be copied as immediate children of the target path.
 
         There is no such error as "target directory exists" as the copy-operation
         only concerns invidivual files.
@@ -670,16 +671,20 @@ class Upath(abc.ABC, EnforceOverrides):
             The number of files copied.
         """
 
-        target_ = self.parent / target
-        if target_ == self:
-            return 0
+        if isinstance(target, str):
+            target_ = self.parent / target
+            if target_ == self:
+                return 0
+        else:
+            target_ = target
 
         def foo():
+            self_path = self.path
             for p in self.riterdir():
-                extra = str(p.path.relative_to(self.path))
+                extra = str(p.path.relative_to(self_path))
                 yield (
                     p.copy_file,
-                    ((target_ / extra)._path,),
+                    (target_ / extra,),
                     {"overwrite": overwrite},
                     extra,
                 )
@@ -687,28 +692,25 @@ class Upath(abc.ABC, EnforceOverrides):
         if quiet:
             desc = False
         else:
-            desc = f"Copying from {self} into {target_}"
+            desc = f"Copying from {self!r} into {target_!r}"
 
         n = 0
         for _ in self._run_in_executor(foo(), desc):
             n += 1
         return n
 
-    def _copy_file(self: T, target: T, *, overwrite: bool = False) -> None:
-        # `target` is a path in the same store.
-        # Reference implementation.
-        # Subclass may customize this to perform file operations.
+    def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
-    def copy_file(self, target: str, *, overwrite: bool = False) -> None:
-        """Copy the current file (i.e. ``self``) to ``target`` in the same store.
+    def copy_file(self, target: str | Upath, *, overwrite: bool = False) -> None:
+        """Copy the current file (i.e. ``self``) to ``target``.
 
-        ``target`` is either absolute, or relative to ``self.parent``.
+        If ``target`` is str, then it is either absolute, or relative to ``self.parent``.
+        In this case, the file created by this operation will the path ``self.parent / target``.
         For example, if ``self`` is ``'/a/b/c/d.txt'``, then
         ``target='e.txt'`` means ``'/a/b/c/e.txt'``.
 
         ``target`` is the target file, *not* a target directory to "copy into".
-        The file created by this operation will the path ``self.parent / target``.
 
         If ``self`` is not an existing file, ``FileNotFoundError`` is raised.
 
@@ -727,110 +729,14 @@ class Upath(abc.ABC, EnforceOverrides):
         existing blob, the copy will proceed with no problem.
         Nevertheless, such naming is confusing and better avoided.
         """
-        target_ = self.parent / target
-        if target_ == self:
-            return
+        if isinstance(target, str):
+            target_ = self.parent / target
+            if target_ == self:
+                return
+        else:
+            target_ = target
 
         self._copy_file(target_, overwrite=overwrite)
-
-    def export_dir(
-        self,
-        target: Upath,
-        *,
-        overwrite: bool = False,
-        quiet: bool = False,
-    ) -> int:
-        """Copy the content of the current directory (i.e. ``self``) recursively
-        to the specified ``target``, which is typically in another store.
-
-        ``target`` corresponds to ``self``, that is, immediate children of ``self``
-        are copied as immediate children of ``target``.
-
-        This method is similar to :meth:`copy_dir` except for the following difference:
-        ``export_dir`` is intended for copying to a different store (e.g. from Google Cloud Storage to Azure Blob Storage,
-        or from local disk to Google Cloud Storage), hence ``target`` is a full ``Upath`` object;
-        ``copy_dir`` is intended for copying to another location in the same store,
-        hence ``target`` is a string (possibly relative to ``self.parent``), and the full target path
-        is resolved internally.
-
-        ``quiet`` controls whether to print out progress info.
-
-        Returns
-        -------
-        int
-            The number of files exported.
-        """
-
-        def foo():
-            self_path = self.path
-            for p in self.riterdir():
-                extra = str(p.path.relative_to(self_path))
-                yield (
-                    p.export_file,
-                    (target / extra,),
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Exporting from {self!r} into {target!r}"
-
-        n = 0
-        for _ in self._run_in_executor(foo(), desc):
-            n += 1
-        return n
-
-    def export_file(self, target: Upath, *, overwrite: bool = False) -> None:
-        """Copy the file to the specified ``target``, which is typically
-        in another store.
-
-        If ``target`` is a ``LocalUpath`` object representing an existing *directory*,
-        ``IsADirectoryError`` is raised. A copy is not placed *into* the directory.
-        This behavior differs from the Linux command ``cp``.
-
-        ``export_file`` is similar to :meth:`copy_file` as :meth:`export_dir`
-        is similar to :meth:`copy_dir`.
-        """
-        # Reference implementation.
-        # Subclass may customize this to perform file download
-        # when `target` is a `LocalUpath`.
-        target.write_bytes(self.read_bytes(), overwrite=overwrite)
-
-    def import_dir(
-        self,
-        source: Upath,
-        *,
-        overwrite: bool = False,
-        quiet: bool = False,
-    ) -> int:
-        """Analogous to :meth:`export_dir`, except that ``self`` is the target (receiving) directory."""
-
-        def foo():
-            source_path = source.path
-            for p in source.riterdir():
-                extra = str(p.path.relative_to(source_path))
-                yield (
-                    (self / extra).import_file,
-                    (p,),
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Importing from {source!r} into {self!r}"
-
-        n = 0
-        for _ in self._run_in_executor(foo(), desc):
-            n += 1
-        return n
-
-    def import_file(self, source: Upath, *, overwrite: bool = False) -> None:
-        """Analogous to :meth:`export_file`, except that ``self`` is the target (receiving) file."""
-        self.write_bytes(source.read_bytes(), overwrite=overwrite)
 
     def remove_dir(self, *, quiet: bool = True) -> int:
         """Remove the current directory (i.e. ``self``) and all its contents recursively.
