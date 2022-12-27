@@ -361,7 +361,6 @@ class AzureBlobUpath(BlobUpath):
         return self.__class__(
             *paths,
             container_name=self._container_name,
-            thread_pool_executors=self._thread_pools,
         )
 
     @overrides
