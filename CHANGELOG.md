@@ -6,9 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [in progress]
 
-The largest effort in this release is enhancements to documentation,
-including Sphinx documentation generation and hosting on readthedocs.
-
 Removed
 -------
 
@@ -19,6 +16,11 @@ Removed
 - Classes `ZJsonSerializer`, `ZstdJsonSerializer`.
 - Back-compat module `upathlib.gcp`.
 - Methods `export_dir`, `export_file`, `import_dir`, `import_file`. (Concentrate on the `copy_*` methods.)
+
+Added or enhanced
+-----------------
+
+- Enhancements to documentation, including Sphinx documentation generation and hosting on readthedocs.
 
 
 ## [0.6.8] - 2022-11-16
