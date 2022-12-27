@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [in progress]
+
+The largest effort in this release is enhancements to documentation,
+including Sphinx documentation generation and hosting on readthedocs.
+
+Removed
+-------
+
+- Parameters `project_id` and `credentials` to `GcsBlobUpath.__init__`.
+- Classmethods `register_read_write_byte_format`, `register_read_write_text_format` of `Upath`.
+- Parameter `thread_pool_executors` to `Upath.__init__`.
+
 
 ## [0.6.8] - 2022-11-16
 

@@ -28,7 +28,6 @@ from typing import (
     List,
     Iterable,
     Iterator,
-    Type,
     TypeVar,
     Any,
     Optional,
@@ -39,11 +38,7 @@ from typing import (
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
 from .serializer import (
-    ByteSerializer,
-    TextSerializer,
     JsonSerializer,
-    ZJsonSerializer,
-    ZstdJsonSerializer,
     PickleSerializer,
     ZPickleSerializer,
     ZstdPickleSerializer,
@@ -57,6 +52,11 @@ from .serializer import (
 # to suppress the "urllib3 connection lost" warning.
 
 T = TypeVar("T", bound="Upath")
+"""
+The type variable ``T`` represents the class :class:`Upath` or a subclass of it.
+Many methods return a new path of the same type.
+This is indicated by ``self: T`` and return type ``-> T:``.
+"""
 
 
 class LockAcquireError(TimeoutError):
@@ -78,75 +78,11 @@ class FileInfo:
 
 
 class Upath(abc.ABC, EnforceOverrides):
-    @classmethod
-    def register_read_write_byte_format(cls, serde: Type[ByteSerializer], name: str):
-        """
-        Register a new binary format backed by the serializer ``serde``,
-        which is a subclass of :class:`~upathlib.serializer.ByteSerializer`.
-
-        For example, if ``serde`` is the class :class:`~upathlib.serializer.PickleSerializer` and
-        ``name`` is ``'pickle'``, then this method adds isinstance methods
-        ``write_pickle`` and ``read_pickle``.
-        The writer method is implemented using :meth:`write_bytes` along with
-        the :meth:`~upathlib.serializer.PickleSerializer.serialize` method of the ``serde``;
-        the reader method is implemented using :meth:`read_bytes` along with
-        the :meth:`~upathlib.serializer.PickleSerializer.deserialize` method of the ``serde``.
-
-        ``name`` usually is a slight variation of the name of the class ``serde``,
-        with changes such as lower-casing and separating words by underscores.
-        This needs to be a valid method name, e.g. it can't contain space or dash.
-
-        At the end of this module, this method is called to register a number of common formats including
-        'pickle', 'pickle_z', 'pickle_zstd', 'orjson', 'orjson_z', and 'orjson_zstd'.
-        Consequently, this class has instance methods
-        ``write_pickle``, ``read_pickle``, ``write_pickle_z``, ``read_pickle_z``, etc.
-
-        User may register custom formats by this method.
-        """
-
-        def _write(self, data, *, overwrite=False, **kwargs):
-            return self.write_bytes(
-                serde.serialize(data, **kwargs), overwrite=overwrite
-            )
-
-        def _read(self, **kwargs):
-            z = self.read_bytes()
-            return serde.deserialize(z, **kwargs)
-
-        setattr(_write, "__name__", f"write_{name}")
-        setattr(_read, "__name__", f"read_{name}")
-        setattr(cls, f"write_{name}", _write)
-        setattr(cls, f"read_{name}", _read)
-
-    @classmethod
-    def register_read_write_text_format(cls, serde: Type[TextSerializer], name: str):
-        """
-        Register a new textual format backed by the serializer ``serde``,
-        which is a subclass of :class:`~upathlib.serializer.TextSerializer`.
-
-        Anologous to :meth:`register_read_write_byte_format`.
-
-        At the end of this module, this method is called to register the 'json' format.
-        """
-
-        def _write(self, data, *, overwrite=False, **kwargs):
-            return self.write_text(serde.serialize(data, **kwargs), overwrite=overwrite)
-
-        def _read(self, **kwargs):
-            z = self.read_text()
-            return serde.deserialize(z, **kwargs)
-
-        setattr(_write, "__name__", f"write_{name}")
-        setattr(_read, "__name__", f"read_{name}")
-        setattr(cls, f"write_{name}", _write)
-        setattr(cls, f"read_{name}", _read)
+    _thread_pools = None
 
     def __init__(
         self,
         *pathsegments: str,
-        thread_pool_executors: Optional[
-            tuple[ThreadPoolExecutor, ThreadPoolExecutor]
-        ] = None,
     ):
         """
         Create a ``Upath`` instance. Because ``Upath`` is an abstract class,
@@ -181,15 +117,6 @@ class Upath(abc.ABC, EnforceOverrides):
                 a POSIX file system. For Google Cloud storage, the first part of the path
                 can be ``'gs://bucket-name/'``. For other cloud storages or Windows,
                 this documentation will need some update.
-        thread_pool_executors
-            The methods that work on "directories" use threads to operate on files concurrently.
-            If there are a large number of ``Upath`` instances active at the same time,
-            the total number of threads created by these methods could be too large.
-            This parameter, if specified, provides a pool of threads to be used by
-            said methods, hence controls the total number of threads.
-
-            If specified, this must be two independent executors.
-            Typically, the second pool should be smaller than the first.
         """
 
         self._path = os.path.normpath(
@@ -198,21 +125,11 @@ class Upath(abc.ABC, EnforceOverrides):
         # The path is always "absolute" starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
 
-        if not thread_pool_executors:
-            self._thread_pools = []
-        else:
-            assert len(thread_pool_executors) == 2
-            e0, e1 = thread_pool_executors
-            e0._thread_name_prefix = "UpathExecutor0"
-            e1._thread_name_prefix = "UpathExecutor1"
-            self._thread_pools = thread_pool_executors
-
     def __getstate__(self):
         return (self._path,)
 
     def __setstate__(self, data):
         self._path = data[0]
-        self._thread_pools = []
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self._path}')"
@@ -254,23 +171,377 @@ class Upath(abc.ABC, EnforceOverrides):
 
     def __truediv__(self: T, key: str) -> T:
         """
-        This is called by ``self / key``.
+        This method is invoked by ``self / key``.
+        This calls the method :meth:`joinpath`.
         """
         return self.joinpath(key)
 
     @property
+    def name(self) -> str:
+        """Return the segment after the last ``'/'``.
+
+        This is the ``name`` component of ``self.path``.
+        If the current path is the root, then an empty string is returned.
+
+        Examples
+        --------
+        >>> from upathlib import LocalUpath
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>> p.path
+        PurePosixPath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>> p.name
+        'sales.txt.gz'
+        >>> p.parent.parent.parent.parent
+        LocalUpath('/tmp')
+        >>> p.parent.parent.parent.parent.name
+        'tmp'
+        >>> p.parent.parent.parent.parent.parent
+        LocalUpath('/')
+        >>> p.parent.parent.parent.parent.parent.name
+        ''
+        >>> # the parent of root is still root:
+        >>> p.parent.parent.parent.parent.parent.parent
+        LocalUpath('/')
+        """
+        return self.path.name
+
+    @property
+    def parent(self: T) -> T:
+        """
+        Return the parent of the current path.
+
+        If the current path is the root, then the parent is still the root.
+        """
+        return self.with_path(str(self.path.parent))
+
+    @property
+    def path(self) -> pathlib.PurePosixPath:
+        """Return the `pathlib.PurePosixPath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePosixPath>`_
+        version of the internal path string.
+        """
+        return pathlib.PurePosixPath(self._path)
+
+    @property
+    def stem(self) -> str:
+        """
+        Return the "stem" part of ``self.name``, that is,
+        the name without the (last) suffix.
+
+        Examples
+        --------
+        >>> from upathlib import LocalUpath
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt')
+        >>> p
+        LocalUpath('/tmp/test/upathlib/data/sales.txt')
+        >>> p.path
+        PurePosixPath('/tmp/test/upathlib/data/sales.txt')
+        >>> p.name
+        'sales.txt'
+        >>> p.stem
+        'sales'
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>> p.stem
+        'sales.txt'
+        """
+        return self.path.stem
+
+    @property
+    def suffix(self) -> str:
+        """
+        Return the last suffix of the name.
+        """
+        return self.path.suffix
+
+    @property
+    def suffixes(self) -> List[str]:
+        """
+        Return all the suffixes in a list.
+
+        Examples
+        --------
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt')
+        >>> p.suffix
+        '.txt'
+        >>> p.suffixes
+        ['.txt']
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>> p.suffix
+        '.gz'
+        >>> p.suffixes
+        ['.txt', '.gz']
+        """
+        return self.path.suffixes
+
+    def exists(self) -> bool:
+        """Return ``True`` if the path is an existing file or dir;
+        ``False`` otherwise.
+
+        Examples
+        --------
+        In a blobstore with blobs
+
+        ::
+
+            /a/b/cd
+            /a/b/cd/e.txt
+
+        ``'/a/b/cd'`` exists, and is both a file and a dir;
+        ``'/a/b/cd/e.txt'`` exists, and is a file;
+        ``'/a/b'`` exists, and is a dir;
+        ``'/a/b/c'`` does not exist.
+        """
+        return self.is_file() or self.is_dir()
+
+    @abc.abstractmethod
+    def is_dir(self) -> bool:
+        """Return ``True`` if the path is an existing directory; ``False`` otherwise.
+
+        If there exists a file named like
+
+        ::
+
+            /a/b/c/d.txt
+
+        we say ``'/a'``, ``'/a/b'``, ``'/a/b/c'`` are existing directories.
+
+        In a cloud blob store, there's no such thing as an
+        "empty directory", because there is no concept of "directory".
+        A blob store just consists of files (aka blobs) with names,
+        which could contain the letter '/', with no special meaning
+        attached to it.
+        We interpret the name ``'/a/b'`` as a directory
+        to emulate the familiar concept in a local file system when
+        there exist files named ``'/a/b/*'``.
+
+        In a local file system, there can be empty directories.
+        However, it is recommended to not have empty directories.
+
+        There is no method for "creating an tempty dir" (like ``mkdir``).
+        Simply create a file under the dir, and the dir will come into being.
+        This is analogous to we create files all the time---we don't "create" an empty file
+        in advance; we simply write to the would-be path of the file to be created.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def is_file(self) -> bool:
+        """Return ``True`` if the path is an existing file; ``False`` otherwise.
+
+        In a cloud blob store, a path can be both a file and a dir. For
+        example, if these blobs exist::
+
+            /a/b/c/d.txt
+            /a/b/c
+
+        we say ``/a/b/c`` is a "file", and also a "dir".
+        User is recommended to avoid such namings.
+
+        This situation does not happen in a local file system.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def file_info(self) -> Optional[FileInfo]:
+        """
+        If :meth:`is_file` is ``False``, return ``None``; otherwise, return file info.
+        """
+        raise NotImplementedError
+
+    def joinpath(self: T, *other: str) -> T:
+        """Join this path with more segments, return the new path object.
+
+        If ``self`` was created by ``Upath(*segs)``, then this method essentially
+        returns ``Upath(*segs, *other)``.
+
+        If ``*other`` is a single string, there is a shortcut by the operator
+        ``/``, implemented by :meth:`__truediv__`.
+        """
+        return self.with_path(self._path, *other)
+
+    def with_name(self: T, name: str) -> T:
+        """
+        Return a new path the the "name" part substituted by the new value.
+
+        This is equivalent to ``self.parent / name``.
+
+        Examples
+        --------
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>> p.with_name('sales.data')
+        LocalUpath('/tmp/test/upathlib/data/sales.data')
+        """
+        return self.with_path(str(self.path.with_name(name)))
+
+    def with_path(self: T, *paths) -> T:
+        """
+        Return a new object of the same class at the specified ``*paths``.
+        The new path is unrelated to the current path; in other words,
+        the new path is not "relative" to the current path.
+
+        The main use case is with a cloud blob store.
+        For example, return a new path in the same store with the same
+        account and bucket info.
+
+        Subclasses need to reimplement this method
+        if their ``__init__`` expects additional arguments.
+        """
+        return self.__class__(*paths)
+
+    # def with_stem(self: T, stem: str) -> T:
+    #     # Available in Python 3.9+.
+    #     return self.with_path(str(self.path.with_stem(stem)))
+
+    def with_suffix(self: T, suffix: str) -> T:
+        """
+        Return a new path with the (last) suffix replaced by the specified value.
+
+        ``suffix`` should include a dot, like ``'.txt'``.
+
+        If ``suffix`` is ``''``, the effect is to remove the (last) suffix.
+
+        If the current path does not have a suffix, the new ``suffix`` is appended.
+
+        Examples
+        --------
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>>
+        >>> # replace the last suffix:
+        >>> p.with_suffix('.data')
+        LocalUpath('/tmp/test/upathlib/data/sales.txt.data')
+        >>>
+        >>> # remove the last suffix:
+        >>> p.with_suffix('')
+        LocalUpath('/tmp/test/upathlib/data/sales.txt')
+        >>>
+        >>> p.with_suffix('').with_suffix('.bin')
+        LocalUpath('/tmp/test/upathlib/data/sales.bin')
+        >>>
+        >>> pp = p.with_suffix('').with_suffix('')
+        >>> pp
+        LocalUpath('/tmp/test/upathlib/data/sales')
+        >>>
+        >>> # no suffix to remove:
+        >>> pp.with_suffix('')
+        LocalUpath('/tmp/test/upathlib/data/sales')
+        >>>
+        >>> # add a suffix:
+        >>> pp.with_suffix('.pickle')
+        LocalUpath('/tmp/test/upathlib/data/sales.pickle')
+        """
+        return self.with_path(str(self.path.with_suffix(suffix)))
+
+    @abc.abstractmethod
+    def write_bytes(self, data: bytes, *, overwrite: bool = False) -> None:
+        """Write bytes ``data`` to the current file.
+
+        Parent "directories" are created as needed, if applicable.
+
+        If ``overwrite`` is ``False`` and the current file exists, ``FileExistsError`` is raised.
+        """
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def read_bytes(self) -> bytes:
+        """Return the content of the current file (i.e. ``self``) as ``bytes``.
+
+        If ``self`` is not a file or does not exist,
+        ``FileNotFoundError`` is raised.
+        """
+        raise NotImplementedError
+
+    def write_text(
+        self,
+        data: str,
+        *,
+        overwrite: bool = False,
+    ) -> None:
+        """Write text ``data`` to the current file.
+
+        Parent "directories" are created as needed, if applicable.
+
+        If ``overwrite`` is ``False`` and the current file exists, ``FileExistsError`` is raised.
+        """
+        z = data.encode(encoding="utf-8", errors="strict")
+        self.write_bytes(z, overwrite=overwrite)
+
+    def read_text(self) -> str:
+        """Return the content of the current file (i.e. ``self``) as ``str``.
+
+        If ``self`` is not a file or does not exist,
+        ``FileNotFoundError`` is raised.
+        """
+        # Refer to https://docs.python.org/3/library/functions.html#open
+        return self.read_bytes().decode(encoding="utf-8", errors="strict")
+
+    def write_json(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+        self.write_text(JsonSerializer.serialize(data, **kwargs), overwrite=overwrite)
+
+    def read_json(self, **kwargs) -> Any:
+        return JsonSerializer.deserialize(self.read_text(), **kwargs)
+
+    def write_pickle(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+        self.write_bytes(
+            PickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
+
+    def read_pickle(self, **kwargs) -> Any:
+        return PickleSerializer.deserialize(self.read_bytes(), **kwargs)
+
+    def write_pickle_z(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+        self.write_bytes(
+            ZPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
+
+    def read_pickle_z(self, **kwargs) -> Any:
+        return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
+
+    def write_pickle_zstd(
+        self, data: Any, *, overwrite: bool = False, **kwargs
+    ) -> None:
+        self.write_bytes(
+            ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
+
+    def read_pickle_zstd(self, **kwargs) -> Any:
+        return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
+
+    def write_orjson(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+        self.write_bytes(
+            OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
+
+    def read_orjson(self, **kwargs) -> Any:
+        return OrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
+
+    def write_orjson_z(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+        self.write_bytes(
+            ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
+
+    def read_orjson_z(self, **kwargs) -> Any:
+        return ZOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
+
+    def write_orjson_zstd(
+        self, data: Any, *, overwrite: bool = False, **kwargs
+    ) -> None:
+        self.write_bytes(
+            ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
+
+    def read_orjson_zstd(self, **kwargs) -> Any:
+        return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
+
+    @property
     def _thread_pool_executors(self):
-        if not self._thread_pools:
-            self._thread_pools.append(
+        if not Upath._thread_pools:
+            Upath._thread_pools = (
                 ThreadPoolExecutor(
                     min(32, (os.cpu_count() or 1) + 4),
                     thread_name_prefix="UpathExecutor0",
-                )
+                ),
+                ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1"),
             )
-            self._thread_pools.append(
-                ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1")
-            )
-        return self._thread_pools
+        return Upath._thread_pools
         # Currently there can be two "layers" of threads running during `download_dir`.
         # In `download_dir`, the download of each file runs in the threads provided
         # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
@@ -462,26 +733,6 @@ class Upath(abc.ABC, EnforceOverrides):
 
         self._copy_file(target_, overwrite=overwrite)
 
-    def exists(self) -> bool:
-        """Return ``True`` if the path is an existing file or dir;
-        ``False`` otherwise.
-
-        Examples
-        --------
-        In a blobstore with blobs
-
-        ::
-
-            /a/b/cd
-            /a/b/cd/e.txt
-
-        ``'/a/b/cd'`` exists, and is both a file and a dir;
-        ``'/a/b/cd/e.txt'`` exists, and is a file;
-        ``'/a/b'`` exists, and is a dir;
-        ``'/a/b/c'`` does not exist.
-        """
-        return self.is_file() or self.is_dir()
-
     def export_dir(
         self,
         target: Upath,
@@ -547,13 +798,6 @@ class Upath(abc.ABC, EnforceOverrides):
         # when `target` is a `LocalUpath`.
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
-    @abc.abstractmethod
-    def file_info(self) -> Optional[FileInfo]:
-        """
-        If :meth:`is_file` is ``False``, return ``None``; otherwise, return file info.
-        """
-        raise NotImplementedError
-
     def import_dir(
         self,
         source: Upath,
@@ -588,75 +832,200 @@ class Upath(abc.ABC, EnforceOverrides):
         """Analogous to :meth:`export_file`, except that ``self`` is the target (receiving) file."""
         self.write_bytes(source.read_bytes(), overwrite=overwrite)
 
+    def remove_dir(self, *, quiet: bool = True) -> int:
+        """Remove the current directory (i.e. ``self``) and all its contents recursively.
+
+        Essentially, this removes each file that is yielded by :meth:`riterdir`.
+        Subclasses should take care to remove "empty directories", if applicable,
+        that are left behind.
+
+        ``quiet`` controls whether to print progress info.
+
+        Returns
+        -------
+        int
+            The number of files removed.
+        """
+
+        def foo():
+            for p in self.riterdir():
+                yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
+
+        if quiet:
+            desc = False
+        else:
+            desc = f"Removing {self!r}"
+
+        n = 0
+        for _ in self._run_in_executor(foo(), desc):
+            n += 1
+        return n
+
     @abc.abstractmethod
-    def is_dir(self) -> bool:
-        """Return ``True`` if the path is an existing directory; ``False`` otherwise.
+    def remove_file(self) -> None:
+        """Remove the current file (i.e. ``self``).
 
-        If there exists a file named like
-
-        ::
-
-            /a/b/c/d.txt
-
-        we say ``'/a'``, ``'/a/b'``, ``'/a/b/c'`` are existing directories.
-
-        In a cloud blob store, there's no such thing as an
-        "empty directory", because there is no concept of "directory".
-        A blob store just consists of files (aka blobs) with names,
-        which could contain the letter '/', with no special meaning
-        attached to it.
-        We interpret the name ``'/a/b'`` as a directory
-        to emulate the familiar concept in a local file system when
-        there exist files named ``'/a/b/*'``.
-
-        In a local file system, there can be empty directories.
-        However, it is recommended to not have empty directories.
-
-        There is no method for "creating an tempty dir" (like ``mkdir``).
-        Simply create a file under the dir, and the dir will come into being.
-        This is analogous to we create files all the time---we don't "create" an empty file
-        in advance; we simply write to the would-be path of the file to be created.
+        If ``self`` is not an existing file, ``FileNotFoundError`` is raised.
+        If the file exists but can't be removed, the platform-dependent
+        exception is propagated.
         """
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def is_file(self) -> bool:
-        """Return ``True`` if the path is an existing file; ``False`` otherwise.
+    def rename_dir(
+        self: T,
+        target: str,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
+    ) -> T:
+        """Rename the current dir (i.e. ``self``) to ``target`` in the same store.
 
-        In a cloud blob store, a path can be both a file and a dir. For
-        example, if these blobs exist::
+        ``overwrite`` is applied file-wise. If there are
+        files under ``target`` that do not have counterparts under ``self``,
+        they are left untouched.
 
-            /a/b/c/d.txt
-            /a/b/c
+        ``quiet`` controls whether to print progress info.
 
-        we say ``/a/b/c`` is a "file", and also a "dir".
-        User is recommended to avoid such namings.
+        Return the new path.
 
-        This situation does not happen in a local file system.
+        .. warning:: In storage systems that do not support renaming (probably all cloud blob stores),
+            this is done by "copy to the new, delete the old".
+            Hence this can be very inefficient and wasteful.
         """
-        raise NotImplementedError
+        # Local upath needs to customize this implementation, because
+        # it needs to take care to delete empty subdirectories under ``self``.
+
+        if not self.is_dir():
+            raise FileNotFoundError(str(self))
+
+        target_ = self.parent / target
+        if target_ == self:
+            return self
+
+        def foo():
+            for p in self.riterdir():
+                extra = str(p.path.relative_to(self.path))
+                yield (
+                    p.rename_file,
+                    [(target_ / extra)._path],
+                    {"overwrite": overwrite},
+                    extra,
+                )
+
+        if quiet:
+            desc = False
+        else:
+            desc = f"Renaming {self!r} to {target_!r}"
+
+        for _ in self._run_in_executor(foo(), desc):
+            pass
+        return target_
+
+    def _rename_file(self: T, target: str, *, overwrite: bool = False):
+        """Rename ``self`` to ``target``, which is a path in the same store.
+
+        This is a reference implementation. There are likely
+        more efficient ways to do this on any specific platform.
+        """
+        self.copy_file(target, overwrite=overwrite)
+        self.remove_file()
+
+    def rename_file(self: T, target: str, *, overwrite: bool = False) -> T:
+        """Rename the current file (i.e. ``self``) to ``target`` in the same store.
+
+        ``target`` is either absolute or relative to ``self.parent``.
+        For example, if ``self`` is '/a/b/c/d.txt', then
+        ``target='e.txt'`` means '/a/b/c/e.txt'.
+
+        If ``overwrite`` is ``False`` (the default) and the target file exists,
+        ``FileExistsError`` is raised.
+
+        Return the new path.
+
+        .. warning:: In storage systems that do not support renaming (probably all cloud blob stores),
+            this is done by "copy to the new, delete the old".
+            Hence this can be very inefficient and wasteful.
+        """
+        target_ = self.parent / target
+        if target_ == self:
+            return self
+
+        self._rename_file(target_._path, overwrite=overwrite)
+        return target_
 
     @abc.abstractmethod
     def iterdir(self: T) -> Iterator[T]:
         """Yield the immediate (i.e. non-recursive) children
         of the current dir (i.e. ``self``).
+
+        The yieled elements are instances of the same class.
         Each yielded element is either a file or a dir.
+        There is no guarantee on the order of the returned elements.
 
         If ``self`` is not a dir (e.g. maybe it's a file),
         or does not exist at all, nothing is yielded (resulting in an
         empty iterable); no exception is raised.
 
+        .. seealso:: :meth:`riterdir`.
+        """
+        raise NotImplementedError
+
+    def ls(self: T) -> List[T]:
+        """Return the elements yielded by :meth:`iterdir` in a sorted list.
+
+        Sorting is by a full path string maintained internally.
+
+        The returned list may be empty.
+        """
+        return sorted(self.iterdir())
+
+    @abc.abstractmethod
+    def riterdir(self: T) -> Iterator[T]:
+        """Yield files under the current dir (i.e. ``self``) *recursively*.
+        The method name means "recursive iterdir".
+
+        The yieled elements are instances of the same class.
+        They represent existing files.
+
+        Compared to :meth:`iterdir`, this is recursive, and yields
+        *files* only. Empty subdirectories will have no representation
+        in the return.
+
+        Similar to :meth:`iterdir`, if ``self`` is not a dir or does not exist,
+        then nothing is yielded, and no exception is raised either.
+
         There is no guarantee on the order of the returned elements.
         """
         raise NotImplementedError
 
-    def joinpath(self: T, *other: str) -> T:
-        """Join this path with more segments, return the new path object.
+    def rmrf(self, *, quiet: bool = True) -> int:
+        """Remove the current file or dir (i.e. ``self``) recursively.
 
-        If ``self`` was created by ``Upath(*segs)``, then this method essentially
-        returns ``Upath(*segs, *other)``.
+        Analogous to the Linux command ``rm -rf``, hence the name of this method.
+
+        Return the number of files removed.
+
+        For example, if these blobs are present::
+
+            /a/b/c/d/e.txt
+            /a/b/c/kk.data
+            /a/b/c
+
+        then ``Upath('/a/b/c').rmrf()`` would remove all of them.
         """
-        return self.with_path(self._path, *other)
+        if self._path == "/":
+            raise UnsupportedOperation("`rmrf` not allowed on root directory")
+        try:
+            self.remove_file()
+        except (FileNotFoundError, IsADirectoryError):
+            n = 0
+        else:
+            n = 1
+        try:
+            m = self.remove_dir(quiet=quiet)
+        except FileNotFoundError:
+            m = 0
+        return n + m
 
     @contextlib.contextmanager
     @abc.abstractmethod
@@ -708,258 +1077,3 @@ class Upath(abc.ABC, EnforceOverrides):
         this lock.
         """
         raise NotImplementedError
-
-    def ls(self: T) -> List[T]:
-        """Return the elements yield by :meth:`iterdir` in a sorted list.
-
-        The returned list may be empty.
-        """
-        return sorted(self.iterdir())
-
-    @property
-    def name(self) -> str:
-        """Return the segment after the last ``'/'``.
-
-        If ``self.path`` is ``'/'``, then ``self.path.name`` is ``''``.
-        """
-        return self.path.name
-
-    @property
-    def parent(self: T) -> T:
-        return self.with_path(str(self.path.parent))
-
-    @property
-    def path(self) -> pathlib.PurePosixPath:
-        return pathlib.PurePosixPath(self._path)
-
-    @abc.abstractmethod
-    def read_bytes(self) -> bytes:
-        """Return the binary contents of the file.
-
-        If ``self`` is not a file or is non-existent,
-        raise ``FileNotFoundError``.
-        """
-        raise NotImplementedError
-
-    def read_text(self):
-        # Refer to https://docs.python.org/3/library/functions.html#open
-        return self.read_bytes().decode(encoding="utf-8", errors="strict")
-
-    def remove_dir(self, *, quiet: bool = True) -> int:
-        """Remove the directory pointed to by ``self``,
-        along with all its contents, recursively.
-
-        Return the number of files removed.
-
-        Local upath needs to customize this implementation, because
-        it needs to take care of deleting "empty" subdirectories.
-        """
-
-        def foo():
-            for p in self.riterdir():
-                yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Removing {self!r}"
-
-        n = 0
-        for _ in self._run_in_executor(foo(), desc):
-            n += 1
-        return n
-
-    @abc.abstractmethod
-    def remove_file(self) -> None:
-        """Remove the file pointed to by ``self``.
-
-        If ``self`` is not an existing file, raise FileNotFoundError.
-        If the file exists but can't be removed, usually the platform-dependent
-        exception is propagated.
-        """
-        raise NotImplementedError
-
-    def rename_dir(
-        self: T,
-        target: str,
-        *,
-        overwrite: bool = False,
-        quiet: bool = False,
-    ) -> T:
-        """Analogous to :meth:`rename_file`.
-
-        ``overwrite`` is applied per file, which suggests that if there are
-        files under ``target`` that do not have counterparts under ``self``,
-        they are left untouched.
-
-        Local upath needs to customize this implementation, because
-        it needs to take care to delete empty subdirectories under ``self``.
-        """
-        if not self.is_dir():
-            raise FileNotFoundError(str(self))
-
-        target_ = self.parent / target
-        if target_ == self:
-            return self
-
-        def foo():
-            for p in self.riterdir():
-                extra = str(p.path.relative_to(self.path))
-                yield (
-                    p.rename_file,
-                    [(target_ / extra)._path],
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Renaming {self!r} to {target_!r}"
-
-        for _ in self._run_in_executor(foo(), desc):
-            pass
-        return target_
-
-    def _rename_file(self: T, target: str, *, overwrite: bool = False):
-        """Rename ``self`` to ``target``, which is a path in the same store.
-
-        This is a reference implementation. There are likely
-        more efficient ways to do this on any specific platform.
-        """
-        self.copy_file(target, overwrite=overwrite)
-        self.remove_file()
-
-    def rename_file(self: T, target: str, *, overwrite: bool = False) -> T:
-        """Rename the current file to ``target`` in the same store.
-
-        ``target`` is either absolute or relative to ``self.parent``.
-        For example, if ``self`` is '/a/b/c/d.txt', then
-        ``target='e.txt'`` means '/a/b/c/e.txt'.
-
-        Return an object pointing to the new path.
-        """
-        target_ = self.parent / target
-        if target_ == self:
-            return self
-
-        self._rename_file(target_._path, overwrite=overwrite)
-        return target_
-
-    @abc.abstractmethod
-    def riterdir(self: T) -> Iterator[T]:
-        """Yield files under the current dir recursively.
-
-        Compared to :meth:`iterdir`, this is recursive, and yields
-        *files* only. Empty subdirectories will have no representation
-        in the return.
-
-        Similar to :meth:`iterdir`, if ``self`` is not a dir or does not exist,
-        then nothing is yielded, and no exception is raised either.
-
-        There is no guarantee on the order of the returned elements.
-        """
-        raise NotImplementedError
-
-    def rmrf(self, *, quiet: bool = True) -> int:
-        """Analogous to ``rm -rf``. Remove the file or dir pointed to
-        by ``self``.
-
-        Return the number of files removed.
-
-        For example, if these blobs are present::
-
-            /a/b/c/d/e.txt
-            /a/b/c/kk.data
-            /a/b/c
-
-        then ``Upath('/a/b/c').rmrf()`` would remove all of them.
-        """
-        if self._path == "/":
-            raise UnsupportedOperation("`rmrf` not allowed on root directory")
-        try:
-            self.remove_file()
-        except (FileNotFoundError, IsADirectoryError):
-            n = 0
-        else:
-            n = 1
-        try:
-            m = self.remove_dir(quiet=quiet)
-        except FileNotFoundError:
-            m = 0
-        return n + m
-
-    @property
-    def stem(self) -> str:
-        return self.path.stem
-
-    @property
-    def suffix(self) -> str:
-        return self.path.suffix
-
-    @property
-    def suffixes(self) -> List[str]:
-        return self.path.suffixes
-
-    def with_name(self: T, name: str) -> T:
-        return self.with_path(str(self.path.with_name(name)))
-
-    def with_path(self: T, *paths) -> T:
-        """
-        Returns a new object of the same class at the specified path.
-        The new path is unrelated to the current path; in other words,
-        the new path is not "relative" to the current path.
-
-        Meta data such as account info remains the same.
-
-        Subclass needs to reimplement this method
-        if its ``__init__`` expects additional args.
-        """
-        return self.__class__(*paths, thread_pool_executors=self._thread_pools)
-
-    # def with_stem(self: T, stem: str) -> T:
-    #     # Available in Python 3.9+.
-    #     return self.with_path(str(self.path.with_stem(stem)))
-
-    def with_suffix(self: T, suffix: str) -> T:
-        """``suffix`` should include a dot, like ``'.txt'``.
-        If ``suffix`` is ``''``, the effect is to remove the existing suffix.
-        """
-        return self.with_path(str(self.path.with_suffix(suffix)))
-
-    @abc.abstractmethod
-    def write_bytes(self, data: bytes, *, overwrite: bool = False) -> None:
-        """Write bytes to file.
-
-        Parent directories are created as needed.
-
-        If ``overwrite`` is ``False`` and the file exists, raises ``FileExistsError``.
-        """
-        raise NotImplementedError
-
-    def write_text(
-        self,
-        data: str,
-        *,
-        overwrite: bool = False,
-    ) -> None:
-        z = data.encode(encoding="utf-8", errors="strict")
-        self.write_bytes(z, overwrite=overwrite)
-
-
-# Add methods
-# 'read_json', 'write_json', 'read_json_z', 'write_json_z', 'read_json_zstd', 'write_json_zstd',
-# 'read_pickle', 'write_pickle', 'read_pickle_z', 'write_pickle_z', 'read_pickle_zstd', 'write_pickle_zstd',
-# 'read_orjson', 'write_orjson', 'read_orjson_z', 'write_orjson_z', 'read_orjson_zstd', 'write_orjson_zstd',
-#
-# Applications can follow these examples to define and register their custom formats.
-
-Upath.register_read_write_text_format(JsonSerializer, "json")
-Upath.register_read_write_byte_format(ZJsonSerializer, "json_z")
-Upath.register_read_write_byte_format(ZstdJsonSerializer, "json_zstd")
-Upath.register_read_write_byte_format(PickleSerializer, "pickle")
-Upath.register_read_write_byte_format(ZPickleSerializer, "pickle_z")
-Upath.register_read_write_byte_format(ZstdPickleSerializer, "pickle_zstd")
-Upath.register_read_write_byte_format(OrjsonSerializer, "orjson")
-Upath.register_read_write_byte_format(ZOrjsonSerializer, "orjson_z")
-Upath.register_read_write_byte_format(ZstdOrjsonSerializer, "orjson_zstd")

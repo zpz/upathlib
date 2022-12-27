@@ -1,9 +1,12 @@
+from __future__ import annotations
 import contextlib
 import datetime
 import os
 import os.path
 import pathlib
 import shutil
+from collections.abc import Iterator
+from typing import Optional, Union
 
 import filelock
 
@@ -24,6 +27,14 @@ from ._upath import Upath, LockAcquireError, FileInfo
 
 class LocalUpath(Upath):
     def __init__(self, *pathsegments: str, **kwargs):
+        """
+        Create a path on the local POSIX file system.
+
+        ``*pathsegments`` specify the path, either absolute or relative to the current
+        working directory. If missing, the constructed path is the current working directory.
+
+        ``**kwargs`` are passed on to the base class.
+        """
         assert os.name == "posix"
         if pathsegments:
             parts = [str(pathlib.Path(*pathsegments).absolute())]
@@ -32,32 +43,34 @@ class LocalUpath(Upath):
 
         super().__init__(*parts, **kwargs)
 
-    @overrides
-    def _copy_file(self, target, *, overwrite=False):
-        if not overwrite and target.is_file():
-            raise FileExistsError(target)
-        os.makedirs(target.localpath.parent, exist_ok=True)
-        shutil.copyfile(self.localpath, target.localpath)
-        # If target already exists, it will be overwritten.
+    @property
+    def localpath(self) -> pathlib.Path:
+        """
+        Return the `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_ object
+        for the current path.
+        """
+        return pathlib.Path(self._path)
 
     @overrides
-    def export_dir(self, target: Upath, **kwargs) -> int:
-        if isinstance(target, LocalUpath):
-            return super().export_dir(target, **kwargs)
-        # `target` is a cloud store; it might have implemented
-        # efficient 'download' functionality.
-        return target.import_dir(self, **kwargs)
+    def is_dir(self) -> bool:
+        """
+        Return whether the current path is a dir.
+        """
+        return self.localpath.is_dir()
 
     @overrides
-    def export_file(self, target: Upath, *, overwrite=False):
-        if isinstance(target, LocalUpath):
-            return self._copy_file(target, overwrite=overwrite)
-        # `target` is a cloud store; it might have implemented
-        # efficient 'upload' functionality.
-        target.import_file(self, overwrite=overwrite)
+    def is_file(self) -> bool:
+        """
+        Return whether the current path is a file.
+        """
+        return self.localpath.is_file()
 
     @overrides
-    def file_info(self):
+    def file_info(self) -> Optional[FileInfo]:
+        """
+        Return file info if the current path is a file;
+        otherwise return ``None``.
+        """
         if not self.is_file():
             return None
         st = self.localpath.stat()
@@ -74,13 +87,80 @@ class LocalUpath(Upath):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @overrides
+    def read_bytes(self) -> bytes:
+        """
+        Read the content of the current file as bytes.
+        """
+        try:
+            return self.localpath.read_bytes()
+        except (IsADirectoryError, FileNotFoundError) as e:
+            raise FileNotFoundError(self) from e
+
+    @overrides
+    def write_bytes(self, data: bytes, *, overwrite: bool = False) -> None:
+        """
+        Write the bytes ``data`` to the current file.
+        """
+        if self.is_file():
+            if not overwrite:
+                raise FileExistsError(self)
+        self.parent.localpath.mkdir(exist_ok=True, parents=True)
+        self.localpath.write_bytes(data)
+        # If `self` is an existing directory, will raise `IsADirectoryError`.
+        # If `self` is an existing file, will overwrite.
+
+    @overrides
+    def _copy_file(self, target: LocalUpath, *, overwrite: bool = False):
+        if not overwrite and target.is_file():
+            raise FileExistsError(target)
+        os.makedirs(target.localpath.parent, exist_ok=True)
+        shutil.copyfile(self.localpath, target.localpath)
+        # If target already exists, it will be overwritten.
+
+    @overrides
+    def export_dir(self, target: Upath, **kwargs) -> int:
+        """
+        This customizes the ``super`` version in case ``target`` is in a cloud blob store
+        and the corresponding :class:`Upath` subclass has an efficient implementation
+        for "upload".
+        """
+        if isinstance(target, LocalUpath):
+            return super().export_dir(target, **kwargs)
+        # `target` is a cloud store; it might have implemented
+        # efficient 'download' functionality.
+        return target.import_dir(self, **kwargs)
+
+    @overrides
+    def export_file(self, target: Upath, *, overwrite=False):
+        """
+        This customizes the ``super`` version in case ``target`` is in a cloud blob store
+        and the corresponding :class:`Upath` subclass has an efficient implementation
+        for "upload".
+        """
+        if isinstance(target, LocalUpath):
+            return self._copy_file(target, overwrite=overwrite)
+        # `target` is a cloud store; it might have implemented
+        # efficient 'upload' functionality.
+        target.import_file(self, overwrite=overwrite)
+
+    @overrides
     def import_dir(self, source: Upath, **kwargs) -> int:
+        """
+        This customizes the ``super`` version in case ``source`` is in a cloud blob store
+        and the corresponding :class:`Upath` subclass has an efficient implementation
+        for "download".
+        """
         if isinstance(source, LocalUpath):
             return super().import_dir(source, **kwargs)
         return source.export_dir(self, **kwargs)
 
     @overrides
     def import_file(self, source: Upath, *, overwrite=False):
+        """
+        This customizes the ``super`` version in case ``source`` is in a cloud blob store
+        and the corresponding :class:`Upath` subclass has an efficient implementation
+        for "download".
+        """
         if isinstance(source, LocalUpath):
             return source._copy_file(self, overwrite=overwrite)
         # Call the other side in case it implements an efficient
@@ -88,47 +168,10 @@ class LocalUpath(Upath):
         source.export_file(self, overwrite=overwrite)
 
     @overrides
-    def is_dir(self) -> bool:
-        return self.localpath.is_dir()
-
-    @overrides
-    def is_file(self) -> bool:
-        return self.localpath.is_file()
-
-    @overrides
-    def iterdir(self):
-        try:
-            for p in self.localpath.iterdir():
-                yield self / p.name
-        except (NotADirectoryError, FileNotFoundError):
-            pass
-
-    @property
-    def localpath(self) -> pathlib.Path:
-        return pathlib.Path(self._path)
-
-    @contextlib.contextmanager
-    @overrides
-    def lock(self, *, timeout=None):
-        os.makedirs(self.localpath.parent, exist_ok=True)
-        lock = filelock.FileLock(str(self.localpath))
-        try:
-            lock.acquire(timeout=timeout or 300)
-            yield
-        except filelock.Timeout as e:
-            raise LockAcquireError(str(self)) from e
-        finally:
-            lock.release()
-
-    @overrides
-    def read_bytes(self) -> bytes:
-        try:
-            return self.localpath.read_bytes()
-        except (IsADirectoryError, FileNotFoundError) as e:
-            raise FileNotFoundError(self) from e
-
-    @overrides
     def remove_dir(self, **kwargs) -> int:
+        """
+        Remove the current dir along with all its contents recursively.
+        """
         n = super().remove_dir(**kwargs)
         if self.localpath.is_dir():
             shutil.rmtree(self.localpath)
@@ -136,10 +179,14 @@ class LocalUpath(Upath):
 
     @overrides
     def remove_file(self) -> None:
+        """Remove the current file."""
         self.localpath.unlink()
 
     @overrides
-    def rename_dir(self, target, **kwargs):
+    def rename_dir(self, target: str, **kwargs) -> LocalUpath:
+        """
+        Rename the current dir to ``target``.
+        """
         target_ = super().rename_dir(target, **kwargs)
 
         def _remove_empty_dir(path):
@@ -166,19 +213,43 @@ class LocalUpath(Upath):
         self.localpath.rename(target.localpath)
 
     @overrides
-    def riterdir(self):
+    def iterdir(self) -> Iterator[LocalUpath]:
+        """
+        Yield the immediate children under the current dir.
+        """
+        try:
+            for p in self.localpath.iterdir():
+                yield self / p.name
+        except (NotADirectoryError, FileNotFoundError):
+            pass
+
+    @overrides
+    def riterdir(self) -> Iterator[LocalUpath]:
+        """
+        Yield all files under the current dir recursively.
+        """
         for p in self.iterdir():
             if p.is_file():
                 yield p
             elif p.is_dir():
                 yield from p.riterdir()
 
+    @contextlib.contextmanager
     @overrides
-    def write_bytes(self, data: bytes, *, overwrite=False):
-        if self.is_file():
-            if not overwrite:
-                raise FileExistsError(self)
-        self.parent.localpath.mkdir(exist_ok=True, parents=True)
-        self.localpath.write_bytes(data)
-        # If `self` is an existing directory, will raise `IsADirectoryError`.
-        # If `self` is an existing file, will overwrite.
+    def lock(self, *, timeout=None):
+        """
+        This uses the package `filelock <https://github.com/tox-dev/py-filelock>`_ to implement
+        a file lock for inter-process communication.
+        """
+        os.makedirs(self.localpath.parent, exist_ok=True)
+        lock = filelock.FileLock(str(self.localpath))
+        try:
+            lock.acquire(timeout=timeout or 300)
+            yield
+        except filelock.Timeout as e:
+            raise LockAcquireError(str(self)) from e
+        finally:
+            lock.release()
+
+
+LocalPathType = Union[str, pathlib.Path, LocalUpath]

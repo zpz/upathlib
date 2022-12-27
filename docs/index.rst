@@ -3,8 +3,6 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-:tocdepth: 2
-
 ========
 upathlib
 ========
@@ -174,13 +172,15 @@ Upath
     :no-undoc-members:
     :no-special-members:
 
-.. autoclass:: upathlib.FileInfo
+.. autodata:: upathlib._upath.T
 
 .. autoclass:: upathlib.Upath
 
+.. autoclass:: upathlib.FileInfo
 
-Local file systems
-==================
+
+LocalUpath
+==========
 
 .. automodule:: upathlib._local
     :no-members:
@@ -191,14 +191,14 @@ Local file systems
 .. autoclass:: upathlib.LocalUpath
 
 
-Blob stores
-===========
+BlobUpath
+=========
 
 .. automodule:: upathlib._blob
 
 
-Google Cloud Storage
-====================
+GcsBlobUpath
+============
 
 .. automodule:: upathlib.gcs
     :no-members:

@@ -33,12 +33,14 @@ numpydoc_show_inherited_class_members = False
 autodoc_default_options = {
     'members': True,
     'undoc-members': True,
-    'special-members': '__init__, __getitem__, __iter__, __next__, __len__, __enter__, __exit__',
+    'special-members': '__init__, __getitem__, __iter__, __next__, __len__, __enter__, __exit__, __truediv__',
     'member-order': 'bysource',
     'show-inheritance': True,
 }
 autodoc_class_signature = 'separated'
 autodoc_typehints = 'signature'
+autodoc_inherit_docstrings = False  # no effect?
+
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store', 'links.rst']
@@ -63,6 +65,9 @@ html_theme = 'pydata_sphinx_theme'
 html_theme_options = {
     "github_url": "https://github.com/zpz/upathlib",
     "footer_items": ["copyright"],
+    'show_nav_level': 4,  # no effect?
+    'navigation_depth': 4,  # no effect?
+    'collapse_navigation': False,
 }
 
 
@@ -71,3 +76,4 @@ html_static_path = ['_static']
 rst_epilog = ""
 with open('links.rst') as f:
     rst_epilog += f.read()
+
