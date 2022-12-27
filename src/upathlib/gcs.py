@@ -51,10 +51,11 @@ RETRY_WRITE_ON_EXCEPTIONS = (
 
 
 class GcsBlobUpath(BlobUpath):
-    '''
+    """
     GcsBlobUpath implements the :class:`~upathlib.Upath` API for
     Google Cloud Storage.
-    '''
+    """
+
     _PROJECT_ID: str = None
     _CREDENTIALS: google.auth.credentials.Credentials = None
 
@@ -106,7 +107,7 @@ class GcsBlobUpath(BlobUpath):
         bucket_name: str = None,
         **kwargs,
     ):
-        '''
+        """
         If ``bucket_name`` is ``None``, then ``*paths`` should be a single string
         starting with 'gs://<bucket-name>/'.
 
@@ -120,7 +121,7 @@ class GcsBlobUpath(BlobUpath):
         >>> GcsBlobUpath('experiments', 'data', 'first.data', bucket_name='backup')
         >>> GcsBlobUpath('/experiments/data/first.data', bucket_name='backup')
         >>> GcsBlobUpath('gs://backup/experiments/data/first.data')
-        '''
+        """
         if bucket_name is None:
             assert len(paths) == 1
             path = paths[0]
@@ -207,20 +208,20 @@ class GcsBlobUpath(BlobUpath):
 
     @property
     def client(self) -> storage.Client:
-        '''
+        """
         Return a client to the GCS service.
         For internal use.
-        '''
+        """
         if self._client is None:
             self._client = storage.Client(**self.get_account_info())
         return self._client
 
     @property
     def bucket(self) -> storage.Bucket:
-        '''
+        """
         Return a Bucket object, via :meth:`client`.
         For internal use.
-        '''
+        """
         if self._bucket is None:
             self._bucket = self.client.bucket(self.bucket_name)
             # self._bucket = self.client.get_bucket(self.bucket_name)
@@ -281,10 +282,10 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def file_info(self) -> Optional[FileInfo]:
-        '''
+        """
         Return file info if the current path is a file;
         otherwise return ``None``.
-        '''
+        """
         b = self.get_blob()
         if not b:
             return None
@@ -302,9 +303,9 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def with_path(self, *paths: str) -> GcsBlobUpath:
-        '''
+        """
         Return a new path specified by ``*paths`` in the same bucket.
-        '''
+        """
         obj = self.__class__(
             *paths,
             bucket_name=self.bucket_name,
@@ -341,13 +342,13 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False):
-        '''
+        """
         Write bytes ``data`` to the current blob.
 
         In the usual case, ``data`` is bytes.
         The case where ``data`` is a ``BufferedReader`` object, such as an open file,
         is not well tested.
-        '''
+        """
         if isinstance(data, bytes):
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
             return
@@ -408,9 +409,9 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def read_bytes(self) -> bytes:
-        '''
+        """
         Return the content of the current blob as bytes.
-        '''
+        """
         buffer = BytesIO()
         self._read_into_buffer(buffer)
         return buffer.getvalue()
@@ -445,12 +446,12 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def export_file(self, target: Upath, *, overwrite=False) -> None:
-        '''
+        """
         Export the content of the current blob (i.e. ``self``) to ``target``.
 
         A main specialization in this method is when ``target``
         is :class:`~upathlib.LocalUpath`, which amounts to "download".
-        '''
+        """
         if not isinstance(target, LocalUpath):
             return super().export_file(target, overwrite=overwrite)
 
@@ -474,12 +475,12 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def import_file(self, source: Upath, *, overwrite=False) -> None:
-        '''
+        """
         Export the content of the current blob (i.e. ``self``) to ``target``.
 
         A main specialization in this method is when ``source``
         is :class:`~upathlib.LocalUpath`, which amounts to "upload".
-        '''
+        """
         if not isinstance(source, LocalUpath):
             return super().import_file(source, overwrite=overwrite)
 
@@ -502,9 +503,9 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def iterdir(self) -> Iterator[GcsBlobUpath]:
-        '''
+        """
         Yield immediate children under the current dir.
-        '''
+        """
         # From Google doc:
         #
         # Lists all the blobs in the bucket that begin with the prefix.
@@ -559,10 +560,10 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def remove_dir(self, **kwargs) -> int:
-        '''
+        """
         Remove the current dir and all the content under it recursively.
         Return the number of blobs removed.
-        '''
+        """
         z = super().remove_dir(**kwargs)
         prefix = self.blob_name + "/"
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
@@ -572,9 +573,9 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def remove_file(self) -> None:
-        '''
+        """
         Remove the current blob.
-        '''
+        """
         try:
             self._blob_rate_limit(self.blob().delete, client=self.client)
             self._blob = None
@@ -584,9 +585,9 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def riterdir(self) -> Iterator[GcsBlobUpath]:
-        '''
+        """
         Yield all blobs recursively under the current dir.
-        '''
+        """
         prefix = self.blob_name + "/"
         k = len(prefix)
         for p in self.client.list_blobs(self.bucket, prefix=prefix):
@@ -597,7 +598,6 @@ class GcsBlobUpath(BlobUpath):
             obj = self / p.name[k:]
             obj._blob = p
             yield obj
-
 
     def _acquire_lease(self, *, timeout: int = None):
         # Note: `timeout = None` does not mean infinite wait.

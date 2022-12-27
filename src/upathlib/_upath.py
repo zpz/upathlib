@@ -52,11 +52,12 @@ from .serializer import (
 # to suppress the "urllib3 connection lost" warning.
 
 T = TypeVar("T", bound="Upath")
-'''
+"""
 The type variable ``T`` represents the class :class:`Upath` or a subclass of it.
 Many methods return a new path of the same type.
 This is indicated by ``self: T`` and return type ``-> T:``.
-'''
+"""
+
 
 class LockAcquireError(TimeoutError):
     pass
@@ -206,23 +207,23 @@ class Upath(abc.ABC, EnforceOverrides):
 
     @property
     def parent(self: T) -> T:
-        '''
+        """
         Return the parent of the current path.
 
         If the current path is the root, then the parent is still the root.
-        '''
+        """
         return self.with_path(str(self.path.parent))
 
     @property
     def path(self) -> pathlib.PurePosixPath:
-        '''Return the `pathlib.PurePosixPath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePosixPath>`_
+        """Return the `pathlib.PurePosixPath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePosixPath>`_
         version of the internal path string.
-        '''
+        """
         return pathlib.PurePosixPath(self._path)
 
     @property
     def stem(self) -> str:
-        '''
+        """
         Return the "stem" part of ``self.name``, that is,
         the name without the (last) suffix.
 
@@ -241,19 +242,19 @@ class Upath(abc.ABC, EnforceOverrides):
         >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
         >>> p.stem
         'sales.txt'
-        '''
+        """
         return self.path.stem
 
     @property
     def suffix(self) -> str:
-        '''
+        """
         Return the last suffix of the name.
-        '''
+        """
         return self.path.suffix
 
     @property
     def suffixes(self) -> List[str]:
-        '''
+        """
         Return all the suffixes in a list.
 
         Examples
@@ -268,7 +269,7 @@ class Upath(abc.ABC, EnforceOverrides):
         '.gz'
         >>> p.suffixes
         ['.txt', '.gz']
-        '''
+        """
         return self.path.suffixes
 
     def exists(self) -> bool:
@@ -290,7 +291,6 @@ class Upath(abc.ABC, EnforceOverrides):
         ``'/a/b/c'`` does not exist.
         """
         return self.is_file() or self.is_dir()
-
 
     @abc.abstractmethod
     def is_dir(self) -> bool:
@@ -359,7 +359,7 @@ class Upath(abc.ABC, EnforceOverrides):
         return self.with_path(self._path, *other)
 
     def with_name(self: T, name: str) -> T:
-        '''
+        """
         Return a new path the the "name" part substituted by the new value.
 
         This is equivalent to ``self.parent / name``.
@@ -369,7 +369,7 @@ class Upath(abc.ABC, EnforceOverrides):
         >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
         >>> p.with_name('sales.data')
         LocalUpath('/tmp/test/upathlib/data/sales.data')
-        '''
+        """
         return self.with_path(str(self.path.with_name(name)))
 
     def with_path(self: T, *paths) -> T:
@@ -480,37 +480,53 @@ class Upath(abc.ABC, EnforceOverrides):
         return JsonSerializer.deserialize(self.read_text(), **kwargs)
 
     def write_pickle(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_bytes(PickleSerializer.serialize(data, **kwargs), overwrite=overwrite)
+        self.write_bytes(
+            PickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
     def read_pickle(self, **kwargs) -> Any:
         return PickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def write_pickle_z(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_bytes(ZPickleSerializer.serialize(data, **kwargs), overwrite=overwrite)
+        self.write_bytes(
+            ZPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
     def read_pickle_z(self, **kwargs) -> Any:
         return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_pickle_zstd(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_bytes(ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite)
+    def write_pickle_zstd(
+        self, data: Any, *, overwrite: bool = False, **kwargs
+    ) -> None:
+        self.write_bytes(
+            ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
     def read_pickle_zstd(self, **kwargs) -> Any:
         return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def write_orjson(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_bytes(OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite)
+        self.write_bytes(
+            OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
     def read_orjson(self, **kwargs) -> Any:
         return OrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def write_orjson_z(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_bytes(ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite)
+        self.write_bytes(
+            ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
     def read_orjson_z(self, **kwargs) -> Any:
         return ZOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_orjson_zstd(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_bytes(ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite)
+    def write_orjson_zstd(
+        self, data: Any, *, overwrite: bool = False, **kwargs
+    ) -> None:
+        self.write_bytes(
+            ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
     def read_orjson_zstd(self, **kwargs) -> Any:
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
@@ -863,7 +879,7 @@ class Upath(abc.ABC, EnforceOverrides):
         quiet: bool = False,
     ) -> T:
         """Rename the current dir (i.e. ``self``) to ``target`` in the same store.
-        
+
         ``overwrite`` is applied file-wise. If there are
         files under ``target`` that do not have counterparts under ``self``,
         they are left untouched.
@@ -984,7 +1000,7 @@ class Upath(abc.ABC, EnforceOverrides):
 
     def rmrf(self, *, quiet: bool = True) -> int:
         """Remove the current file or dir (i.e. ``self``) recursively.
-        
+
         Analogous to the Linux command ``rm -rf``, hence the name of this method.
 
         Return the number of files removed.

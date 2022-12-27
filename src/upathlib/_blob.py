@@ -59,12 +59,12 @@ class BlobUpath(Upath, EnforceOverrides):
 
     @overrides
     def iterdir(self: T) -> Iterator[T]:
-        '''
+        """
         Yield immediate children under the current dir.
 
         This is a naive, inefficient implementation.
         Expected to be refined by subclasses.
-        '''
+        """
         p0 = self._path  # this could be '/'.
         if not p0.endswith("/"):
             p0 += "/"
@@ -81,33 +81,33 @@ class BlobUpath(Upath, EnforceOverrides):
                 subdirs.add(tail)
 
     def download_dir(self, target: LocalPathType, **kwargs) -> int:
-        '''
+        """
         A specialization of :meth:`~upathlib.Upath.export_dir` where the target location
         is on the local disk.
-        '''
+        """
         target_ = _resolve_local_path(target)
         return self.export_dir(target_, **kwargs)
 
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
-        '''
+        """
         A specialization of :meth:`~upathlib.Upath.export_file` where the target location
         is on the local disk.
-        '''
+        """
         target_ = _resolve_local_path(target)
         return self.export_file(target_, overwrite=overwrite)
 
     def upload_dir(self, source: LocalPathType, **kwargs) -> int:
-        '''
+        """
         A specialization of :meth:`~upathlib.Upath.import_dir` where the source location
         is on the local disk.
-        '''
+        """
         s = _resolve_local_path(source)
         return self.import_dir(s, **kwargs)
 
     def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
-        '''
+        """
         A specialization of :meth:`~upathlib.Upath.import_file` where the source location
         is on the local disk.
-        '''
+        """
         s = _resolve_local_path(source)
         return self.import_file(s, overwrite=overwrite)
