@@ -305,6 +305,9 @@ class GcsBlobUpath(BlobUpath):
     @property
     @overrides
     def root(self) -> GcsBlobUpath:
+        """
+        Return a new path representing the root of the same bucket.
+        """
         obj = self.__class__(
             bucket_name=self.bucket_name,
         )

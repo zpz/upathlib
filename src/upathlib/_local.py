@@ -107,6 +107,12 @@ class LocalUpath(Upath, os.PathLike):
     @property
     @overrides
     def root(self) -> LocalUpath:
+        """
+        Return a new path representing the root.
+
+        On Windows, this is the root on the same drive.
+        On Linux and Mac, this is the path ``'/'``.
+        """
         return self.__class__(self.path.root)
 
     @overrides

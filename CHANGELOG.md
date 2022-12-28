@@ -16,7 +16,7 @@ Removed
 - Classes `ZJsonSerializer`, `ZstdJsonSerializer`.
 - Back-compat module `upathlib.gcp`.
 - Methods `export_dir`, `export_file`, `import_dir`, `import_file`. (Concentrate on the `copy_*` methods.)
-- Method `with_path` renamed to `_with_path` and has become an intermediate implementation helper based on the new method `root`.
+- Method `with_path` renamed to `_with_path` and has become an intermediate implementation helper based on the new property `root`.
 
 Added or enhanced
 -----------------
