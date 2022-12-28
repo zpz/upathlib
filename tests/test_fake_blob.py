@@ -95,6 +95,10 @@ class FakeBlobUpath(BlobUpath):
         self._bucket = bucket
 
     @overrides
+    def as_uri(self) -> str:
+        return f"fake://{self._path}"
+
+    @overrides
     def file_info(self):
         return _store.file_info(self._bucket, self._path)
 
@@ -137,9 +141,10 @@ class FakeBlobUpath(BlobUpath):
         except ResourceNotFoundError:
             raise FileNotFoundError(self)
 
+    @property
     @overrides
-    def with_path(self, *paths):
-        return self.__class__(*paths, bucket=self._bucket)
+    def root(self):
+        return self.__class__('/', bucket=self._bucket)
 
     @overrides
     def write_bytes(self, data, *, overwrite=False):

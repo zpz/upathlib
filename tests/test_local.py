@@ -1,6 +1,17 @@
+import os
 import pathlib
 import upathlib.tests
+
+import pytest
 from upathlib import LocalUpath
+
+
+@pytest.fixture
+def test_path():
+    if os.name == 'posix':
+        return LocalUpath('/tmp/upathlib_local_test')
+    else:
+        return LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test'))
 
 
 def test_localupath_init():
@@ -11,18 +22,16 @@ def test_localupath_init():
         pathlib.Path.cwd(), 'a', 'b', 'c', 'd'))
 
 
-def test_all():
-    p = LocalUpath('/tmp/upathlib_local_test')
-    upathlib.tests.test_all(p)
+def test_all(test_path):
+    upathlib.tests.test_all(test_path)
 
 
-def test_lock():
-    p = LocalUpath('/tmp/upathlib_local_test')
-    upathlib.tests.test_lock(p)
+def test_lock(test_path):
+    upathlib.tests.test_lock(test_path)
 
 
-def test_rename():
-    p = LocalUpath('/tmp/upathlib_local_test')
+def test_rename(test_path):
+    p = test_path
     p.rmrf()
 
     (p / "a/a.txt").write_text("a")
@@ -41,3 +50,11 @@ def test_rename():
     assert (pp / "d/e.txt").read_text() == "e"
     assert (pp / "d.txt").read_text() == "d"
     assert not (p / "c").exists()
+
+
+def test_pathlike(test_path):
+    p = test_path
+    p.rmrf()
+    p.write_text('abc')
+    with open(p) as file:
+        assert file.read() == 'abc'
