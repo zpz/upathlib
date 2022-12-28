@@ -38,7 +38,7 @@ class LocalUpath(Upath, os.PathLike):
         super().__init__(str(pathlib.Path(*pathsegments).absolute()))
 
     def __fspath__(self) -> str:
-        '''
+        """
         LocalUpath implements the `os.PathLike <https://docs.python.org/3/library/os.html#os.PathLike>`_ protocol,
         hence a LocalUpath object can be used anywhere an object implementing
         os.PathLike is accepted. For example, used with the builtin function
@@ -51,14 +51,14 @@ class LocalUpath(Upath, os.PathLike):
         >>> with open(p) as file:
         ...     print(file.read())
         abc
-        '''
+        """
         return self.localpath.__fspath__()
 
     @overrides
     def as_uri(self) -> str:
-        '''
+        """
         Represent the path as a file URI, like 'file:///path/to/file'.
-        '''
+        """
         return self.path.as_uri()
 
     @property

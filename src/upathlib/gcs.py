@@ -248,9 +248,9 @@ class GcsBlobUpath(BlobUpath):
 
     @overrides
     def as_uri(self) -> str:
-        '''
+        """
         Represent the path as a file URI, like 'gs://bucket-name/path/to/blob'.
-        '''
+        """
         return f"gs://{self.bucket_name}/{self._path.lstrip('/')}"
 
     @overrides

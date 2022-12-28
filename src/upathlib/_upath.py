@@ -191,11 +191,11 @@ class Upath(abc.ABC, EnforceOverrides):
 
     @abc.abstractmethod
     def as_uri(self) -> str:
-        '''
+        """
         Represent the path as a file URI. For local FS, this is like
         'file:///path/to/file'. For Google Cloud Storage, this is like
         'gs://bucket-name/path/to/blob'.
-        '''
+        """
         raise NotImplementedError
 
     @property
@@ -368,13 +368,13 @@ class Upath(abc.ABC, EnforceOverrides):
     @property
     @abc.abstractmethod
     def root(self: T) -> T:
-        '''
+        """
         Return a new path representing the root.
 
         On Windows, this is the root on the same drive.
         In a cloud blob store, this is typically the root in the same
         'bucket' or 'container'.
-        '''
+        """
         raise NotImplementedError
 
     def _with_path(self: T, *paths) -> T:
@@ -389,7 +389,7 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         # TODO: the implementation is a little hacky.
         r = self.root
-        r._path = os.path.normpath(os.path.join('/', *paths))
+        r._path = os.path.normpath(os.path.join("/", *paths))
         return r
 
     def joinpath(self: T, *other: str) -> T:
@@ -501,7 +501,9 @@ class Upath(abc.ABC, EnforceOverrides):
         z = data.encode(encoding=encoding or "utf-8", errors=errors or "strict")
         self.write_bytes(z, overwrite=overwrite)
 
-    def read_text(self, *, encoding: Optional[str] = None, errors: Optional[str] = None) -> str:
+    def read_text(
+        self, *, encoding: Optional[str] = None, errors: Optional[str] = None
+    ) -> str:
         """
         Return the decoded contents of the pointed-to file as a string.
 
@@ -513,124 +515,131 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         # Refer to https://docs.python.org/3/library/functions.html#open
         # and https://docs.python.org/3/library/codecs.html#module-codecs
-        return self.read_bytes().decode(encoding=encoding or 'utf-8', errors=errors or 'strict')
+        return self.read_bytes().decode(
+            encoding=encoding or "utf-8", errors=errors or "strict"
+        )
 
-    def write_json(self, data: Any, *, encoding=None, errors=None, overwrite=False, **kwargs) -> None:
-        '''
+    def write_json(
+        self, data: Any, *, encoding=None, errors=None, overwrite=False, **kwargs
+    ) -> None:
+        """
         ``encoding`` and ``errors`` are passed to :meth:`write_text`.
 
         ``overwrite`` is passed to :meth:`write_text`.
 
         ``**kwargs`` are passed to :meth:`serializer.JsonSerializer.serialize`.
-        '''
-        self.write_text(JsonSerializer.serialize(data, **kwargs), overwrite=overwrite, encoding=encoding, errors=errors)
+        """
+        self.write_text(
+            JsonSerializer.serialize(data, **kwargs),
+            overwrite=overwrite,
+            encoding=encoding,
+            errors=errors,
+        )
 
     def read_json(self, *, encoding=None, errors=None, **kwargs) -> Any:
-        '''
+        """
         ``encoding`` and ``errors`` are passed to :meth:`read_text`.
 
         ``**kwargs`` are passed to :meth:`serializer.JsonSerializer.deserialize`.
-        '''
-        return JsonSerializer.deserialize(self.read_text(encoding=encoding, errors=errors), **kwargs)
+        """
+        return JsonSerializer.deserialize(
+            self.read_text(encoding=encoding, errors=errors), **kwargs
+        )
 
     def write_pickle(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        '''
+        """
         ``overwrite`` is passed to :meth:`write_bytes`.
 
         ``**kwargs`` are passed to :meth:`serializer.PickleSerializer.serialize`.
-        '''
+        """
         self.write_bytes(
             PickleSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_pickle(self, **kwargs) -> Any:
-        '''
+        """
         ``**kwargs`` are passed to :meth:`serializer.PickleSerializer.deserialize`.
-        '''
+        """
         return PickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def write_pickle_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        '''
+        """
         ``overwrite`` is passed to :meth:`write_bytes`.
 
         ``**kwargs`` are passed to :meth:`serializer.ZPickleSerializer.serialize`.
-        '''
+        """
         self.write_bytes(
             ZPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_pickle_z(self, **kwargs) -> Any:
-        '''
+        """
         ``**kwargs`` are passed to :meth:`serializer.ZPickleSerializer.deserialize`.
-        '''
+        """
         return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_pickle_zstd(
-        self, data: Any, *, overwrite=False, **kwargs
-    ) -> None:
-        '''
+    def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
         ``overwrite`` is passed to :meth:`write_bytes`.
 
         ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.serialize`.
-        '''
+        """
         self.write_bytes(
             ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_pickle_zstd(self, **kwargs) -> Any:
-        '''
+        """
         ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.deserialize`.
-        '''
+        """
         return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def write_orjson(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        '''
+        """
         ``overwrite`` is passed to :meth:`write_bytes`.
 
         ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.serialize`.
-        '''
+        """
         self.write_bytes(
             OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_orjson(self, **kwargs) -> Any:
-        '''
+        """
         ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.deserialize`.
-        '''
+        """
         return OrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def write_orjson_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        '''
+        """
         ``overwrite`` is passed to :meth:`write_bytes`.
 
         ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.serialize`.
-        '''
+        """
         self.write_bytes(
             ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_orjson_z(self, **kwargs) -> Any:
-        '''
+        """
         ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.deserialize`.
-        '''
+        """
         return ZOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_orjson_zstd(
-        self, data: Any, *, overwrite=False, **kwargs
-    ) -> None:
-        '''
+    def write_orjson_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
         ``overwrite`` is passed to :meth:`write_bytes`.
 
         ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.serialize`.
-        '''
+        """
         self.write_bytes(
             ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_orjson_zstd(self, **kwargs) -> Any:
-        '''
+        """
         ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.deserialize`.
-        '''
+        """
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
     @property
