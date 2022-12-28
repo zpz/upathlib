@@ -2,7 +2,10 @@
 :class:`Upath` is an abstract base class that defines the APIs and some of the implementation.
 Subclasses tailor to particular storage systems.
 Currently there are two production-ready subclasses; they implement ``Upath``
-for local POSIX file system and Google Cloud Storage, respectively.
+for local file systems and Google Cloud Storage, respectively.
+
+The APIs follow the style of the standard library
+`pathlib <https://docs.python.org/3/library/pathlib.html>`_ where appropriate.
 """
 
 from __future__ import annotations
@@ -97,26 +100,28 @@ class Upath(abc.ABC, EnforceOverrides):
         *pathsegments
             Analogous to the input to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
             The first segment may or may not start with ``'/'``.
-            The path constructed with ``*pathsegments``
-            is always "absolute" under a known "root".
+            The path constructed with ``*pathsegments`` is always "absolute" under a known "root".
 
             For a local POSIX file system, the root is the usual ``'/'``.
+
+            For a local Windows file system, the root is resolved to a particular "drive".
 
             For Azure blob store, the root is that in a "container".
 
             For AWS and GCP blob stores, the root is that in a "bucket".
 
-            If missing, the path constructed is the "root".
+            If missing, the path constructed is the "root". However,
+            the subclass :class:`LocalUpath` plugs in the current working directory
+            for a missing ``*pathsegments``.
 
             .. note:: If one segment starts with ``'/'``, it will reset to the "root"
                 and discard all the segments that have come before it. For example,
                 ``Upath('work', 'projects', '/', 'projects')``
                 is the same as ``Upath('/', 'projects)``.
 
-            .. note:: This explanation of ``*pathsegments`` is mostly centered around
-                a POSIX file system. For Google Cloud storage, the first part of the path
-                can be ``'gs://bucket-name/'``. For other cloud storages or Windows,
-                this documentation will need some update.
+            .. note:: The first element of ``*pathsegments`` may start with some platform-specific
+                strings. For example, ``'/'`` on Linux, ``'c://'`` on Windows, ``'gs://'`` on
+                Google Cloud Storage. Please see subclasses for specifics.
         """
 
         self._path = os.path.normpath(
@@ -177,11 +182,30 @@ class Upath(abc.ABC, EnforceOverrides):
         return self.joinpath(key)
 
     @property
+    def path(self) -> pathlib.PurePath:
+        """
+        The `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_
+        version of the internal path string.
+        """
+        return pathlib.PurePath(self._path)
+
+    @abc.abstractmethod
+    def as_uri(self) -> str:
+        """
+        Represent the path as a file URI. For local FS, this is like
+        'file:///path/to/file'. For Google Cloud Storage, this is like
+        'gs://bucket-name/path/to/blob'.
+        """
+        raise NotImplementedError
+
+    @property
     def name(self) -> str:
-        """Return the segment after the last ``'/'``.
+        """
+        A string representing the final path component, excluding the drive and root, if any.
 
         This is the ``name`` component of ``self.path``.
-        If the current path is the root, then an empty string is returned.
+        If ``self.path`` is ``'/'`` (the root), then an empty string is returned.
+        (The name of the root path is empty.)
 
         Examples
         --------
@@ -208,24 +232,18 @@ class Upath(abc.ABC, EnforceOverrides):
     @property
     def parent(self: T) -> T:
         """
-        Return the parent of the current path.
+        The parent of the path.
 
-        If the current path is the root, then the parent is still the root.
+        If the path is the root, then the parent is still the root.
         """
-        return self.with_path(str(self.path.parent))
-
-    @property
-    def path(self) -> pathlib.PurePosixPath:
-        """Return the `pathlib.PurePosixPath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePosixPath>`_
-        version of the internal path string.
-        """
-        return pathlib.PurePosixPath(self._path)
+        return self._with_path(str(self.path.parent))
 
     @property
     def stem(self) -> str:
         """
-        Return the "stem" part of ``self.name``, that is,
-        the name without the (last) suffix.
+        The final path component, without its suffix.
+
+        This is the "stem" part of ``self.name``.
 
         Examples
         --------
@@ -248,14 +266,14 @@ class Upath(abc.ABC, EnforceOverrides):
     @property
     def suffix(self) -> str:
         """
-        Return the last suffix of the name.
+        The file extension of the final component, if any
         """
         return self.path.suffix
 
     @property
     def suffixes(self) -> List[str]:
         """
-        Return all the suffixes in a list.
+        A list of the path's file extensions.
 
         Examples
         --------
@@ -347,32 +365,19 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         raise NotImplementedError
 
-    def joinpath(self: T, *other: str) -> T:
-        """Join this path with more segments, return the new path object.
-
-        If ``self`` was created by ``Upath(*segs)``, then this method essentially
-        returns ``Upath(*segs, *other)``.
-
-        If ``*other`` is a single string, there is a shortcut by the operator
-        ``/``, implemented by :meth:`__truediv__`.
+    @property
+    @abc.abstractmethod
+    def root(self: T) -> T:
         """
-        return self.with_path(self._path, *other)
+        Return a new path representing the root.
 
-    def with_name(self: T, name: str) -> T:
+        On Windows, this is the root on the same drive.
+        In a cloud blob store, this is typically the root in the same
+        'bucket' or 'container'.
         """
-        Return a new path the the "name" part substituted by the new value.
+        raise NotImplementedError
 
-        This is equivalent to ``self.parent / name``.
-
-        Examples
-        --------
-        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
-        >>> p.with_name('sales.data')
-        LocalUpath('/tmp/test/upathlib/data/sales.data')
-        """
-        return self.with_path(str(self.path.with_name(name)))
-
-    def with_path(self: T, *paths) -> T:
+    def _with_path(self: T, *paths) -> T:
         """
         Return a new object of the same class at the specified ``*paths``.
         The new path is unrelated to the current path; in other words,
@@ -381,25 +386,51 @@ class Upath(abc.ABC, EnforceOverrides):
         The main use case is with a cloud blob store.
         For example, return a new path in the same store with the same
         account and bucket info.
-
-        Subclasses need to reimplement this method
-        if their ``__init__`` expects additional arguments.
         """
-        return self.__class__(*paths)
+        # TODO: the implementation is a little hacky.
+        r = self.root
+        r._path = os.path.normpath(os.path.join("/", *paths))
+        return r
+
+    def joinpath(self: T, *other: str) -> T:
+        """Join this path with more segments, return the new path object.
+
+        Calling this method is equivalent to combining the path with each
+        of the ``other`` arguments in turn.
+
+        If ``self`` was created by ``Upath(*segs)``, then this method essentially
+        returns ``Upath(*segs, *other)``.
+
+        If ``*other`` is a single string, there is a shortcut by the operator
+        ``/``, implemented by :meth:`__truediv__`.
+        """
+        return self._with_path(os.path.join(self._path, *other))
+
+    def with_name(self: T, name: str) -> T:
+        """
+        Return a new path the the "name" part substituted by the new value.
+        If the original path doesn't have a name (i.e. the original path is the root),
+        ``ValueError`` is raised.
+
+        Examples
+        --------
+        >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
+        >>> p.with_name('sales.data')
+        LocalUpath('/tmp/test/upathlib/data/sales.data')
+        """
+        return self._with_path(str(self.path.with_name(name)))
 
     # def with_stem(self: T, stem: str) -> T:
     #     # Available in Python 3.9+.
-    #     return self.with_path(str(self.path.with_stem(stem)))
+    #     return self._with_path(str(self.path.with_stem(stem)))
 
     def with_suffix(self: T, suffix: str) -> T:
         """
-        Return a new path with the (last) suffix replaced by the specified value.
+        Return a new path with the suffix replaced by the specified value.
+        If the original path doesn't have a suffix, the new suffix is appended instead.
+        If ``suffix`` is an empty string, the original suffix is removed.
 
         ``suffix`` should include a dot, like ``'.txt'``.
-
-        If ``suffix`` is ``''``, the effect is to remove the (last) suffix.
-
-        If the current path does not have a suffix, the new ``suffix`` is appended.
 
         Examples
         --------
@@ -428,7 +459,7 @@ class Upath(abc.ABC, EnforceOverrides):
         >>> pp.with_suffix('.pickle')
         LocalUpath('/tmp/test/upathlib/data/sales.pickle')
         """
-        return self.with_path(str(self.path.with_suffix(suffix)))
+        return self._with_path(str(self.path.with_suffix(suffix)))
 
     @abc.abstractmethod
     def write_bytes(self, data: bytes, *, overwrite: bool = False) -> None:
@@ -442,7 +473,8 @@ class Upath(abc.ABC, EnforceOverrides):
 
     @abc.abstractmethod
     def read_bytes(self) -> bytes:
-        """Return the content of the current file (i.e. ``self``) as ``bytes``.
+        """
+        Return the binary contents of the pointed-to file as a bytes object.
 
         If ``self`` is not a file or does not exist,
         ``FileNotFoundError`` is raised.
@@ -454,92 +486,172 @@ class Upath(abc.ABC, EnforceOverrides):
         data: str,
         *,
         overwrite: bool = False,
+        encoding: Optional[str] = None,
+        errors: Optional[str] = None,
     ) -> None:
         """Write text ``data`` to the current file.
 
         Parent "directories" are created as needed, if applicable.
 
         If ``overwrite`` is ``False`` and the current file exists, ``FileExistsError`` is raised.
+
+        ``encoding`` and ``errors`` are passed to `encode() <https://docs.python.org/3/library/stdtypes.html#str.encode>`_.
+        Usually you should leave them at the default values.
         """
-        z = data.encode(encoding="utf-8", errors="strict")
+        z = data.encode(encoding=encoding or "utf-8", errors=errors or "strict")
         self.write_bytes(z, overwrite=overwrite)
 
-    def read_text(self) -> str:
-        """Return the content of the current file (i.e. ``self``) as ``str``.
+    def read_text(
+        self, *, encoding: Optional[str] = None, errors: Optional[str] = None
+    ) -> str:
+        """
+        Return the decoded contents of the pointed-to file as a string.
 
         If ``self`` is not a file or does not exist,
         ``FileNotFoundError`` is raised.
+
+        ``encoding`` and ``errors`` are passed to `decode() <https://docs.python.org/3/library/stdtypes.html#bytes.decode>`_.
+        Usually you should leave them at the default values.
         """
         # Refer to https://docs.python.org/3/library/functions.html#open
-        return self.read_bytes().decode(encoding="utf-8", errors="strict")
+        # and https://docs.python.org/3/library/codecs.html#module-codecs
+        return self.read_bytes().decode(
+            encoding=encoding or "utf-8", errors=errors or "strict"
+        )
 
-    def write_json(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
-        self.write_text(JsonSerializer.serialize(data, **kwargs), overwrite=overwrite)
+    def write_json(
+        self, data: Any, *, encoding=None, errors=None, overwrite=False, **kwargs
+    ) -> None:
+        """
+        ``encoding`` and ``errors`` are passed to :meth:`write_text`.
 
-    def read_json(self, **kwargs) -> Any:
-        return JsonSerializer.deserialize(self.read_text(), **kwargs)
+        ``overwrite`` is passed to :meth:`write_text`.
 
-    def write_pickle(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+        ``**kwargs`` are passed to :meth:`serializer.JsonSerializer.serialize`.
+        """
+        self.write_text(
+            JsonSerializer.serialize(data, **kwargs),
+            overwrite=overwrite,
+            encoding=encoding,
+            errors=errors,
+        )
+
+    def read_json(self, *, encoding=None, errors=None, **kwargs) -> Any:
+        """
+        ``encoding`` and ``errors`` are passed to :meth:`read_text`.
+
+        ``**kwargs`` are passed to :meth:`serializer.JsonSerializer.deserialize`.
+        """
+        return JsonSerializer.deserialize(
+            self.read_text(encoding=encoding, errors=errors), **kwargs
+        )
+
+    def write_pickle(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
+
+        ``**kwargs`` are passed to :meth:`serializer.PickleSerializer.serialize`.
+        """
         self.write_bytes(
             PickleSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_pickle(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.PickleSerializer.deserialize`.
+        """
         return PickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_pickle_z(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+    def write_pickle_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
+
+        ``**kwargs`` are passed to :meth:`serializer.ZPickleSerializer.serialize`.
+        """
         self.write_bytes(
             ZPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_pickle_z(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.ZPickleSerializer.deserialize`.
+        """
         return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_pickle_zstd(
-        self, data: Any, *, overwrite: bool = False, **kwargs
-    ) -> None:
+    def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
+
+        ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.serialize`.
+        """
         self.write_bytes(
             ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_pickle_zstd(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.deserialize`.
+        """
         return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_orjson(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+    def write_orjson(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
+
+        ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.serialize`.
+        """
         self.write_bytes(
             OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_orjson(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.deserialize`.
+        """
         return OrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_orjson_z(self, data: Any, *, overwrite: bool = False, **kwargs) -> None:
+    def write_orjson_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
+
+        ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.serialize`.
+        """
         self.write_bytes(
             ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_orjson_z(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.deserialize`.
+        """
         return ZOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_orjson_zstd(
-        self, data: Any, *, overwrite: bool = False, **kwargs
-    ) -> None:
+    def write_orjson_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
+
+        ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.serialize`.
+        """
         self.write_bytes(
             ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
     def read_orjson_zstd(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.deserialize`.
+        """
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
     @property
     def _thread_pool_executors(self):
         if not Upath._thread_pools:
+            n = min(32, (os.cpu_count() or 1) + 4)
             Upath._thread_pools = (
                 ThreadPoolExecutor(
-                    min(32, (os.cpu_count() or 1) + 4),
+                    n,
                     thread_name_prefix="UpathExecutor0",
                 ),
-                ThreadPoolExecutor(10, thread_name_prefix="UpathExecutor1"),
+                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
             )
         return Upath._thread_pools
         # Currently there can be two "layers" of threads running during `download_dir`.
@@ -564,7 +676,7 @@ class Upath(abc.ABC, EnforceOverrides):
             Each element is a tuple of (func, args, kwargs, description).
         description
             Description of the entire set of tasks, such as "Downloading directory 'abc'".
-            Note: if ``description`` is a falsy value, progress printouts will be suppressed.
+            Note: if ``description`` is a falsy value, progress printouts will be turned off.
         """
         if not isinstance(tasks, list):
             tasks = list(tasks)
@@ -572,20 +684,13 @@ class Upath(abc.ABC, EnforceOverrides):
         if not n_tasks:
             return
 
-        def enqueue(q_tasks, executor, q):
-            while True:
-                try:
-                    func, args, kwargs, desc = q_tasks.get_nowait()
-                except queue.Empty:
-                    break
-                t = executor.submit(func, *args, **kwargs)
-                q.put((t, desc))
-            q.put(None)
-
         pbar = None
         if threading.current_thread().name.startswith("UpathExecutor0"):
             # This is the case when GCP downloads a large file by multiple parts.
+            # This is working on one large file, and it is trying to start threads
+            # to tackle parts of it.
             executor = self._thread_pool_executors[1]
+            # No progress printout.
         else:
             executor = self._thread_pool_executors[0]
             if description:
@@ -595,13 +700,20 @@ class Upath(abc.ABC, EnforceOverrides):
                     bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
                 )
 
+        def enqueue(tasks, executor, q, to_stop):
+            for func, args, kwargs, desc in tasks:
+                t = executor.submit(func, *args, **kwargs)
+                # This has limited capacity, to control the speed of
+                # task submission to the executor.
+                q.put((t, desc))
+                if to_stop.is_set():
+                    break
+            q.put(None)
+
         try:
-            q = queue.Queue(executor._max_workers + 4)
-            q_tasks = queue.SimpleQueue()
-            for t in tasks:
-                q_tasks.put(t)
-            task = threading.Thread(target=enqueue, args=(q_tasks, executor, q))
-            task.start()
+            q = queue.Queue(executor._max_workers)
+            to_stop = threading.Event()
+            task = executor.submit(enqueue, tasks, executor, q, to_stop)
 
             try:
                 while True:
@@ -615,11 +727,7 @@ class Upath(abc.ABC, EnforceOverrides):
                     try:
                         yield t.result()
                     except Exception:
-                        while True:
-                            try:
-                                _ = q_tasks.get_nowait()
-                            except queue.Empty:
-                                break
+                        to_stop.set()
                         while True:
                             z = q.get()
                             if z is None:
@@ -632,7 +740,7 @@ class Upath(abc.ABC, EnforceOverrides):
                     if pbar:
                         pbar.update(0.5)
             finally:
-                task.join()
+                _ = task.result()
         finally:
             if pbar:
                 pbar.close()
@@ -646,9 +754,13 @@ class Upath(abc.ABC, EnforceOverrides):
     ) -> int:
         """Copy the content of the current directory (i.e. ``self``) recursively to ``target``.
 
-        If ``target`` is an string, then it is either absolute, or relative to ``self.parent``.
-        In that case,
+        If ``target`` is an string, then it is in the same store the the current path,
+        and it is either absolute, or relative to ``self.parent``.
+        In this case,
         the directory created by this operation will be the path ``self.parent / target``.
+
+        If ``target`` is not a string, then it must be an instance of a :meth:`Upath` subclass,
+        and it may be in any store system.
 
         Immediate children of ``self`` will be copied as immediate children of the target path.
 
@@ -659,9 +771,6 @@ class Upath(abc.ABC, EnforceOverrides):
 
         ``overwrite`` is file-wise. If ``False``, any existing target file will raise ``FileExistsError`` and
         halt the operation. If ``True``, any existing target file will be overwritten by the source file.
-
-        .. todo:: If one file raises ``FileExistsError``, will the copying of other files happening in other threads
-            be stopped? Most likely this is not implemented yet.
 
         ``quiet`` controls whether to print out progress info.
 
@@ -705,10 +814,14 @@ class Upath(abc.ABC, EnforceOverrides):
     def copy_file(self, target: str | Upath, *, overwrite: bool = False) -> None:
         """Copy the current file (i.e. ``self``) to ``target``.
 
-        If ``target`` is str, then it is either absolute, or relative to ``self.parent``.
+        If ``target`` is str, then it is in the same store as the current path,
+        and it is either absolute, or relative to ``self.parent``.
         In this case, the file created by this operation will the path ``self.parent / target``.
         For example, if ``self`` is ``'/a/b/c/d.txt'``, then
         ``target='e.txt'`` means ``'/a/b/c/e.txt'``.
+
+        If ``target`` is not a string, then it must be an instance of a :meth:`Upath` subclass,
+        and it may be in any storage system.
 
         ``target`` is the target file, *not* a target directory to "copy into".
 

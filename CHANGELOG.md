@@ -6,9 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [in progress]
 
-The largest effort in this release is enhancements to documentation,
-including Sphinx documentation generation and hosting on readthedocs.
-
 Removed
 -------
 
@@ -19,6 +16,17 @@ Removed
 - Classes `ZJsonSerializer`, `ZstdJsonSerializer`.
 - Back-compat module `upathlib.gcp`.
 - Methods `export_dir`, `export_file`, `import_dir`, `import_file`. (Concentrate on the `copy_*` methods.)
+- Method `with_path` renamed to `_with_path` and has become an intermediate implementation helper based on the new method `root`.
+
+Added or enhanced
+-----------------
+
+- Enhancements to documentation, including Sphinx documentation generation and hosting on readthedocs.
+- New method `as_uri`.
+- `LocalUpath` now implements the `os.PathLike` protocol.
+- Methods `read_text`, `write_text`, `read_json`, `write_json` get parameters `encoding` and `errors`.
+- New property `root`.
+- Initial support for Windows.
 
 
 ## [0.6.8] - 2022-11-16

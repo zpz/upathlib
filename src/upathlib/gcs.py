@@ -104,7 +104,6 @@ class GcsBlobUpath(BlobUpath):
         self,
         *paths: str,
         bucket_name: str = None,
-        **kwargs,
     ):
         """
         If ``bucket_name`` is ``None``, then ``*paths`` should be a single string
@@ -134,7 +133,7 @@ class GcsBlobUpath(BlobUpath):
                 bucket_name = path[:k]
                 paths = (path[k:],)
 
-        super().__init__(*paths, **kwargs)
+        super().__init__(*paths)
         self.bucket_name = bucket_name
         self._client = None
         self._bucket = None
@@ -144,14 +143,10 @@ class GcsBlobUpath(BlobUpath):
         self._quiet_multidownload = True
 
     def __repr__(self) -> str:
-        return "{}('gs://{}/{}')".format(
-            self.__class__.__name__,
-            self.bucket_name,
-            self._path.lstrip("/"),
-        )
+        return f"{self.__class__.__name__}('{self.as_uri()}')"
 
     def __str__(self) -> str:
-        return f"gs://{self.bucket_name}/{self._path.lstrip('/')}"
+        return self.as_uri()
 
     def __eq__(self, other) -> bool:
         if other.__class__ is not self.__class__:
@@ -252,6 +247,13 @@ class GcsBlobUpath(BlobUpath):
             return None
 
     @overrides
+    def as_uri(self) -> str:
+        """
+        Represent the path as a file URI, like 'gs://bucket-name/path/to/blob'.
+        """
+        return f"gs://{self.bucket_name}/{self._path.lstrip('/')}"
+
+    @overrides
     def is_file(self) -> bool:
         """
         The result of this call is not cached, in case the object is modified anytime
@@ -300,13 +302,10 @@ class GcsBlobUpath(BlobUpath):
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
 
+    @property
     @overrides
-    def with_path(self, *paths: str) -> GcsBlobUpath:
-        """
-        Return a new path specified by ``*paths`` in the same bucket.
-        """
+    def root(self) -> GcsBlobUpath:
         obj = self.__class__(
-            *paths,
             bucket_name=self.bucket_name,
         )
         obj._client = self.client

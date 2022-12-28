@@ -54,7 +54,6 @@ class AzureBlobUpath(BlobUpath):
         self,
         *paths: str,
         container_name: str = None,
-        **kwargs,
     ):
         if container_name is None:
             assert len(paths) == 1
@@ -70,7 +69,7 @@ class AzureBlobUpath(BlobUpath):
                 container_name = path[:k]
                 paths = (path[k:],)
 
-        super().__init__(*paths, **kwargs)
+        super().__init__(*paths)
 
         self._container_name = container_name
 
@@ -135,9 +134,46 @@ class AzureBlobUpath(BlobUpath):
             return NotImplemented
         return self._path >= other._path
 
+    @overrides
+    def as_uri(self) -> str:
+        # TODO: what's the conventional lead word for Azure?
+        return f"azure://{self._path}"
+
     @property
     def container_name(self):
         return self._container_name
+
+    @overrides
+    def is_file(self) -> bool:
+        with self._provide_blob_client():
+            return self._blob_client.exists()
+
+    @overrides
+    def file_info(self):
+        try:
+            with self._provide_blob_client():
+                info = self._blob_client.get_blob_properties()
+                return FileInfo(
+                    ctime=info.creation_time.timestamp(),
+                    mtime=info.last_modified.timestamp(),
+                    time_created=info.creation_time,
+                    time_modified=info.last_modified,
+                    size=info.size,
+                    details=info,
+                )
+                # If an existing file is written to again using
+                # `write_...(..., overwrite=True)`,
+                # then its `ctime` will not change; only `mtime`
+                # will be updated.
+        except ResourceNotFoundError:
+            return None
+
+    @property
+    @overrides
+    def root(self):
+        return self.__class__(
+            container_name=self._container_name,
+        )
 
     def _copy_file_from(self, source, *, overwrite=False):
         # TODO: use `overwrite`
@@ -175,26 +211,6 @@ class AzureBlobUpath(BlobUpath):
                 data.readinto(f)
 
     @overrides
-    def file_info(self):
-        try:
-            with self._provide_blob_client():
-                info = self._blob_client.get_blob_properties()
-                return FileInfo(
-                    ctime=info.creation_time.timestamp(),
-                    mtime=info.last_modified.timestamp(),
-                    time_created=info.creation_time,
-                    time_modified=info.last_modified,
-                    size=info.size,
-                    details=info,
-                )
-                # If an existing file is written to again using
-                # `write_...(..., overwrite=True)`,
-                # then its `ctime` will not change; only `mtime`
-                # will be updated.
-        except ResourceNotFoundError:
-            return None
-
-    @overrides
     def upload_file(self, source: LocalPathType, *, overwrite: bool = False):
         source = _resolve_local_path(source)
         if self.is_file():
@@ -206,11 +222,6 @@ class AzureBlobUpath(BlobUpath):
         with self._provide_blob_client():
             with open(str(source), "rb") as data:
                 self._blob_client.upload_blob(data)
-
-    @overrides
-    def is_file(self) -> bool:
-        with self._provide_blob_client():
-            return self._blob_client.exists()
 
     @overrides
     def iterdir(self):
@@ -364,13 +375,6 @@ class AzureBlobUpath(BlobUpath):
             k = len(prefix)
             for p in self._container_client.list_blobs(name_starts_with=prefix):
                 yield self / p.name[k:]
-
-    @overrides
-    def with_path(self, *paths):
-        return self.__class__(
-            *paths,
-            container_name=self._container_name,
-        )
 
     @overrides
     def write_bytes(self, data: bytes, *, overwrite=False) -> None:

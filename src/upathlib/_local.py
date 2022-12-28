@@ -25,23 +25,41 @@ from ._upath import Upath, LockAcquireError, FileInfo
 # logging.getLogger("filelock").setLevel(logging.WARNING)
 
 
-class LocalUpath(Upath):
-    def __init__(self, *pathsegments: str, **kwargs):
+class LocalUpath(Upath, os.PathLike):
+    def __init__(self, *pathsegments: str):
         """
-        Create a path on the local POSIX file system.
+        Create a path on the local file system.
+        Both POSIX and Windows platforms are supported.
 
         ``*pathsegments`` specify the path, either absolute or relative to the current
         working directory. If missing, the constructed path is the current working directory.
-
-        ``**kwargs`` are passed on to the base class.
+        This is passed to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
         """
-        assert os.name == "posix"
-        if pathsegments:
-            parts = [str(pathlib.Path(*pathsegments).absolute())]
-        else:
-            parts = [str(pathlib.Path.cwd().absolute())]
+        super().__init__(str(pathlib.Path(*pathsegments).absolute()))
 
-        super().__init__(*parts, **kwargs)
+    def __fspath__(self) -> str:
+        """
+        LocalUpath implements the `os.PathLike <https://docs.python.org/3/library/os.html#os.PathLike>`_ protocol,
+        hence a LocalUpath object can be used anywhere an object implementing
+        os.PathLike is accepted. For example, used with the builtin function
+        `open() <https://docs.python.org/3/library/functions.html#open>`_:
+
+        >>> p = LocalUpath('/tmp/test/data.txt')
+        >>> p.rmrf()
+        0
+        >>> p.write_text('abc')
+        >>> with open(p) as file:
+        ...     print(file.read())
+        abc
+        """
+        return self.localpath.__fspath__()
+
+    @overrides
+    def as_uri(self) -> str:
+        """
+        Represent the path as a file URI, like 'file:///path/to/file'.
+        """
+        return self.path.as_uri()
 
     @property
     def localpath(self) -> pathlib.Path:
@@ -85,6 +103,11 @@ class LocalUpath(Upath):
         # If an existing file is written to again using `write_...`,
         # then its `ctime` and `mtime` are both updated.
         # My experiments showed that `ctime` and `mtime` are equal.
+
+    @property
+    @overrides
+    def root(self) -> LocalUpath:
+        return self.__class__(self.path.root)
 
     @overrides
     def read_bytes(self) -> bytes:

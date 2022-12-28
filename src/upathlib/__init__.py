@@ -2,15 +2,13 @@
 The package upathlib
 defines a unified API for cloud blob store (aka "object store") as well as local file systems.
 
-The APIs follow the style of the standard library
-`pathlib <https://docs.python.org/3/library/pathlib.html>`_ where appropriate.
 Attention is focused on identifying the *most essential* functionalities
 while working with a blob store for data processing.
 Functionalities in a traditional local file system that are secondary in these tasks---such
 as symbolic links, fine-grained permissions, and various access modes---are ignored.
 
 End user should look to the class :class:`~upathlib.Upath` for documentation of the API.
-Local (POSIX) file system is implemented by :class:`LocalUpath`, which subclasses Upath.
+Local file system is implemented by :class:`LocalUpath`, which subclasses Upath.
 Client for Google Cloud Storage (i.e. blob store on GCP) is implemented by another Upath subclass,
 namely :class:`~upathlib.GcsBlobUpath`.
 
@@ -22,7 +20,7 @@ simply uses the common API to operate the storage.
 
 # flake8: noqa
 
-__version__ = "0.6.9b2"
+__version__ = "0.6.9b3"
 
 from pathlib import Path
 from typing import Union
