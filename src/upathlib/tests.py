@@ -2,34 +2,60 @@
 # in a path that is safe for testing.
 
 import concurrent.futures
+import os
 import pathlib
 import time
 import pytest
 from upathlib import Upath, LocalUpath, LockAcquireError
 
 
+IS_WIN = (os.name != 'posix')
+
+
 def test_basic(p: Upath):
     pp = p / "/abc/def/"
-    assert pp.path == pathlib.PurePath(pathlib.Path("/abc/def").absolute())
+    if isinstance(p, LocalUpath) and IS_WIN:
+        assert pp.path == pathlib.PurePath(pathlib.Path("/abc/def").absolute())
+    else:
+        assert pp.path == pathlib.PurePath("/abc/def")
     print(repr(pp))
 
     pp = pp / "x/y/z"
-    assert pp.path == pathlib.PurePath(pathlib.Path("/abc/def/x/y/z").absolute())
+    if isinstance(pp, LocalUpath) and IS_WIN:
+        assert pp.path == pathlib.PurePath(pathlib.Path("/abc/def/x/y/z").absolute())
+    else:
+        assert pp.path == pathlib.PurePath("/abc/def/x/y/z")
+
     print(repr(pp))
 
     pp /= "xy/z"
-    assert str(pp.path) == "/abc/def/x/y/z/xy/z"
+    if isinstance(pp, LocalUpath) and IS_WIN:
+        assert str(pp.path) == str(pathlib.Path("/abc/def/x/y/z/xy/z").absolute())
+    else:
+        assert str(pp.path) == "/abc/def/x/y/z/xy/z"
+
     assert pp._path == str(pp.path)
     pp /= ".."
-    assert pp._path == "/abc/def/x/y/z/xy"
-    pp.joinpath("..")._path == "/abc/def/x/y/z"
-    pp.joinpath("..", "..", "..", "..", "..")._path == "/"
+    if isinstance(pp, LocalUpath) and IS_WIN:
+        assert pp._path == str(pathlib.Path("/abc/def/x/y/z/xy").absolute())
+    else:
+        assert pp._path == "/abc/def/x/y/z/xy"
+
+    if isinstance(pp, LocalUpath) and IS_WIN:
+        pp.joinpath("..")._path == str(pathlib.Path("/abc/def/x/y/z").absolute())
+        pp.joinpath("..", "..", "..", "..", "..")._path == str(pathlib.Path("/").absolute())
+    else:
+        pp.joinpath("..")._path == "/abc/def/x/y/z"
+        pp.joinpath("..", "..", "..", "..", "..")._path == "/"
 
 
 def test_joinpath(path: Upath):
     try:
         pp = path.joinpath("/abc/def/", "x/y") / "ab.txt"
-        assert str(pp.path) == "/abc/def/x/y/ab.txt"
+        if isinstance(pp, LocalUpath) and IS_WIN:
+            assert str(pp.path) == str(pathlib.Path("/abc/def/x/y/ab.txt").absolute())
+        else:
+            assert str(pp.path) == "/abc/def/x/y/ab.txt"
 
         pp = pp.joinpath("../a/b.txt")
         assert pp == path / "/abc/def" / "x/y/a/b.txt"
@@ -39,10 +65,17 @@ def test_joinpath(path: Upath):
         p = pp
 
         pp = pp / "../../../../"
-        assert str(pp.path) == "/abc/def"
+        if isinstance(pp, LocalUpath) and IS_WIN:
+            assert str(pp.path) == str(pathlib.Path("/abc/def").absolute())
+        else:
+            assert str(pp.path) == "/abc/def"
 
         pp = p.joinpath("a", ".", "b/c.data")
-        assert str(pp.path) == "/abc/def/x/y/a/b.txt/a/b/c.data"
+        if isinstance(pp, LocalUpath) and IS_WIN:
+            assert str(pp.path) == str(pathlib.Path("/abc/def/x/y/a/b.txt/a/b/c.data").absolute())
+        else:
+            assert str(pp.path) == "/abc/def/x/y/a/b.txt/a/b/c.data"
+
     except Exception:
         print("")
         print("repr:  ", repr(pp))

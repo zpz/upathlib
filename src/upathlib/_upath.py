@@ -127,7 +127,8 @@ class Upath(abc.ABC, EnforceOverrides):
         self._path = os.path.normpath(
             os.path.join("/", *pathsegments)
         )  # pylint: disable=no-value-for-parameter
-        # The path is always "absolute" starting with '/'.
+        # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
+        # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
 
     def __getstate__(self):
