@@ -23,6 +23,7 @@ class BlobUpath(Upath, EnforceOverrides):
     BlobUpath is a base class for paths in a *cloud* storage, aka "blob store".
     This is in contrast to a *local* disk storage, which is implemnted by :class:`LocalUpath`.
     """
+
     @property
     def blob_name(self) -> str:
         return self._path.lstrip("/")
