@@ -162,7 +162,14 @@ class LocalUpath(Upath, os.PathLike):
     @overrides
     def remove_file(self) -> None:
         """Remove the current file."""
-        self.localpath.unlink()
+        try:
+            self.localpath.unlink()
+        except PermissionError as e:  # this happens on Windows if `self` is a dir.
+            if self.is_dir():
+                raise IsADirectoryError(self) from e
+            else:
+                raise
+        # On Linux, if `self` is a dir, `IsADirectoryError` will be raised.
 
     def rename_dir(
         self,
