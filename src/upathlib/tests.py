@@ -181,7 +181,7 @@ def test_copy(p: Upath):
     source_file.copy_file(target)
     assert target.read_text() == "abc"
 
-    with pytest.raises(NotADirectoryError):
+    with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
         source.copy_dir(target.joinpath("samplefile"))
