@@ -9,7 +9,7 @@ import pytest
 from upathlib import Upath, LocalUpath, LockAcquireError
 
 
-IS_WIN = (os.name != 'posix')
+IS_WIN = os.name != "posix"
 
 
 def test_basic(p: Upath):
@@ -43,7 +43,9 @@ def test_basic(p: Upath):
 
     if isinstance(pp, LocalUpath) and IS_WIN:
         pp.joinpath("..")._path == str(pathlib.Path("/abc/def/x/y/z").absolute())
-        pp.joinpath("..", "..", "..", "..", "..")._path == str(pathlib.Path("/").absolute())
+        pp.joinpath("..", "..", "..", "..", "..")._path == str(
+            pathlib.Path("/").absolute()
+        )
     else:
         pp.joinpath("..")._path == "/abc/def/x/y/z"
         pp.joinpath("..", "..", "..", "..", "..")._path == "/"
@@ -72,7 +74,9 @@ def test_joinpath(path: Upath):
 
         pp = p.joinpath("a", ".", "b/c.data")
         if isinstance(pp, LocalUpath) and IS_WIN:
-            assert str(pp.path) == str(pathlib.Path("/abc/def/x/y/a/b.txt/a/b/c.data").absolute())
+            assert str(pp.path) == str(
+                pathlib.Path("/abc/def/x/y/a/b.txt/a/b/c.data").absolute()
+            )
         else:
             assert str(pp.path) == "/abc/def/x/y/a/b.txt/a/b/c.data"
 
