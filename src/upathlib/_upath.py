@@ -370,10 +370,6 @@ class Upath(abc.ABC, EnforceOverrides):
     def root(self: T) -> T:
         """
         Return a new path representing the root.
-
-        On Windows, this is the root on the same drive.
-        In a cloud blob store, this is typically the root in the same
-        'bucket' or 'container'.
         """
         raise NotImplementedError
 

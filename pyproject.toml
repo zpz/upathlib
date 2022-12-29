@@ -69,7 +69,6 @@ ignore = ["E203", "E231", "E501", "W503"]
 [tool.pytest.ini_options]
 minversion = "6.0"
 addopts = "-sv --log-cli-level info -p no:cacheprovider"
-asyncio_mode = "auto"
 
 
 [tool.coverage.report]
