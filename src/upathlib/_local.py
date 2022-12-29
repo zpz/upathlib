@@ -144,7 +144,7 @@ class LocalUpath(Upath, os.PathLike):
             if not overwrite and target.is_file():
                 raise FileExistsError(target)
 
-            print('in _copy_file')
+            print("in _copy_file")
             print(target)
             print(target.localpath)
             print(target.localpath.parent)
