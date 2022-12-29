@@ -7,6 +7,7 @@
 upathlib
 ========
 
+(Generated on |today| for upathlib version |version|.)
 
 .. automodule:: upathlib
    :no-members:

@@ -2,34 +2,62 @@
 # in a path that is safe for testing.
 
 import concurrent.futures
+import os
 import pathlib
 import time
 import pytest
 from upathlib import Upath, LocalUpath, LockAcquireError
 
 
+IS_WIN = os.name != "posix"
+
+
 def test_basic(p: Upath):
     pp = p / "/abc/def/"
-    assert pp.path == pathlib.PurePosixPath("/abc/def")
+    if isinstance(pp, LocalUpath):
+        assert pp.path == pathlib.Path("/abc/def").absolute()
+    else:
+        assert pp.path == pathlib.PurePath("/abc/def")
     print(repr(pp))
 
     pp = pp / "x/y/z"
-    assert pp.path == pathlib.PurePosixPath("/abc/def/x/y/z")
+    if isinstance(pp, LocalUpath):
+        assert pp.path == pathlib.Path("/abc/def/x/y/z").absolute()
+    else:
+        assert pp.path == pathlib.PurePath("/abc/def/x/y/z")
+
     print(repr(pp))
 
     pp /= "xy/z"
-    assert str(pp.path) == "/abc/def/x/y/z/xy/z"
+    if isinstance(pp, LocalUpath):
+        assert str(pp.path) == str(pathlib.Path("/abc/def/x/y/z/xy/z").absolute())
+    else:
+        assert str(pp.path) == "/abc/def/x/y/z/xy/z"
+
     assert pp._path == str(pp.path)
     pp /= ".."
-    assert pp._path == "/abc/def/x/y/z/xy"
-    pp.joinpath("..")._path == "/abc/def/x/y/z"
-    pp.joinpath("..", "..", "..", "..", "..")._path == "/"
+    if isinstance(pp, LocalUpath):
+        assert pp._path == str(pathlib.Path("/abc/def/x/y/z/xy").absolute())
+    else:
+        assert pp._path == "/abc/def/x/y/z/xy"
+
+    if isinstance(pp, LocalUpath):
+        pp.joinpath("..")._path == str(pathlib.Path("/abc/def/x/y/z").absolute())
+        pp.joinpath("..", "..", "..", "..", "..")._path == str(
+            pathlib.Path("/").absolute()
+        )
+    else:
+        pp.joinpath("..")._path == "/abc/def/x/y/z"
+        pp.joinpath("..", "..", "..", "..", "..")._path == "/"
 
 
 def test_joinpath(path: Upath):
     try:
         pp = path.joinpath("/abc/def/", "x/y") / "ab.txt"
-        assert str(pp.path) == "/abc/def/x/y/ab.txt"
+        if isinstance(pp, LocalUpath):
+            assert str(pp.path) == str(pathlib.Path("/abc/def/x/y/ab.txt").absolute())
+        else:
+            assert str(pp.path) == "/abc/def/x/y/ab.txt"
 
         pp = pp.joinpath("../a/b.txt")
         assert pp == path / "/abc/def" / "x/y/a/b.txt"
@@ -39,10 +67,19 @@ def test_joinpath(path: Upath):
         p = pp
 
         pp = pp / "../../../../"
-        assert str(pp.path) == "/abc/def"
+        if isinstance(pp, LocalUpath):
+            assert str(pp.path) == str(pathlib.Path("/abc/def").absolute())
+        else:
+            assert str(pp.path) == "/abc/def"
 
         pp = p.joinpath("a", ".", "b/c.data")
-        assert str(pp.path) == "/abc/def/x/y/a/b.txt/a/b/c.data"
+        if isinstance(pp, LocalUpath):
+            assert str(pp.path) == str(
+                pathlib.Path("/abc/def/x/y/a/b.txt/a/b/c.data").absolute()
+            )
+        else:
+            assert str(pp.path) == "/abc/def/x/y/a/b.txt/a/b/c.data"
+
     except Exception:
         print("")
         print("repr:  ", repr(pp))
@@ -80,7 +117,11 @@ def test_read_write_rm_navigate(p: Upath):
     assert p1.read_json() == {"data": "abcd"}  # type: ignore
 
     p /= "a"
-    assert p._path == f"{init_path}/a"
+    if isinstance(p, LocalUpath):
+        assert p._path == str(pathlib.Path(f"{init_path}/a").absolute())
+    else:
+        assert p._path == f"{init_path}/a"
+
     assert not p.is_file()
     assert not p.is_dir()
     assert not p.exists()
@@ -140,7 +181,7 @@ def test_copy(p: Upath):
     source_file.copy_file(target)
     assert target.read_text() == "abc"
 
-    with pytest.raises(NotADirectoryError):
+    with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
         # cant' write to `target/'samplefile'`
         # because `target` is a file.
         source.copy_dir(target.joinpath("samplefile"))

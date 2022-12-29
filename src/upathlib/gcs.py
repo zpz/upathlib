@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from collections.abc import Iterator
+from datetime import datetime
 from io import BufferedReader, UnsupportedOperation, BytesIO
 from typing import Optional
 
@@ -94,6 +95,12 @@ class GcsBlobUpath(BlobUpath):
         """
         if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
             cred, pid = google.auth.default()
+            if (
+                not cred.token
+                or (cred.expiry - datetime.utcnow()).total_seconds() < 600
+            ):
+                cred.refresh(google.auth.transport.requests.Request())
+                # One check shows that this token expires in one hour.
             if cls._CREDENTIALS is None:
                 cls._CREDENTIALS = cred
             if cls._PROJECT_ID is None:
@@ -305,6 +312,9 @@ class GcsBlobUpath(BlobUpath):
     @property
     @overrides
     def root(self) -> GcsBlobUpath:
+        """
+        Return a new path representing the root of the same bucket.
+        """
         obj = self.__class__(
             bucket_name=self.bucket_name,
         )
@@ -460,14 +470,14 @@ class GcsBlobUpath(BlobUpath):
 
         os.makedirs(str(target.parent), exist_ok=True)
         try:
-            with open(target.localpath, "wb") as file_obj:
+            with open(target, "wb") as file_obj:
                 # If `target` is an existing directory,
                 # will raise `IsADirectoryError`.
                 self._read_into_buffer(file_obj)
             updated = self.blob().updated
             if updated is not None:
                 mtime = updated.timestamp()
-                os.utime(target.localpath, (mtime, mtime))
+                os.utime(target, (mtime, mtime))
         except resumable_media.DataCorruption:
             target.remove_file()
             raise

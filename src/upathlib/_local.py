@@ -16,6 +16,7 @@ import filelock
 #
 # Other options to look into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
+from deprecation import deprecated
 from overrides import overrides
 
 from ._upath import Upath, LockAcquireError, FileInfo
@@ -52,36 +53,46 @@ class LocalUpath(Upath, os.PathLike):
         ...     print(file.read())
         abc
         """
-        return self.localpath.__fspath__()
+        return self.path.__fspath__()
+
+    @property
+    @overrides
+    def path(self) -> pathlib.Path:
+        """
+        Return the `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_ object
+        of the path.
+        """
+        return pathlib.Path(self._path)
+
+    @property
+    @deprecated(
+        deprecated_in="0.6.9", removed_in="0.8.0", details="Use `path` instead."
+    )
+    def localpath(self):
+        return self.path
 
     @overrides
     def as_uri(self) -> str:
         """
-        Represent the path as a file URI, like 'file:///path/to/file'.
+        Represent the path as a file URI.
+        On Linux, this is like 'file:///home/username/path/to/file'.
+        On Windows, this is like 'file:///C:/Users/username/path/to/file'.
         """
         return self.path.as_uri()
-
-    @property
-    def localpath(self) -> pathlib.Path:
-        """
-        Return the `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_ object
-        for the current path.
-        """
-        return pathlib.Path(self._path)
 
     @overrides
     def is_dir(self) -> bool:
         """
         Return whether the current path is a dir.
         """
-        return self.localpath.is_dir()
+        return self.path.is_dir()
 
     @overrides
     def is_file(self) -> bool:
         """
         Return whether the current path is a file.
         """
-        return self.localpath.is_file()
+        return self.path.is_file()
 
     @overrides
     def file_info(self) -> Optional[FileInfo]:
@@ -91,7 +102,7 @@ class LocalUpath(Upath, os.PathLike):
         """
         if not self.is_file():
             return None
-        st = self.localpath.stat()
+        st = self.path.stat()
         return FileInfo(
             ctime=st.st_ctime,
             mtime=st.st_mtime,
@@ -107,6 +118,12 @@ class LocalUpath(Upath, os.PathLike):
     @property
     @overrides
     def root(self) -> LocalUpath:
+        """
+        Return a new path representing the root.
+
+        On Windows, this is the root on the same drive, like ``LocalUpath('C:\')``.
+        On Linux and Mac, this is ``LocalUpath('/')``.
+        """
         return self.__class__(self.path.root)
 
     @overrides
@@ -115,7 +132,7 @@ class LocalUpath(Upath, os.PathLike):
         Read the content of the current file as bytes.
         """
         try:
-            return self.localpath.read_bytes()
+            return self.path.read_bytes()
         except (IsADirectoryError, FileNotFoundError) as e:
             raise FileNotFoundError(self) from e
 
@@ -127,8 +144,8 @@ class LocalUpath(Upath, os.PathLike):
         if self.is_file():
             if not overwrite:
                 raise FileExistsError(self)
-        self.parent.localpath.mkdir(exist_ok=True, parents=True)
-        self.localpath.write_bytes(data)
+        self.parent.path.mkdir(exist_ok=True, parents=True)
+        self.path.write_bytes(data)
         # If `self` is an existing directory, will raise `IsADirectoryError`.
         # If `self` is an existing file, will overwrite.
 
@@ -137,8 +154,11 @@ class LocalUpath(Upath, os.PathLike):
         if isinstance(target, LocalUpath):
             if not overwrite and target.is_file():
                 raise FileExistsError(target)
-            os.makedirs(target.localpath.parent, exist_ok=True)
-            shutil.copyfile(self.localpath, target.localpath)
+            os.makedirs(target.parent, exist_ok=True)
+            # If `p` is a file and we try to `os.makedirs(p / 'subdir`)`,
+            # on Linux it raises `NotADirectoryError`;
+            # on Windows it raises `FileNotFoundError`.
+            shutil.copyfile(self.path, target.path)
             # If target already exists, it will be overwritten.
         else:
             super()._copy_file(target, overwrite=overwrite)
@@ -149,14 +169,21 @@ class LocalUpath(Upath, os.PathLike):
         Remove the current dir along with all its contents recursively.
         """
         n = super().remove_dir(**kwargs)
-        if self.localpath.is_dir():
-            shutil.rmtree(self.localpath)
+        if self.path.is_dir():
+            shutil.rmtree(self.path)
         return n
 
     @overrides
     def remove_file(self) -> None:
         """Remove the current file."""
-        self.localpath.unlink()
+        try:
+            self.path.unlink()
+        except PermissionError as e:  # this happens on Windows if `self` is a dir.
+            if self.is_dir():
+                raise IsADirectoryError(self) from e
+            else:
+                raise
+        # On Linux, if `self` is a dir, `IsADirectoryError` will be raised.
 
     def rename_dir(
         self,
@@ -212,7 +239,7 @@ class LocalUpath(Upath, os.PathLike):
                 path.rmdir()
             return k
 
-        _remove_empty_dir(self.localpath)
+        _remove_empty_dir(self.path)
 
         return target_
 
@@ -220,8 +247,8 @@ class LocalUpath(Upath, os.PathLike):
         target = self.parent / target
         if not overwrite and target.is_file():
             raise FileExistsError(target)
-        os.makedirs(target.localpath.parent, exist_ok=True)
-        self.localpath.rename(target.localpath)
+        os.makedirs(target.parent, exist_ok=True)
+        self.path.rename(target.path)
 
     def rename_file(self, target: str, *, overwrite: bool = False) -> LocalUpath:
         """Rename the current file (i.e. ``self``) to ``target`` in the same store.
@@ -248,7 +275,7 @@ class LocalUpath(Upath, os.PathLike):
         Yield the immediate children under the current dir.
         """
         try:
-            for p in self.localpath.iterdir():
+            for p in self.path.iterdir():
                 yield self / p.name
         except (NotADirectoryError, FileNotFoundError):
             pass
@@ -271,8 +298,8 @@ class LocalUpath(Upath, os.PathLike):
         This uses the package `filelock <https://github.com/tox-dev/py-filelock>`_ to implement
         a file lock for inter-process communication.
         """
-        os.makedirs(self.localpath.parent, exist_ok=True)
-        lock = filelock.FileLock(str(self.localpath))
+        os.makedirs(self.parent, exist_ok=True)
+        lock = filelock.FileLock(str(self))
         try:
             lock.acquire(timeout=timeout or 300)
             yield

@@ -16,7 +16,17 @@ Removed
 - Classes `ZJsonSerializer`, `ZstdJsonSerializer`.
 - Back-compat module `upathlib.gcp`.
 - Methods `export_dir`, `export_file`, `import_dir`, `import_file`. (Concentrate on the `copy_*` methods.)
-- Method `with_path` renamed to `_with_path` and has become an intermediate implementation helper based on the new method `root`.
+- Method `with_path` renamed to `_with_path` and has become an intermediate implementation helper based on the new property `root`.
+
+Deprecated
+----------
+
+- `LocalUpath.localpath`. (Use `LocalUpath.path` instead.)
+
+Changed
+-------
+
+- `LocalUpath.path` overrides the super version to return `pathlib.Path`.
 
 Added or enhanced
 -----------------
@@ -26,7 +36,7 @@ Added or enhanced
 - `LocalUpath` now implements the `os.PathLike` protocol.
 - Methods `read_text`, `write_text`, `read_json`, `write_json` get parameters `encoding` and `errors`.
 - New property `root`.
-- Initial support for Windows.
+- Initial support for Windows by `LocalUpath`. `test_local.py` passed on Windows, but there could be corner cases that will fail on Windows.
 
 
 ## [0.6.8] - 2022-11-16

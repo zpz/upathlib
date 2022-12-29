@@ -127,7 +127,8 @@ class Upath(abc.ABC, EnforceOverrides):
         self._path = os.path.normpath(
             os.path.join("/", *pathsegments)
         )  # pylint: disable=no-value-for-parameter
-        # The path is always "absolute" starting with '/'.
+        # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
+        # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
 
     def __getstate__(self):
@@ -186,15 +187,20 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         The `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_
         version of the internal path string.
+
+        In the subclass :class:`LocalUpath`, this property is overriden to return a
+        `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_,
+        which is a subclass of ``pathlib.PurePath``.
+
+        In subclasses for cloud blob stores, this implementation stays in effect.
         """
         return pathlib.PurePath(self._path)
 
     @abc.abstractmethod
     def as_uri(self) -> str:
         """
-        Represent the path as a file URI. For local FS, this is like
-        'file:///path/to/file'. For Google Cloud Storage, this is like
-        'gs://bucket-name/path/to/blob'.
+        Represent the path as a file URI.
+        See subclasses for platform-dependent specifics.
         """
         raise NotImplementedError
 
@@ -228,15 +234,6 @@ class Upath(abc.ABC, EnforceOverrides):
         LocalUpath('/')
         """
         return self.path.name
-
-    @property
-    def parent(self: T) -> T:
-        """
-        The parent of the path.
-
-        If the path is the root, then the parent is still the root.
-        """
-        return self._with_path(str(self.path.parent))
 
     @property
     def stem(self) -> str:
@@ -366,14 +363,19 @@ class Upath(abc.ABC, EnforceOverrides):
         raise NotImplementedError
 
     @property
+    def parent(self: T) -> T:
+        """
+        The parent of the path.
+
+        If the path is the root, then the parent is still the root.
+        """
+        return self._with_path(str(self.path.parent))
+
+    @property
     @abc.abstractmethod
     def root(self: T) -> T:
         """
         Return a new path representing the root.
-
-        On Windows, this is the root on the same drive.
-        In a cloud blob store, this is typically the root in the same
-        'bucket' or 'container'.
         """
         raise NotImplementedError
 
