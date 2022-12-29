@@ -117,7 +117,11 @@ def test_read_write_rm_navigate(p: Upath):
     assert p1.read_json() == {"data": "abcd"}  # type: ignore
 
     p /= "a"
-    assert p._path == f"{init_path}/a"
+    if isinstance(p, LocalUpath) and IS_WIN:
+        assert p._path == str(pathlib.Path(f"{init_path}/a").absolute())
+    else:
+        assert p._path == f"{init_path}/a"
+
     assert not p.is_file()
     assert not p.is_dir()
     assert not p.exists()
