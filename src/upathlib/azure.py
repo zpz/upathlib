@@ -170,7 +170,10 @@ class AzureBlobUpath(BlobUpath):
 
     @property
     @overrides
-    def root(self):
+    def root(self) -> AzureBlobUpath:
+        """
+        Return a new path representing the root of the same container.
+        """
         return self.__class__(
             container_name=self._container_name,
         )

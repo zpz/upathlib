@@ -187,15 +187,20 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         The `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_
         version of the internal path string.
+
+        In the subclass :class:`LocalUpath`, this property is overriden to return a
+        `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_,
+        which is a subclass of ``pathlib.PurePath``.
+
+        In subclasses for cloud blob stores, this implementation stays in effect.
         """
         return pathlib.PurePath(self._path)
 
     @abc.abstractmethod
     def as_uri(self) -> str:
         """
-        Represent the path as a file URI. For local FS, this is like
-        'file:///path/to/file'. For Google Cloud Storage, this is like
-        'gs://bucket-name/path/to/blob'.
+        Represent the path as a file URI.
+        See subclasses for platform-dependent specifics.
         """
         raise NotImplementedError
 
@@ -229,15 +234,6 @@ class Upath(abc.ABC, EnforceOverrides):
         LocalUpath('/')
         """
         return self.path.name
-
-    @property
-    def parent(self: T) -> T:
-        """
-        The parent of the path.
-
-        If the path is the root, then the parent is still the root.
-        """
-        return self._with_path(str(self.path.parent))
 
     @property
     def stem(self) -> str:
@@ -365,6 +361,15 @@ class Upath(abc.ABC, EnforceOverrides):
         If :meth:`is_file` is ``False``, return ``None``; otherwise, return file info.
         """
         raise NotImplementedError
+
+    @property
+    def parent(self: T) -> T:
+        """
+        The parent of the path.
+
+        If the path is the root, then the parent is still the root.
+        """
+        return self._with_path(str(self.path.parent))
 
     @property
     @abc.abstractmethod
