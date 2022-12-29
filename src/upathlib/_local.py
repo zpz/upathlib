@@ -143,6 +143,12 @@ class LocalUpath(Upath, os.PathLike):
         if isinstance(target, LocalUpath):
             if not overwrite and target.is_file():
                 raise FileExistsError(target)
+
+            print('in _copy_file')
+            print(target)
+            print(target.localpath)
+            print(target.localpath.parent)
+
             os.makedirs(target.localpath.parent, exist_ok=True)
             shutil.copyfile(self.localpath, target.localpath)
             # If target already exists, it will be overwritten.
