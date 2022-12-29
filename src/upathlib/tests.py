@@ -10,11 +10,11 @@ from upathlib import Upath, LocalUpath, LockAcquireError
 
 def test_basic(p: Upath):
     pp = p / "/abc/def/"
-    assert pp.path == pathlib.PurePosixPath("/abc/def")
+    assert pp.path == pathlib.PurePath("/abc/def")
     print(repr(pp))
 
     pp = pp / "x/y/z"
-    assert pp.path == pathlib.PurePosixPath("/abc/def/x/y/z")
+    assert pp.path == pathlib.PurePath("/abc/def/x/y/z")
     print(repr(pp))
 
     pp /= "xy/z"
