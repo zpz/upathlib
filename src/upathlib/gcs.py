@@ -95,7 +95,10 @@ class GcsBlobUpath(BlobUpath):
         """
         if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
             cred, pid = google.auth.default()
-            if (not cred.token or (cred.expiry - datetime.utcnow()).total_seconds() < 600):
+            if (
+                not cred.token
+                or (cred.expiry - datetime.utcnow()).total_seconds() < 600
+            ):
                 cred.refresh(google.auth.transport.requests.Request())
                 # One check shows that this token expires in one hour.
             if cls._CREDENTIALS is None:
