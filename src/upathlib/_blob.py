@@ -26,6 +26,12 @@ class BlobUpath(Upath, EnforceOverrides):
 
     @property
     def blob_name(self) -> str:
+        '''
+        Return the "name" of the blob. This is the "path" without a leading ``'/'``.
+        In cloud blob stores, this is exactly the name of the blob. The name often
+        contains ``'/'``, which has no special role in the name per se but is *interpreted*
+        by users to be a directory separator.
+        '''
         return self._path.lstrip("/")
 
     @overrides

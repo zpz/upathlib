@@ -222,7 +222,6 @@ class GcsBlobUpath(BlobUpath):
         """
         if self._bucket_ is None:
             self._bucket_ = self._client().bucket(self.bucket_name)
-            # self._bucket_ = self._client().get_bucket(self.bucket_name)
         return self._bucket_
 
     def _blob(self) -> storage.Blob:
@@ -425,7 +424,7 @@ class GcsBlobUpath(BlobUpath):
             try:
                 self._bucket().copy_blob(
                     self._blob(),
-                    target.bucket,
+                    target._bucket(),
                     target.blob_name,
                     client=self._client(),
                     if_generation_match=None if overwrite else 0,
@@ -440,7 +439,7 @@ class GcsBlobUpath(BlobUpath):
     @overrides
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         """
-        Download the content of the current blob (i.e. ``self``) to ``target``.
+        Download the content of the current blob to ``target``.
         """
         target = _resolve_local_path(target)
         if target.is_file():
