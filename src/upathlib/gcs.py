@@ -96,20 +96,25 @@ class GcsBlobUpath(BlobUpath):
         if cls._CLIENT is None:
             refresh = True
             if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
-                cred, pid = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
+                cred, pid = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
+                )
                 if cls._CREDENTIALS is None:
                     cls._CREDENTIALS = cred
                 if cls._PROJECT_ID is None:
                     cls._PROJECT_ID = pid
         if (
             not cls._CREDENTIALS.token
-            or (cls._CREDENTIALS.expiry - datetime.utcnow()).total_seconds() < 300  # 5 minutes
+            or (cls._CREDENTIALS.expiry - datetime.utcnow()).total_seconds()
+            < 300  # 5 minutes
         ):
             refresh = True
             cls._CREDENTIALS.refresh(google.auth.transport.requests.Request())
             # One check shows that this token expires in one hour.
         if refresh:
-            cls._CLIENT = storage.Client(project=cls._PROJECT_ID, credentials=cls._CREDENTIALS)
+            cls._CLIENT = storage.Client(
+                project=cls._PROJECT_ID, credentials=cls._CREDENTIALS
+            )
         return cls._CLIENT
 
     def __init__(
