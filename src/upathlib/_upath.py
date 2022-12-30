@@ -83,6 +83,25 @@ class FileInfo:
 class Upath(abc.ABC, EnforceOverrides):
     _thread_pools = None
 
+    @classmethod
+    def _thread_pool_executors(cls):
+        if not cls._thread_pools:
+            n = min(32, (os.cpu_count() or 1) + 4)
+            cls._thread_pools = (
+                ThreadPoolExecutor(
+                    n,
+                    thread_name_prefix="UpathExecutor0",
+                ),
+                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
+            )
+        return cls._thread_pools
+        # Currently there can be two "layers" of threads running during `download_dir`.
+        # In `download_dir`, the download of each file runs in the threads provided
+        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
+        # and download each chunk in a thread provided by `UpathExecutor1`.
+        # We dedicate the two executors mainly so that the second layer of chunk downloads
+        # do not starve for threads.
+
     def __init__(
         self,
         *pathsegments: str,
@@ -644,25 +663,6 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    @property
-    def _thread_pool_executors(self):
-        if not Upath._thread_pools:
-            n = min(32, (os.cpu_count() or 1) + 4)
-            Upath._thread_pools = (
-                ThreadPoolExecutor(
-                    n,
-                    thread_name_prefix="UpathExecutor0",
-                ),
-                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
-            )
-        return Upath._thread_pools
-        # Currently there can be two "layers" of threads running during `download_dir`.
-        # In `download_dir`, the download of each file runs in the threads provided
-        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
-        # and download each chunk in a thread provided by `UpathExecutor1`.
-        # We dedicate the two executors mainly so that the second layer of chunk downloads
-        # do not starve for threads.
-
     def _run_in_executor(
         self,
         tasks: Iterable[Tuple[Callable, tuple, dict, str]],
@@ -691,10 +691,10 @@ class Upath(abc.ABC, EnforceOverrides):
             # This is the case when GCP downloads a large file by multiple parts.
             # This is working on one large file, and it is trying to start threads
             # to tackle parts of it.
-            executor = self._thread_pool_executors[1]
+            executor = self._thread_pool_executors()[1]
             # No progress printout.
         else:
-            executor = self._thread_pool_executors[0]
+            executor = self._thread_pool_executors()[0]
             if description:
                 print(description, file=sys.stderr)
                 pbar = tqdm(
