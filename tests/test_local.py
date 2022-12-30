@@ -1,6 +1,6 @@
 import os
 import pathlib
-import upathlib.tests
+import upathlib._tests
 
 import pytest
 from upathlib import LocalUpath
@@ -23,11 +23,11 @@ def test_localupath_init():
 
 
 def test_all(test_path):
-    upathlib.tests.test_all(test_path)
+    upathlib._tests.test_all(test_path)
 
 
 def test_lock(test_path):
-    upathlib.tests.test_lock(test_path)
+    upathlib._tests.test_lock(test_path)
 
 
 def test_rename(test_path):

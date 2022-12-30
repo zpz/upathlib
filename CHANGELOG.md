@@ -17,6 +17,9 @@ Removed
 - Back-compat module `upathlib.gcp`.
 - Methods `export_dir`, `export_file`, `import_dir`, `import_file`. (Concentrate on the `copy_*` methods.)
 - Method `with_path` renamed to `_with_path` and has become an intermediate implementation helper based on the new property `root`.
+- Properties `GcsBlobUpath.{client, bucket}` have become private methods `_client`, `_bucket`.
+- Method `GcsBlobUpath.blob` has become private `_blob`.
+- `GcsBlobUpath.get_blob` is removed.
 
 Deprecated
 ----------
@@ -27,6 +30,7 @@ Changed
 -------
 
 - `LocalUpath.path` overrides the super version to return `pathlib.Path`.
+- The tests module `upathlib.tests` was renamed `_tests`.
 
 Added or enhanced
 -----------------

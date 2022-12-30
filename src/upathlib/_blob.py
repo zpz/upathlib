@@ -1,7 +1,3 @@
-"""
-This module defines a base class for paths in a *cloud* storage, aka "blob store".
-This is in contrast to a *local* disk storage, which is the subject of `_local.py`.
-"""
 from __future__ import annotations
 import pathlib
 from collections.abc import Iterator
@@ -23,8 +19,19 @@ def _resolve_local_path(p: LocalPathType):
 
 
 class BlobUpath(Upath, EnforceOverrides):
+    """
+    BlobUpath is a base class for paths in a *cloud* storage, aka "blob store".
+    This is in contrast to a *local* disk storage, which is implemnted by :class:`LocalUpath`.
+    """
+
     @property
     def blob_name(self) -> str:
+        """
+        Return the "name" of the blob. This is the "path" without a leading ``'/'``.
+        In cloud blob stores, this is exactly the name of the blob. The name often
+        contains ``'/'``, which has no special role in the name per se but is *interpreted*
+        by users to be a directory separator.
+        """
         return self._path.lstrip("/")
 
     @overrides

@@ -43,7 +43,7 @@ gcs = [
     "requests",
 ]
 doc = [
-    "sphinx",
+    "sphinx < 6.0.0",  # 6.0.0 has a bug complaining "'logo' is undefined
     "numpydoc",
     "pydata-sphinx-theme",
 ]
