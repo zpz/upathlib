@@ -1,6 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timedelta
+from types import SimpleNamespace
 from io import BytesIO
-import upathlib.tests
+import upathlib._tests
 from upathlib.gcs import GcsBlobUpath, NotFound
 
 import pytest
@@ -146,18 +147,21 @@ def gcp(mocker):
     # mocker.patch('upathlib.gcp.service_account')
     mocker.patch('upathlib.gcs.storage.Client', Client)
     mocker.patch('upathlib.gcs.GcsBlobUpath._PROJECT_ID', 'abc')
-    mocker.patch('upathlib.gcs.GcsBlobUpath._CREDENTIALS', 'xyz')
-    
+    mocker.patch('upathlib.gcs.GcsBlobUpath._CREDENTIALS', SimpleNamespace(token='x', expiry=datetime.utcnow() + timedelta(days=1)))
+    mocker.patch('upathlib.gcs.GcsBlobUpath._CLIENT', Client())
     c = GcsBlobUpath(
             '/tmp/test',
             bucket_name='test',
             )
+    print('c._bucket', c._bucket)
     yield c
 
 
 def test_all(gcp):
-    upathlib.tests.test_all(gcp)
+    print('gcp._bucket:', gcp._bucket)
+
+    upathlib._tests.test_all(gcp)
 
 
 # def test_lock(gcp):
-#     upathlib.tests.test_lock(gcp)
+#     upathlib._tests.test_lock(gcp)

@@ -1,7 +1,7 @@
 import contextlib
 from datetime import datetime
 
-import upathlib.tests
+import upathlib._tests
 from upathlib import BlobUpath, FileInfo
 from overrides import overrides
 
@@ -157,4 +157,4 @@ class FakeBlobUpath(BlobUpath):
 
 def test_all():
     p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
-    upathlib.tests.test_all(p)
+    upathlib._tests.test_all(p)

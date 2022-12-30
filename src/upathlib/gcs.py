@@ -58,13 +58,12 @@ class GcsBlobUpath(BlobUpath):
 
     _PROJECT_ID: str = None
     _CREDENTIALS: google.auth.credentials.Credentials = None
+    _CLIENT: storage.Client = None
 
     @classmethod
-    def get_account_info(cls) -> dict:
+    def _client(cls) -> storage.Client:
         """
-        Return dict with elements 'project' and 'credentials',
-        where 'project' is the string of the project ID,
-        and 'credentials' is a `google.auth.credentials.Credentials <https://googleapis.dev/python/google-auth/latest/reference/google.auth.credentials.html#module-google.auth.credentials>`_ object.
+        Return a client to the GCS service.
 
         If you have GCP account_info in a dict with these elements
         (not sure everything here is required)::
@@ -93,19 +92,25 @@ class GcsBlobUpath(BlobUpath):
         Code that runs on a GCP machine may be able to infer ``credentials`` and ``project_id``
         via `google.auth.default() <https://googleapis.dev/python/google-auth/latest/user-guide.html#application-default-credentials>`_.
         """
-        if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
-            cred, pid = google.auth.default()
-            if (
-                not cred.token
-                or (cred.expiry - datetime.utcnow()).total_seconds() < 600
-            ):
-                cred.refresh(google.auth.transport.requests.Request())
-                # One check shows that this token expires in one hour.
-            if cls._CREDENTIALS is None:
-                cls._CREDENTIALS = cred
-            if cls._PROJECT_ID is None:
-                cls._PROJECT_ID = pid
-        return {"project": cls._PROJECT_ID, "credentials": cls._CREDENTIALS}
+        refresh = False
+        if cls._CLIENT is None:
+            refresh = True
+            if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
+                cred, pid = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
+                if cls._CREDENTIALS is None:
+                    cls._CREDENTIALS = cred
+                if cls._PROJECT_ID is None:
+                    cls._PROJECT_ID = pid
+        if (
+            not cls._CREDENTIALS.token
+            or (cls._CREDENTIALS.expiry - datetime.utcnow()).total_seconds() < 300  # 5 minutes
+        ):
+            refresh = True
+            cls._CREDENTIALS.refresh(google.auth.transport.requests.Request())
+            # One check shows that this token expires in one hour.
+        if refresh:
+            cls._CLIENT = storage.Client(project=cls._PROJECT_ID, credentials=cls._CREDENTIALS)
+        return cls._CLIENT
 
     def __init__(
         self,
@@ -142,9 +147,8 @@ class GcsBlobUpath(BlobUpath):
 
         super().__init__(*paths)
         self.bucket_name = bucket_name
-        self._client = None
-        self._bucket = None
-        self._blob = None
+        self._bucket_ = None
+        self._blob_ = None
         self._lock_count: int = 0
         self._generation = -1
         self._quiet_multidownload = True
@@ -191,7 +195,7 @@ class GcsBlobUpath(BlobUpath):
         return self._path >= other._path
 
     def __getstate__(self):
-        # Customize pickle because `self._client` and `self._bucket`
+        # Customize pickle because `self._bucket_`
         # (when not None) can't be pickled.
         # the `service_account.Credentials` class object can be pickled.
         return (
@@ -201,57 +205,29 @@ class GcsBlobUpath(BlobUpath):
 
     def __setstate__(self, data):
         (self.bucket_name, self._quiet_multidownload), z1 = data
-        self._client = None
-        self._bucket = None
-        self._blob = None
+        self._bucket_ = None
+        self._blob_ = None
         self._lock_count = 0
+        self._generation = -1
         return super().__setstate__(z1)
 
-    @property
-    def client(self) -> storage.Client:
-        """
-        Return a client to the GCS service.
-        For internal use.
-        """
-        if self._client is None:
-            self._client = storage.Client(**self.get_account_info())
-        return self._client
-
-    @property
-    def bucket(self) -> storage.Bucket:
+    def _bucket(self) -> storage.Bucket:
         """
         Return a Bucket object, via :meth:`client`.
-        For internal use.
         """
-        if self._bucket is None:
-            self._bucket = self.client.bucket(self.bucket_name)
-            # self._bucket = self.client.get_bucket(self.bucket_name)
-        return self._bucket
+        if self._bucket_ is None:
+            self._bucket_ = self._client().bucket(self.bucket_name)
+            # self._bucket_ = self._client().get_bucket(self.bucket_name)
+        return self._bucket_
 
-    def blob(self) -> storage.Blob:
+    def _blob(self) -> storage.Blob:
         """
         This constructs a Blob object irrespective of whether the blob
         exists in GCS.
-        For internal use.
         """
-        if self._blob is None:
-            self._blob = self.bucket.blob(self.blob_name)
-        return self._blob
-
-    def get_blob(self) -> Optional[storage.Blob]:
-        """
-        While :meth:`blob` simply constructs a Blob object,
-        ``get_blob()`` makes network calls to refresh properties
-        of the object in cloud storage. If the blob does not exist,
-        ``None`` is returned.
-        For internal use.
-        """
-        b = self.blob()
-        try:
-            b.reload(client=self.client)
-            return b
-        except NotFound:
-            return None
+        if self._blob_ is None:
+            self._blob_ = self._bucket().blob(self.blob_name)
+        return self._blob_
 
     @overrides
     def as_uri(self) -> str:
@@ -266,7 +242,7 @@ class GcsBlobUpath(BlobUpath):
         The result of this call is not cached, in case the object is modified anytime
         by other clients.
         """
-        return self.blob().exists(self.client)
+        return self._blob().exists(self._client())
 
     @overrides
     def is_dir(self) -> bool:
@@ -279,8 +255,8 @@ class GcsBlobUpath(BlobUpath):
         "under" the current path.
         """
         prefix = self.blob_name + "/"
-        blobs = self.client.list_blobs(
-            self.bucket,
+        blobs = self._client().list_blobs(
+            self._bucket(),
             prefix=prefix,
             max_results=1,
             page_size=1,
@@ -294,8 +270,10 @@ class GcsBlobUpath(BlobUpath):
         Return file info if the current path is a file;
         otherwise return ``None``.
         """
-        b = self.get_blob()
-        if not b:
+        b = self._blob()
+        try:
+            b.reload(client=self._client())
+        except NotFound:
             return None
         return FileInfo(
             ctime=b.time_created.timestamp(),
@@ -318,8 +296,7 @@ class GcsBlobUpath(BlobUpath):
         obj = self.__class__(
             bucket_name=self.bucket_name,
         )
-        obj._client = self.client
-        obj._bucket = self.bucket
+        obj._bucket_ = self._bucket()
         return obj
 
     def _write_from_buffer(
@@ -329,11 +306,11 @@ class GcsBlobUpath(BlobUpath):
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         try:
-            self.blob().upload_from_file(
+            self._blob().upload_from_file(
                 file_obj,
                 content_type=content_type,
                 size=size,
-                client=self.client,
+                client=self._client(),
                 if_generation_match=None if overwrite else 0,
             )
             # TODO: set "create_time", 'update_time" to be the same
@@ -369,7 +346,7 @@ class GcsBlobUpath(BlobUpath):
         file_size = file_info.size  # bytes
         if file_size <= LARGE_FILE_SIZE:
             try:
-                self.blob().download_to_file(file_obj, client=self.client)
+                self._blob().download_to_file(file_obj, client=self._client())
                 return
             except NotFound:
                 raise FileNotFoundError(self)
@@ -386,8 +363,8 @@ class GcsBlobUpath(BlobUpath):
             return buffer, end - start + 1
 
         def _do_download():
-            client = self.client
-            blob = self.blob()
+            client = self._client()
+            blob = self._blob()
             k = 0
             p = 0
             while True:
@@ -441,11 +418,11 @@ class GcsBlobUpath(BlobUpath):
         if isinstance(target, GcsBlobUpath):
             # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
             try:
-                self.bucket.copy_blob(
-                    self.blob(),
+                self._bucket().copy_blob(
+                    self._blob(),
                     target.bucket,
                     target.blob_name,
-                    client=self.client,
+                    client=self._client(),
                     if_generation_match=None if overwrite else 0,
                 )
             except NotFound:
@@ -474,7 +451,7 @@ class GcsBlobUpath(BlobUpath):
                 # If `target` is an existing directory,
                 # will raise `IsADirectoryError`.
                 self._read_into_buffer(file_obj)
-            updated = self.blob().updated
+            updated = self._blob().updated
             if updated is not None:
                 mtime = updated.timestamp()
                 os.utime(target, (mtime, mtime))
@@ -489,7 +466,7 @@ class GcsBlobUpath(BlobUpath):
         """
         source = _resolve_local_path(source)
         filename = str(source)
-        content_type = self.blob()._get_content_type(None, filename=filename)
+        content_type = self._blob()._get_content_type(None, filename=filename)
 
         if self.is_file():
             if not overwrite:
@@ -549,7 +526,7 @@ class GcsBlobUpath(BlobUpath):
 
         prefix = self.blob_name + "/"
         k = len(prefix)
-        blobs = self.client.list_blobs(self.bucket, prefix=prefix, delimiter="/")
+        blobs = self._client().list_blobs(self._bucket(), prefix=prefix, delimiter="/")
         for p in blobs:
             if p.name == prefix:
                 # This happens if users has used the dashboard to "create a folder".
@@ -558,7 +535,7 @@ class GcsBlobUpath(BlobUpath):
                 # it's ignored. Do not use this name for a blob!
                 continue
             obj = self / p.name[k:]  # files
-            obj._blob = p
+            obj._blob_ = p
             yield obj
         for p in blobs.prefixes:
             yield self / p[k:].rstrip("/")  # "subdirectories"
@@ -573,7 +550,7 @@ class GcsBlobUpath(BlobUpath):
         """
         z = super().remove_dir(**kwargs)
         prefix = self.blob_name + "/"
-        for p in self.client.list_blobs(self.bucket, prefix=prefix):
+        for p in self._client().list_blobs(self._bucket(), prefix=prefix):
             assert p.name.endswith("/")
             p.delete()
         return z
@@ -584,10 +561,10 @@ class GcsBlobUpath(BlobUpath):
         Remove the current blob.
         """
         try:
-            self._blob_rate_limit(self.blob().delete, client=self.client)
-            self._blob = None
+            self._blob_rate_limit(self._blob().delete, client=self._client())
+            self._blob_ = None
         except NotFound:
-            self._blob = None
+            self._blob_ = None
             raise FileNotFoundError(self)
 
     @overrides
@@ -597,13 +574,13 @@ class GcsBlobUpath(BlobUpath):
         """
         prefix = self.blob_name + "/"
         k = len(prefix)
-        for p in self.client.list_blobs(self.bucket, prefix=prefix):
+        for p in self._client().list_blobs(self._bucket(), prefix=prefix):
             if p.name.endswith("/"):
                 # This can be an "empty folder"---better not create them!
                 # Worse, this is an actual blob name---do not do this!
                 continue
             obj = self / p.name[k:]
-            obj._blob = p
+            obj._blob_ = p
             yield obj
 
     def _acquire_lease(self, *, timeout: int = None):
@@ -628,7 +605,7 @@ class GcsBlobUpath(BlobUpath):
         )
         def _acquire_():
             self._write_bytes(b"0")
-            self._generation = self.blob().generation
+            self._generation = self._blob().generation
 
         t0 = time.perf_counter()
         try:
@@ -663,8 +640,8 @@ class GcsBlobUpath(BlobUpath):
             if self._lock_count == 0:
                 try:
                     self._blob_rate_limit(
-                        self.blob().delete,
-                        client=self.client,
+                        self._blob().delete,
+                        client=self._client(),
                         if_generation_match=self._generation,
                     )
                 except Exception as e:
@@ -675,4 +652,4 @@ class GcsBlobUpath(BlobUpath):
         Use this on a blob (not a "directory") as a context manager.
         See Google documentation.
         """
-        return self.blob().open(mode, **kwargs)
+        return self._blob().open(mode, **kwargs)

@@ -1,7 +1,7 @@
 import io
 from datetime import datetime
 from types import SimpleNamespace
-import upathlib.tests
+import upathlib._tests
 from upathlib.azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
 
 import pytest
@@ -133,8 +133,8 @@ def azure(mocker):
 
 
 def test_all(azure):
-    upathlib.tests.test_all(azure)
+    upathlib._tests.test_all(azure)
 
 
 # def test_lock(azure):
-#     upathlib.tests.test_lock(azure)
+#     upathlib._tests.test_lock(azure)
