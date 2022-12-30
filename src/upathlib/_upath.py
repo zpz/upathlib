@@ -644,7 +644,6 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-
     @property
     def _thread_pool_executors(self):
         if not Upath._thread_pools:
