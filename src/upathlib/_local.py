@@ -188,7 +188,7 @@ class LocalUpath(Upath, os.PathLike):
 
     def rename_dir(
         self,
-        target: str,
+        target: str | LocalUpath,
         *,
         overwrite: bool = False,
         quiet: bool = False,
@@ -207,6 +207,8 @@ class LocalUpath(Upath, os.PathLike):
         if not self.is_dir():
             raise FileNotFoundError(str(self))
 
+        if isinstance(target, LocalUpath):
+            target = target._path
         target_ = self.parent / target
         if target_ == self:
             return self
