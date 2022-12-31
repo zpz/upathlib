@@ -28,13 +28,11 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
 from typing import (
-    List,
     Iterable,
     Iterator,
     TypeVar,
     Any,
     Optional,
-    Tuple,
     Callable,
 )
 
@@ -105,7 +103,7 @@ class Upath(abc.ABC, EnforceOverrides):
     @classmethod
     def _run_in_executor(
         cls,
-        tasks: Iterable[Tuple[Callable, tuple, dict, str]],
+        tasks: Iterable[tuple[Callable, tuple, dict, str]],
         quiet: bool = False,
     ):
         """
@@ -368,7 +366,7 @@ class Upath(abc.ABC, EnforceOverrides):
         return self.path.suffix
 
     @property
-    def suffixes(self) -> List[str]:
+    def suffixes(self) -> list[str]:
         """
         A list of the path's file extensions.
 
@@ -919,7 +917,7 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         raise NotImplementedError
 
-    def ls(self: T) -> List[T]:
+    def ls(self: T) -> list[T]:
         """Return the elements yielded by :meth:`iterdir` in a sorted list.
 
         Sorting is by a full path string maintained internally.
