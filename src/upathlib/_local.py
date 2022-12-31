@@ -213,7 +213,7 @@ class LocalUpath(Upath, os.PathLike):
 
         if not quiet:
             print(f"Renaming {self!r} to {target_!r}", file=sys.stderr)
-        self._copy_dir(self, target_, 'rename_file', overwrite=overwrite, quiet=quiet)
+        self._copy_dir(self, target_, "rename_file", overwrite=overwrite, quiet=quiet)
 
         def _remove_empty_dir(path):
             k = 0
@@ -237,7 +237,9 @@ class LocalUpath(Upath, os.PathLike):
         os.makedirs(target.parent, exist_ok=True)
         self.path.rename(target.path)
 
-    def rename_file(self, target: str | LocalUpath, *, overwrite: bool = False) -> LocalUpath:
+    def rename_file(
+        self, target: str | LocalUpath, *, overwrite: bool = False
+    ) -> LocalUpath:
         """Rename the current file (i.e. ``self``) to ``target`` in the same store.
 
         ``target`` is either absolute or relative to ``self.parent``.

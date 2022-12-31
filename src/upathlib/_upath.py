@@ -745,7 +745,9 @@ class Upath(abc.ABC, EnforceOverrides):
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
     @classmethod
-    def _copy_dir(cls, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False):
+    def _copy_dir(
+        cls, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False
+    ):
         def foo():
             source_path = source.path
             ovwt = overwrite
@@ -815,7 +817,8 @@ class Upath(abc.ABC, EnforceOverrides):
         if not quiet:
             print(f"Copying from {self!r} into {target_!r}", file=sys.stderr)
         return self._copy_dir(
-            self, target_, 'copy_file', overwrite=overwrite, quiet=quiet)
+            self, target_, "copy_file", overwrite=overwrite, quiet=quiet
+        )
 
     def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
         target.write_bytes(self.read_bytes(), overwrite=overwrite)

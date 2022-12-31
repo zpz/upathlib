@@ -99,7 +99,9 @@ class BlobUpath(Upath, EnforceOverrides):
 
         if not quiet:
             print(f"Downloading from {self!r} into {target!r}", file=sys.stderr)
-        return self._copy_dir(self, target, 'download_file', overwrite=overwrite, quiet=quiet)
+        return self._copy_dir(
+            self, target, "download_file", overwrite=overwrite, quiet=quiet
+        )
 
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         """
@@ -120,7 +122,9 @@ class BlobUpath(Upath, EnforceOverrides):
         source = _resolve_local_path(source)
         if not quiet:
             print(f"Importing from {source!r} into {self!r}", file=sys.stderr)
-        return self._copy_dir(source, self, 'upload_file', overwrite=overwrite, quiet=quiet, reversed=True)
+        return self._copy_dir(
+            source, self, "upload_file", overwrite=overwrite, quiet=quiet, reversed=True
+        )
 
     def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
