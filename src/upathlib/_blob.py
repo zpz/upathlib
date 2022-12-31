@@ -1,5 +1,6 @@
 from __future__ import annotations
 import pathlib
+import sys
 from collections.abc import Iterator
 
 from ._upath import Upath, T
@@ -96,27 +97,9 @@ class BlobUpath(Upath, EnforceOverrides):
         """
         target = _resolve_local_path(target)
 
-        def foo():
-            self_path = self.path
-            target_ = target
-            for p in self.riterdir():
-                extra = str(p.path.relative_to(self_path))
-                yield (
-                    p.download_file,
-                    (target_ / extra,),
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Downloading from {self!r} into {target!r}"
-
-        n = 0
-        for _ in self._run_in_executor(foo(), desc):
-            n += 1
-        return n
+        if not quiet:
+            print(f"Downloading from {self!r} into {target!r}", file=sys.stderr)
+        return self._copy_dir(self, target, 'download_file', overwrite=overwrite, quiet=quiet)
 
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         """
@@ -135,27 +118,9 @@ class BlobUpath(Upath, EnforceOverrides):
         where the target location is in a cloud blob store.
         """
         source = _resolve_local_path(source)
-
-        def foo():
-            source_path = source.path
-            for p in source.riterdir():
-                extra = str(p.path.relative_to(source_path))
-                yield (
-                    (self / extra).upload_file,
-                    (p,),
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Importing from {source!r} into {self!r}"
-
-        n = 0
-        for _ in self._run_in_executor(foo(), desc):
-            n += 1
-        return n
+        if not quiet:
+            print(f"Importing from {source!r} into {self!r}", file=sys.stderr)
+        return self._copy_dir(source, self, 'upload_file', overwrite=overwrite, quiet=quiet, reversed=True)
 
     def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
