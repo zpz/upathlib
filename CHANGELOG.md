@@ -6,8 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [in progress]
 
-Removed
--------
+### Removed
 
 - Parameters `project_id` and `credentials` to `GcsBlobUpath.__init__`.
 - Classmethods `register_read_write_byte_format`, `register_read_write_text_format` of `Upath`.
@@ -21,19 +20,16 @@ Removed
 - Method `GcsBlobUpath.blob` has become private `_blob`.
 - `GcsBlobUpath.get_blob` is removed.
 
-Deprecated
-----------
+### Deprecated
 
 - `LocalUpath.localpath`. (Use `LocalUpath.path` instead.)
 
-Changed
--------
+### Changed
 
 - `LocalUpath.path` overrides the super version to return `pathlib.Path`.
 - The tests module `upathlib.tests` was renamed `_tests`.
 
-Added or enhanced
------------------
+### Added or enhanced
 
 - Enhancements to documentation, including Sphinx documentation generation and hosting on readthedocs.
 - New method `as_uri`.

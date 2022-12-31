@@ -5,6 +5,7 @@ import os
 import os.path
 import pathlib
 import shutil
+import sys
 from collections.abc import Iterator
 from typing import Optional, Union
 
@@ -210,23 +211,9 @@ class LocalUpath(Upath, os.PathLike):
         if target_ == self:
             return self
 
-        def foo():
-            for p in self.riterdir():
-                extra = str(p.path.relative_to(self.path))
-                yield (
-                    p.rename_file,
-                    [(target_ / extra)._path],
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Renaming {self!r} to {target_!r}"
-
-        for _ in self._run_in_executor(foo(), desc):
-            pass
+        if not quiet:
+            print(f"Renaming {self!r} to {target_!r}", file=sys.stderr)
+        self._copy_dir(self, target_, "rename_file", overwrite=overwrite, quiet=quiet)
 
         def _remove_empty_dir(path):
             k = 0
@@ -250,7 +237,9 @@ class LocalUpath(Upath, os.PathLike):
         os.makedirs(target.parent, exist_ok=True)
         self.path.rename(target.path)
 
-    def rename_file(self, target: str, *, overwrite: bool = False) -> LocalUpath:
+    def rename_file(
+        self, target: str | LocalUpath, *, overwrite: bool = False
+    ) -> LocalUpath:
         """Rename the current file (i.e. ``self``) to ``target`` in the same store.
 
         ``target`` is either absolute or relative to ``self.parent``.
@@ -262,6 +251,8 @@ class LocalUpath(Upath, os.PathLike):
 
         Return the new path.
         """
+        if isinstance(target, LocalUpath):
+            target = target._path
         target_ = self.parent / target
         if target_ == self:
             return self

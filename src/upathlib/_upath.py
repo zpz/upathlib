@@ -83,6 +83,106 @@ class FileInfo:
 class Upath(abc.ABC, EnforceOverrides):
     _thread_pools = None
 
+    @classmethod
+    def _thread_pool_executors(cls):
+        if not cls._thread_pools:
+            n = min(32, (os.cpu_count() or 1) + 4)
+            cls._thread_pools = (
+                ThreadPoolExecutor(
+                    n,
+                    thread_name_prefix="UpathExecutor0",
+                ),
+                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
+            )
+        return cls._thread_pools
+        # Currently there can be two "layers" of threads running during `download_dir`.
+        # In `download_dir`, the download of each file runs in the threads provided
+        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
+        # and download each chunk in a thread provided by `UpathExecutor1`.
+        # We dedicate the two executors mainly so that the second layer of chunk downloads
+        # do not starve for threads.
+
+    @classmethod
+    def _run_in_executor(
+        cls,
+        tasks: Iterable[Tuple[Callable, tuple, dict, str]],
+        quiet: bool = False,
+    ):
+        """
+        This method is used to run multiple I/O jobs concurrently, e.g.
+        uploading/downloading all files in a folder recursively.
+
+        Parameters
+        ----------
+        tasks
+            Each element is a tuple of (func, args, kwargs, description).
+        """
+        if not isinstance(tasks, list):
+            tasks = list(tasks)
+        n_tasks = len(tasks)
+        if not n_tasks:
+            return
+
+        pbar = None
+        if threading.current_thread().name.startswith("UpathExecutor0"):
+            # This is the case when GCP downloads a large file by multiple parts.
+            # This is working on one large file, and it is trying to start threads
+            # to tackle parts of it.
+            executor = cls._thread_pool_executors()[1]
+            # No progress printout.
+        else:
+            executor = cls._thread_pool_executors()[0]
+            if not quiet:
+                pbar = tqdm(
+                    total=n_tasks,
+                    bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
+                )
+
+        def enqueue(tasks, executor, q, to_stop):
+            for func, args, kwargs, desc in tasks:
+                t = executor.submit(func, *args, **kwargs)
+                # This has limited capacity, to control the speed of
+                # task submission to the executor.
+                q.put((t, desc))
+                if to_stop.is_set():
+                    break
+            q.put(None)
+
+        try:
+            q = queue.Queue(executor._max_workers)
+            to_stop = threading.Event()
+            task = executor.submit(enqueue, tasks, executor, q, to_stop)
+
+            try:
+                while True:
+                    z = q.get()
+                    if z is None:
+                        break
+                    t, desc = z
+                    if pbar:
+                        pbar.set_description_str(desc)
+                        pbar.update(0.5)
+                    try:
+                        yield t.result()
+                    except Exception:
+                        to_stop.set()
+                        while True:
+                            z = q.get()
+                            if z is None:
+                                break
+                            t, desc = z
+                            t.cancel()
+                            # This may not succeed, but there isn't a good way to
+                            # guarantee cancellation here.
+                        raise
+                    if pbar:
+                        pbar.update(0.5)
+            finally:
+                _ = task.result()
+        finally:
+            if pbar:
+                pbar.close()
+
     def __init__(
         self,
         *pathsegments: str,
@@ -644,108 +744,34 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    @property
-    def _thread_pool_executors(self):
-        if not Upath._thread_pools:
-            n = min(32, (os.cpu_count() or 1) + 4)
-            Upath._thread_pools = (
-                ThreadPoolExecutor(
-                    n,
-                    thread_name_prefix="UpathExecutor0",
-                ),
-                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
-            )
-        return Upath._thread_pools
-        # Currently there can be two "layers" of threads running during `download_dir`.
-        # In `download_dir`, the download of each file runs in the threads provided
-        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
-        # and download each chunk in a thread provided by `UpathExecutor1`.
-        # We dedicate the two executors mainly so that the second layer of chunk downloads
-        # do not starve for threads.
-
-    def _run_in_executor(
-        self,
-        tasks: Iterable[Tuple[Callable, tuple, dict, str]],
-        description: str,
+    @classmethod
+    def _copy_dir(
+        cls, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False
     ):
-        """
-        This method is used to run multiple I/O jobs concurrently, e.g.
-        uploading/downloading all files in a folder recursively.
+        def foo():
+            source_path = source.path
+            ovwt = overwrite
+            for p in source.riterdir():
+                extra = str(p.path.relative_to(source_path))
+                if reversed:
+                    yield (
+                        getattr(dest / extra, method),
+                        (p,),
+                        {"overwrite": ovwt},
+                        extra,
+                    )
+                else:
+                    yield (
+                        getattr(p, method),
+                        (dest / extra,),
+                        {"overwrite": ovwt},
+                        extra,
+                    )
 
-        Parameters
-        ----------
-        tasks
-            Each element is a tuple of (func, args, kwargs, description).
-        description
-            Description of the entire set of tasks, such as "Downloading directory 'abc'".
-            Note: if ``description`` is a falsy value, progress printouts will be turned off.
-        """
-        if not isinstance(tasks, list):
-            tasks = list(tasks)
-        n_tasks = len(tasks)
-        if not n_tasks:
-            return
-
-        pbar = None
-        if threading.current_thread().name.startswith("UpathExecutor0"):
-            # This is the case when GCP downloads a large file by multiple parts.
-            # This is working on one large file, and it is trying to start threads
-            # to tackle parts of it.
-            executor = self._thread_pool_executors[1]
-            # No progress printout.
-        else:
-            executor = self._thread_pool_executors[0]
-            if description:
-                print(description, file=sys.stderr)
-                pbar = tqdm(
-                    total=n_tasks,
-                    bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
-                )
-
-        def enqueue(tasks, executor, q, to_stop):
-            for func, args, kwargs, desc in tasks:
-                t = executor.submit(func, *args, **kwargs)
-                # This has limited capacity, to control the speed of
-                # task submission to the executor.
-                q.put((t, desc))
-                if to_stop.is_set():
-                    break
-            q.put(None)
-
-        try:
-            q = queue.Queue(executor._max_workers)
-            to_stop = threading.Event()
-            task = executor.submit(enqueue, tasks, executor, q, to_stop)
-
-            try:
-                while True:
-                    z = q.get()
-                    if z is None:
-                        break
-                    t, desc = z
-                    if pbar:
-                        pbar.set_description_str(desc)
-                        pbar.update(0.5)
-                    try:
-                        yield t.result()
-                    except Exception:
-                        to_stop.set()
-                        while True:
-                            z = q.get()
-                            if z is None:
-                                break
-                            t, desc = z
-                            t.cancel()
-                            # This may not succeed, but there isn't a good way to
-                            # guarantee cancellation here.
-                        raise
-                    if pbar:
-                        pbar.update(0.5)
-            finally:
-                _ = task.result()
-        finally:
-            if pbar:
-                pbar.close()
+        n = 0
+        for _ in cls._run_in_executor(foo(), quiet):
+            n += 1
+        return n
 
     def copy_dir(
         self,
@@ -781,7 +807,6 @@ class Upath(abc.ABC, EnforceOverrides):
         int
             The number of files copied.
         """
-
         if isinstance(target, str):
             target_ = self.parent / target
             if target_ == self:
@@ -789,26 +814,11 @@ class Upath(abc.ABC, EnforceOverrides):
         else:
             target_ = target
 
-        def foo():
-            self_path = self.path
-            for p in self.riterdir():
-                extra = str(p.path.relative_to(self_path))
-                yield (
-                    p.copy_file,
-                    (target_ / extra,),
-                    {"overwrite": overwrite},
-                    extra,
-                )
-
-        if quiet:
-            desc = False
-        else:
-            desc = f"Copying from {self!r} into {target_!r}"
-
-        n = 0
-        for _ in self._run_in_executor(foo(), desc):
-            n += 1
-        return n
+        if not quiet:
+            print(f"Copying from {self!r} into {target_!r}", file=sys.stderr)
+        return self._copy_dir(
+            self, target_, "copy_file", overwrite=overwrite, quiet=quiet
+        )
 
     def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
