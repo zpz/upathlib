@@ -138,19 +138,25 @@ class GcsBlobUpath(BlobUpath):
         >>> GcsBlobUpath('gs://backup/experiments/data/first.data')
         """
         if bucket_name is None:
-            assert len(paths) == 1
-            path = paths[0]
-            assert path.startswith("gs://")
-            path = path[5:]
-            k = path.find("/")
+            # The first arg must be like
+            #   'gs://bucket-name'
+            # or
+            #   'gs://bucket-name/path...'
+
+            p0 = paths[0]
+            assert p0.startswith('gs://')
+            p0 = p0[5:]
+            k = p0.find('/')
             if k < 0:
-                bucket_name = path
-                paths = ("/",)
+                bucket_name = p0
+                paths = paths[1:]
             else:
-                bucket_name = path[:k]
-                paths = (path[k:],)
+                bucket_name = p0[:k]
+                p0 = p0[k:]
+                paths = (p0, *paths[1:])
 
         super().__init__(*paths)
+        assert bucket_name
         self.bucket_name = bucket_name
         self._bucket_ = None
         self._blob_ = None
