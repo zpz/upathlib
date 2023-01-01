@@ -136,6 +136,7 @@ class GcsBlobUpath(BlobUpath):
         >>> GcsBlobUpath('experiments', 'data', 'first.data', bucket_name='backup')
         >>> GcsBlobUpath('/experiments/data/first.data', bucket_name='backup')
         >>> GcsBlobUpath('gs://backup/experiments/data/first.data')
+        >>> GcsBlobUpath('gs://backup', 'experiments', 'data/first.data')
         """
         if bucket_name is None:
             # The first arg must be like
@@ -144,9 +145,9 @@ class GcsBlobUpath(BlobUpath):
             #   'gs://bucket-name/path...'
 
             p0 = paths[0]
-            assert p0.startswith('gs://')
+            assert p0.startswith("gs://")
             p0 = p0[5:]
-            k = p0.find('/')
+            k = p0.find("/")
             if k < 0:
                 bucket_name = p0
                 paths = paths[1:]
