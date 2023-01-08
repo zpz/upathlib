@@ -136,21 +136,28 @@ class GcsBlobUpath(BlobUpath):
         >>> GcsBlobUpath('experiments', 'data', 'first.data', bucket_name='backup')
         >>> GcsBlobUpath('/experiments/data/first.data', bucket_name='backup')
         >>> GcsBlobUpath('gs://backup/experiments/data/first.data')
+        >>> GcsBlobUpath('gs://backup', 'experiments', 'data/first.data')
         """
         if bucket_name is None:
-            assert len(paths) == 1
-            path = paths[0]
-            assert path.startswith("gs://")
-            path = path[5:]
-            k = path.find("/")
+            # The first arg must be like
+            #   'gs://bucket-name'
+            # or
+            #   'gs://bucket-name/path...'
+
+            p0 = paths[0]
+            assert p0.startswith("gs://")
+            p0 = p0[5:]
+            k = p0.find("/")
             if k < 0:
-                bucket_name = path
-                paths = ("/",)
+                bucket_name = p0
+                paths = paths[1:]
             else:
-                bucket_name = path[:k]
-                paths = (path[k:],)
+                bucket_name = p0[:k]
+                p0 = p0[k:]
+                paths = (p0, *paths[1:])
 
         super().__init__(*paths)
+        assert bucket_name
         self.bucket_name = bucket_name
         self._bucket_ = None
         self._blob_ = None
@@ -163,41 +170,6 @@ class GcsBlobUpath(BlobUpath):
 
     def __str__(self) -> str:
         return self.as_uri()
-
-    def __eq__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path == other._path
-
-    def __lt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path < other._path
-
-    def __le__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path <= other._path
-
-    def __gt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path > other._path
-
-    def __ge__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path >= other._path
 
     def __getstate__(self):
         # Customize pickle because `self._bucket_`

@@ -99,45 +99,10 @@ class AzureBlobUpath(BlobUpath):
     def __str__(self) -> str:
         return f"{self._container_name}://{self._path.lstrip('/')}"
 
-    def __eq__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other._container_name != self._container_name:
-            return NotImplemented
-        return self._path == other._path
-
-    def __lt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other._container_name != self._container_name:
-            return NotImplemented
-        return self._path < other._path
-
-    def __le__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other._container_name != self._container_name:
-            return NotImplemented
-        return self._path <= other._path
-
-    def __gt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other._container_name != self._container_name:
-            return NotImplemented
-        return self._path > other._path
-
-    def __ge__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other._container_name != self._container_name:
-            return NotImplemented
-        return self._path >= other._path
-
     @overrides
     def as_uri(self) -> str:
         # TODO: what's the conventional lead word for Azure?
-        return f"azure://{self._path}"
+        return f"azure://{self._container_name}/{self._path.lstrip('/')}"
 
     @property
     def container_name(self):

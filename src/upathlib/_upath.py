@@ -18,6 +18,7 @@ from __future__ import annotations
 import abc
 import contextlib
 import datetime
+import functools
 import os
 import os.path
 import pathlib
@@ -78,6 +79,7 @@ class FileInfo:
     details: Any  #: Platform-dependent.
 
 
+@functools.total_ordering
 class Upath(abc.ABC, EnforceOverrides):
     _thread_pools = None
 
@@ -246,32 +248,15 @@ class Upath(abc.ABC, EnforceOverrides):
     def __eq__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        return self._path == other._path
-        # Subclass may want to customize this method to check more things,
-        # e.g. whether `self` and `other` are in the same "bucket".
+        return self.as_uri() == other.as_uri()
 
     def __lt__(self, other) -> bool:
         if other.__class__ is not self.__class__:
             return NotImplemented
-        return self._path < other._path
-
-    def __le__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path <= other._path
-
-    def __gt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path > other._path
-
-    def __ge__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self._path >= other._path
+        return self.as_uri() < other.as_uri()
 
     def __hash__(self) -> int:
-        return hash(repr(self))
+        return hash(self.as_uri())
 
     def __truediv__(self: T, key: str) -> T:
         """
