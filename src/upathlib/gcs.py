@@ -171,41 +171,6 @@ class GcsBlobUpath(BlobUpath):
     def __str__(self) -> str:
         return self.as_uri()
 
-    def __eq__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path == other._path
-
-    def __lt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path < other._path
-
-    def __le__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path <= other._path
-
-    def __gt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path > other._path
-
-    def __ge__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        if other.bucket_name != self.bucket_name:
-            return NotImplemented
-        return self._path >= other._path
-
     def __getstate__(self):
         # Customize pickle because `self._bucket_`
         # (when not None) can't be pickled.

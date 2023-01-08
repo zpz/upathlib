@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [in progress]
+## [0.6.9] - 2023-01-07
 
 ### Removed
 
@@ -28,11 +28,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - `LocalUpath.path` overrides the super version to return `pathlib.Path`.
 - The tests module `upathlib.tests` was renamed `_tests`.
+- Simplified comparison and ordering special methods.
 
 ### Added or enhanced
 
 - Enhancements to documentation, including Sphinx documentation generation and hosting on readthedocs.
-- New method `as_uri`.
+- New method `as_uri`. Comparison, ordering, and hash special methods are changed to use the output of `as_uri`.
 - `LocalUpath` now implements the `os.PathLike` protocol.
 - Methods `read_text`, `write_text`, `read_json`, `write_json` get parameters `encoding` and `errors`.
 - New property `root`.
