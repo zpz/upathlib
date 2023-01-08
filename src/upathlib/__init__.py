@@ -1,5 +1,5 @@
 """
-The package upathlib
+The package *upathlib*
 defines a unified API for cloud blob store (aka "object store") as well as local file systems.
 
 Attention is focused on identifying the *most essential* functionalities
