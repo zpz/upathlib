@@ -41,13 +41,13 @@ MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 
 
-RETRY_WRITE_ON_EXCEPTIONS = (
+RETRY_WRITE_ON_EXCEPTIONS = [
     TooManyRequests,
     GatewayTimeout,
     ServiceUnavailable,
     requests.ReadTimeout,
     requests.ConnectionError,
-)
+]
 
 
 class GcsBlobUpath(BlobUpath):
@@ -377,17 +377,19 @@ class GcsBlobUpath(BlobUpath):
         self._read_into_buffer(buffer)
         return buffer.getvalue()
 
-    @opnieuw.retry(
-        retry_on_exceptions=RETRY_WRITE_ON_EXCEPTIONS,
-        max_calls_total=10,
-        retry_window_after_first_call_in_seconds=100,
-    )
     def _blob_rate_limit(self, func, *args, **kwargs):
         # `func_name` is a create/update/delete function.
         # Google imposes rate limiting on such requests.
         # According to Google doc, https://cloud.google.com/storage/quotas,
         #   There is a write limit to the same object name. This limit is once per second.
-        return func(*args, **kwargs)
+        f = opnieuw.retry(
+            retry_on_exceptions=tuple(RETRY_WRITE_ON_EXCEPTIONS),
+            max_calls_total=10,
+            retry_window_after_first_call_in_seconds=100,
+        )(func)
+        # Apply this inside the function so that user could add elements
+        # to ``RETRY_WRITE_ON_EXCEPTIONS``.
+        return f(*args, **kwargs)
 
     @overrides
     def _copy_file(self, target: Upath, *, overwrite=False) -> None:
