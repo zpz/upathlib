@@ -4,33 +4,31 @@ from __future__ import annotations
 # that defines this class.
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
-
 import contextlib
 import logging
 import os
 import time
 from collections.abc import Iterator
 from datetime import datetime
-from io import BufferedReader, UnsupportedOperation, BytesIO
+from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
 
 import google.auth
 import opnieuw
 import requests
 from google import resumable_media
-from google.cloud import storage
 from google.api_core.exceptions import (
+    GatewayTimeout,
     NotFound,
     PreconditionFailed,
-    TooManyRequests,
-    GatewayTimeout,
     ServiceUnavailable,
+    TooManyRequests,
 )
+from google.cloud import storage
 from overrides import overrides
 
-from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
-
+from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 logger = logging.getLogger(__name__)
 

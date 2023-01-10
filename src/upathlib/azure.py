@@ -4,7 +4,6 @@ from __future__ import annotations
 # that defines this class.
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
-
 import os
 import random
 import time
@@ -12,22 +11,21 @@ from contextlib import contextmanager
 from datetime import datetime
 from io import UnsupportedOperation
 
-from azure.storage.blob import ContainerClient, BlobClient, BlobLeaseClient
-
 # from azure.storage.blob.aio import (
 # ContainerClient as aContainerClient,
 # BlobClient as aBlobClient,
 # BlobLeaseClient as aBlobLeaseClient,
 # )
 from azure.core.exceptions import (
-    ResourceNotFoundError,
-    ResourceExistsError,
     HttpResponseError,
+    ResourceExistsError,
+    ResourceNotFoundError,
 )
+from azure.storage.blob import BlobClient, BlobLeaseClient, ContainerClient
 from overrides import overrides
 
-from ._upath import LockAcquireError, FileInfo, Upath
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
+from ._upath import FileInfo, LockAcquireError, Upath
 
 # End user may want to do this:
 # logging.getLogger("azure.storage").setLevel(logging.WARNING)

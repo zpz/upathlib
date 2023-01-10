@@ -14,7 +14,6 @@ from __future__ import annotations
 # that defines this class.
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
-
 import abc
 import contextlib
 import datetime
@@ -29,24 +28,25 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
 from typing import (
+    Any,
+    Callable,
     Iterable,
     Iterator,
-    TypeVar,
-    Any,
     Optional,
-    Callable,
+    TypeVar,
 )
 
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
+
 from .serializer import (
     JsonSerializer,
-    PickleSerializer,
-    ZPickleSerializer,
-    ZstdPickleSerializer,
     OrjsonSerializer,
+    PickleSerializer,
     ZOrjsonSerializer,
+    ZPickleSerializer,
     ZstdOrjsonSerializer,
+    ZstdPickleSerializer,
 )
 
 # End user may want to do this:

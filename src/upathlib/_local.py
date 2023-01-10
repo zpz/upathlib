@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import contextlib
 import datetime
 import os
@@ -20,8 +21,7 @@ import filelock
 from deprecation import deprecated
 from overrides import overrides
 
-from ._upath import Upath, LockAcquireError, FileInfo
-
+from ._upath import FileInfo, LockAcquireError, Upath
 
 # End user may want to do this:
 # logging.getLogger("filelock").setLevel(logging.WARNING)
