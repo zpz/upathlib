@@ -58,5 +58,6 @@ def resolve_path(path: PathType):
         path = Path(path)
     if isinstance(path, Path):
         return LocalUpath(str(path.resolve().absolute()))
-    assert isinstance(path, Upath)
+    if not isinstance(path, Upath):
+        raise TypeError(f"`{type(path)}` is provided while `{PathType}` is expected")
     return path
