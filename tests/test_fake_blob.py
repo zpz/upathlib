@@ -1,5 +1,6 @@
 import contextlib
 from datetime import datetime
+from uuid import uuid4
 
 import upathlib._tests
 from upathlib import BlobUpath, FileInfo
@@ -156,5 +157,9 @@ class FakeBlobUpath(BlobUpath):
 
 
 def test_all():
-    p = FakeBlobUpath('/tmp/test', bucket='bucket_a')
-    upathlib._tests.test_all(p)
+    p = FakeBlobUpath('/tmp/test', bucket='bucket_a') / str(uuid4())
+    try:
+        p.rmrf()
+        upathlib._tests.test_all(p)
+    finally:
+        p.rmrf()

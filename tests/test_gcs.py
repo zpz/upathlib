@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from io import BytesIO
+from uuid import uuid4
 import upathlib._tests
 from upathlib.gcs import GcsBlobUpath, NotFound
 
@@ -152,9 +153,13 @@ def gcp(mocker):
     c = GcsBlobUpath(
             '/tmp/test',
             bucket_name='test',
-            )
+            ) / str(uuid4())
     print('c._bucket', c._bucket)
-    yield c
+    c.rmrf()
+    try:
+        yield c
+    finally:
+        c.rmrf()
 
 
 def test_all(gcp):
