@@ -5,9 +5,10 @@ import concurrent.futures
 import os
 import pathlib
 import time
-import pytest
-from upathlib import Upath, LocalUpath, LockAcquireError
 
+import pytest
+
+from upathlib import LocalUpath, LockAcquireError, Upath
 
 IS_WIN = os.name != "posix"
 

@@ -4,33 +4,31 @@ from __future__ import annotations
 # that defines this class.
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
-
 import contextlib
 import logging
 import os
 import time
 from collections.abc import Iterator
 from datetime import datetime
-from io import BufferedReader, UnsupportedOperation, BytesIO
+from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
 
 import google.auth
 import opnieuw
 import requests
 from google import resumable_media
-from google.cloud import storage
 from google.api_core.exceptions import (
+    GatewayTimeout,
     NotFound,
     PreconditionFailed,
-    TooManyRequests,
-    GatewayTimeout,
     ServiceUnavailable,
+    TooManyRequests,
 )
+from google.cloud import storage
 from overrides import overrides
 
-from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
-
+from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +39,13 @@ MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 
 
-RETRY_WRITE_ON_EXCEPTIONS = (
+RETRY_WRITE_ON_EXCEPTIONS = [
     TooManyRequests,
     GatewayTimeout,
     ServiceUnavailable,
     requests.ReadTimeout,
     requests.ConnectionError,
-)
+]
 
 
 class GcsBlobUpath(BlobUpath):
@@ -160,7 +158,6 @@ class GcsBlobUpath(BlobUpath):
         assert bucket_name
         self.bucket_name = bucket_name
         self._bucket_ = None
-        self._blob_ = None
         self._lock_count: int = 0
         self._generation = -1
         self._quiet_multidownload = True
@@ -183,7 +180,6 @@ class GcsBlobUpath(BlobUpath):
     def __setstate__(self, data):
         (self.bucket_name, self._quiet_multidownload), z1 = data
         self._bucket_ = None
-        self._blob_ = None
         self._lock_count = 0
         self._generation = -1
         return super().__setstate__(z1)
@@ -201,9 +197,7 @@ class GcsBlobUpath(BlobUpath):
         This constructs a Blob object irrespective of whether the blob
         exists in GCS.
         """
-        if self._blob_ is None:
-            self._blob_ = self._bucket().blob(self.blob_name)
-        return self._blob_
+        return self._bucket().blob(self.blob_name)
 
     @overrides
     def as_uri(self) -> str:
@@ -377,17 +371,19 @@ class GcsBlobUpath(BlobUpath):
         self._read_into_buffer(buffer)
         return buffer.getvalue()
 
-    @opnieuw.retry(
-        retry_on_exceptions=RETRY_WRITE_ON_EXCEPTIONS,
-        max_calls_total=10,
-        retry_window_after_first_call_in_seconds=100,
-    )
     def _blob_rate_limit(self, func, *args, **kwargs):
         # `func_name` is a create/update/delete function.
         # Google imposes rate limiting on such requests.
         # According to Google doc, https://cloud.google.com/storage/quotas,
         #   There is a write limit to the same object name. This limit is once per second.
-        return func(*args, **kwargs)
+        f = opnieuw.retry(
+            retry_on_exceptions=tuple(RETRY_WRITE_ON_EXCEPTIONS),
+            max_calls_total=16,
+            retry_window_after_first_call_in_seconds=100,
+        )(func)
+        # Apply this inside the function so that user could add elements
+        # to ``RETRY_WRITE_ON_EXCEPTIONS``.
+        return f(*args, **kwargs)
 
     @overrides
     def _copy_file(self, target: Upath, *, overwrite=False) -> None:
@@ -511,7 +507,6 @@ class GcsBlobUpath(BlobUpath):
                 # it's ignored. Do not use this name for a blob!
                 continue
             obj = self / p.name[k:]  # files
-            obj._blob_ = p
             yield obj
         for p in blobs.prefixes:
             yield self / p[k:].rstrip("/")  # "subdirectories"
@@ -538,9 +533,7 @@ class GcsBlobUpath(BlobUpath):
         """
         try:
             self._blob_rate_limit(self._blob().delete, client=self._client())
-            self._blob_ = None
         except NotFound:
-            self._blob_ = None
             raise FileNotFoundError(self)
 
     @overrides
@@ -556,7 +549,6 @@ class GcsBlobUpath(BlobUpath):
                 # Worse, this is an actual blob name---do not do this!
                 continue
             obj = self / p.name[k:]
-            obj._blob_ = p
             yield obj
 
     def _acquire_lease(self, *, timeout: int = None):
@@ -568,26 +560,34 @@ class GcsBlobUpath(BlobUpath):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
-            timeout = 300  # seconds
+            timeout = 100  # seconds
 
-        @opnieuw.retry(
-            retry_on_exceptions=(
-                *RETRY_WRITE_ON_EXCEPTIONS,
-                PreconditionFailed,
-                FileExistsError,
-            ),
-            max_calls_total=10,
-            retry_window_after_first_call_in_seconds=timeout,
-        )
         def _acquire_():
             self._write_bytes(b"0")
             self._generation = self._blob().generation
 
+        if timeout == 0:
+            try:
+                _acquire_()
+                return
+            except Exception as e:
+                raise LockAcquireError(f"failed to acquire a lock on {self}") from e
+
         t0 = time.perf_counter()
         try:
-            _acquire_()
+            opnieuw.retry(
+                retry_on_exceptions=(
+                    *RETRY_WRITE_ON_EXCEPTIONS,
+                    PreconditionFailed,
+                    FileExistsError,
+                ),
+                max_calls_total=16,
+                retry_window_after_first_call_in_seconds=timeout,
+            )(_acquire_)()
         except Exception as e:
-            raise LockAcquireError(self, time.perf_counter() - t0) from e
+            raise LockAcquireError(
+                f"waited on {self} for {time.perf_counter() - t0:.2f} seconds"
+            ) from e
 
     @contextlib.contextmanager
     @overrides
@@ -596,10 +596,11 @@ class GcsBlobUpath(BlobUpath):
         This implementation does not prevent the file from being deleted
         by other workers that does not use the 'if-generation-match' condition.
         It relies on the assumption that this blob
-        is used solely in this locking logic.
+        is used *cooperatively* solely in this locking logic.
 
         ``timeout`` is the wait time for acquiring the lease.
-        If ``None``, the default value 300 seconds is used.
+        If ``None``, the default value 100 seconds is used.
+        If ``0``, exactly one attempt is made to acquire a lock.
         """
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html

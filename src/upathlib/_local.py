@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import contextlib
 import datetime
 import os
@@ -20,8 +21,7 @@ import filelock
 from deprecation import deprecated
 from overrides import overrides
 
-from ._upath import Upath, LockAcquireError, FileInfo
-
+from ._upath import FileInfo, LockAcquireError, Upath
 
 # End user may want to do this:
 # logging.getLogger("filelock").setLevel(logging.WARNING)
@@ -291,10 +291,12 @@ class LocalUpath(Upath, os.PathLike):
         This uses the package `filelock <https://github.com/tox-dev/py-filelock>`_ to implement
         a file lock for inter-process communication.
         """
+        if timeout is None:
+            timeout = 60
         os.makedirs(self.parent, exist_ok=True)
         lock = filelock.FileLock(str(self))
         try:
-            lock.acquire(timeout=timeout or 300)
+            lock.acquire(timeout=timeout, poll_interval=0.05)
             yield
         except filelock.Timeout as e:
             raise LockAcquireError(str(self)) from e

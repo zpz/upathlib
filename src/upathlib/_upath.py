@@ -14,7 +14,6 @@ from __future__ import annotations
 # that defines this class.
 # https://stackoverflow.com/a/49872353
 # Will no longer be needed in Python 3.10.
-
 import abc
 import contextlib
 import datetime
@@ -29,24 +28,25 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
 from typing import (
+    Any,
+    Callable,
     Iterable,
     Iterator,
-    TypeVar,
-    Any,
     Optional,
-    Callable,
+    TypeVar,
 )
 
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
+
 from .serializer import (
     JsonSerializer,
-    PickleSerializer,
-    ZPickleSerializer,
-    ZstdPickleSerializer,
     OrjsonSerializer,
+    PickleSerializer,
     ZOrjsonSerializer,
+    ZPickleSerializer,
     ZstdOrjsonSerializer,
+    ZstdPickleSerializer,
 )
 
 # End user may want to do this:
@@ -967,9 +967,12 @@ class Upath(abc.ABC, EnforceOverrides):
         ``timeout``: if the lock can't be acquired within ``timeout`` seconds,
         ``LockAcquireError`` is raised. If ``None``, wait for a default
         reasonably long time. To wait "forever", just pass in a large number.
+
+        ``timeout=0`` is a valid input, meaning making exactly one attempt to acquire a lock.
+
         Once a lock is acquired, it will not expire until this contexmanager exits.
-        In other words, this is timeout for the "wait", not for the
-        lock itself. Actual waiting time could be slightly longer.
+        In other words, this is timeout for the "lock acquisition", not for the
+        lock itself. Actual waiting time could be slightly longer or shorter.
 
         This is a "mandatory lock", as opposed to an "advisory lock".
         However, this API does not specify that the locked file

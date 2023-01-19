@@ -20,7 +20,7 @@ simply uses the common API to operate the storage.
 
 # flake8: noqa
 
-__version__ = "0.6.9"
+__version__ = "0.7.0b1"
 
 from pathlib import Path
 from typing import Union
@@ -58,5 +58,6 @@ def resolve_path(path: PathType):
         path = Path(path)
     if isinstance(path, Path):
         return LocalUpath(str(path.resolve().absolute()))
-    assert isinstance(path, Upath)
+    if not isinstance(path, Upath):
+        raise TypeError(f"`{type(path)}` is provided while `{PathType}` is expected")
     return path

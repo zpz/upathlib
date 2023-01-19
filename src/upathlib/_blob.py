@@ -1,12 +1,13 @@
 from __future__ import annotations
+
 import pathlib
 import sys
 from collections.abc import Iterator
 
-from ._upath import Upath, T
-from ._local import LocalUpath, LocalPathType
+from overrides import EnforceOverrides, overrides
 
-from overrides import overrides, EnforceOverrides
+from ._local import LocalPathType, LocalUpath
+from ._upath import T, Upath
 
 
 def _resolve_local_path(p: LocalPathType):

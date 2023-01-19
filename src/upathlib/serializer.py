@@ -8,7 +8,6 @@ from typing import TypeVar
 import orjson
 import zstandard
 
-
 T = TypeVar("T")
 
 
