@@ -967,9 +967,12 @@ class Upath(abc.ABC, EnforceOverrides):
         ``timeout``: if the lock can't be acquired within ``timeout`` seconds,
         ``LockAcquireError`` is raised. If ``None``, wait for a default
         reasonably long time. To wait "forever", just pass in a large number.
+
+        ``timeout=0`` is a valid input, meaning making exactly one attempt to acquire a lock.
+
         Once a lock is acquired, it will not expire until this contexmanager exits.
-        In other words, this is timeout for the "wait", not for the
-        lock itself. Actual waiting time could be slightly longer.
+        In other words, this is timeout for the "lock acquisition", not for the
+        lock itself. Actual waiting time could be slightly longer or shorter.
 
         This is a "mandatory lock", as opposed to an "advisory lock".
         However, this API does not specify that the locked file
