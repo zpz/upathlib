@@ -1,5 +1,7 @@
 import os
 import pathlib
+from uuid import uuid4
+
 import upathlib._tests
 
 import pytest
@@ -9,9 +11,13 @@ from upathlib import LocalUpath
 @pytest.fixture
 def test_path():
     if os.name == 'posix':
-        return LocalUpath('/tmp/upathlib_local_test')
+        p = LocalUpath('/tmp/upathlib_local_test') / str(uuid4())
     else:
-        return LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test'))
+        p = LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test')) / str(uuid4())
+    try:
+        yield p
+    finally:
+        p.rmrf()
 
 
 def test_localupath_init():
