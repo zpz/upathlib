@@ -585,7 +585,9 @@ class GcsBlobUpath(BlobUpath):
                 retry_window_after_first_call_in_seconds=timeout,
             )(_acquire_)()
         except Exception as e:
-            raise LockAcquireError(f"waited on {self} for {time.perf_counter() - t0:.2f} seconds") from e
+            raise LockAcquireError(
+                f"waited on {self} for {time.perf_counter() - t0:.2f} seconds"
+            ) from e
 
     @contextlib.contextmanager
     @overrides
