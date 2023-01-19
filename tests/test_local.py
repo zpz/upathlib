@@ -15,6 +15,7 @@ def test_path():
     else:
         p = LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test')) / str(uuid4())
     try:
+        p.rmrf()
         yield p
     finally:
         p.rmrf()
@@ -60,7 +61,6 @@ def test_rename(test_path):
 
 def test_pathlike(test_path):
     p = test_path
-    p.rmrf()
     p.write_text('abc')
     with open(p) as file:
         assert file.read() == 'abc'

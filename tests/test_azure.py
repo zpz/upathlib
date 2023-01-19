@@ -1,6 +1,7 @@
 import io
 from datetime import datetime
 from types import SimpleNamespace
+from uuid import uuid4
 import upathlib._tests
 from upathlib.azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
 
@@ -128,8 +129,12 @@ def azure(mocker):
     c = AzureBlobUpath(
             '/tmp/test',
             container_name='test',
-            )
-    yield c
+            ) / str(uuid4())
+    try:
+        c.rmrf()
+        yield c
+    finally:
+        c.rmrf()
 
 
 def test_all(azure):
