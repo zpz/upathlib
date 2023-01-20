@@ -7,6 +7,7 @@ import os.path
 import pathlib
 import shutil
 import sys
+import time
 from collections.abc import Iterator
 from typing import Optional, Union
 
@@ -38,6 +39,8 @@ class LocalUpath(Upath, os.PathLike):
         This is passed to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
         """
         super().__init__(str(pathlib.Path(*pathsegments).absolute()))
+        self._lock_count: int = 0
+        self._lock = None
 
     def __fspath__(self) -> str:
         """
@@ -293,15 +296,25 @@ class LocalUpath(Upath, os.PathLike):
         """
         if timeout is None:
             timeout = 60
-        os.makedirs(self.parent, exist_ok=True)
-        lock = filelock.FileLock(str(self))
+        if self._lock_count == 0:
+            os.makedirs(self.parent, exist_ok=True)
+            lock = filelock.FileLock(str(self))
+            t0 = time.perf_counter()
+            try:
+                lock.acquire(timeout=timeout, poll_interval=0.05)
+            except Exception as e:
+                raise LockAcquireError(
+                    f"waited on {self} for {time.perf_counter() - t0:.2f} seconds"
+                ) from e
+            self._lock = lock
+        self._lock_count += 1
         try:
-            lock.acquire(timeout=timeout, poll_interval=0.05)
             yield
-        except filelock.Timeout as e:
-            raise LockAcquireError(str(self)) from e
         finally:
-            lock.release()
+            self._lock_count -= 1
+            if self._lock_count == 0:
+                self._lock.release()
+                self._lock = None
 
 
 LocalPathType = Union[str, pathlib.Path, LocalUpath]

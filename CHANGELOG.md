@@ -4,10 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.7.0b1] - 2023-01-19
+## [0.7.0b2] - 2023-01-20
 
-- Bug fix in `GcsBlobUpath`. The issue tends to be manifested in `lock`, but the bug is not really in `lock`;
-  rather the fix is in `_blob`.
+- `GcsBlobUpath` finetune related to exceptions, retry, lock.
+- `LocalUpath.lock` finetune.
 
   
 ## [0.6.9] - 2023-01-07

@@ -20,7 +20,7 @@ simply uses the common API to operate the storage.
 
 # flake8: noqa
 
-__version__ = "0.7.0b1"
+__version__ = "0.7.0b2"
 
 from pathlib import Path
 from typing import Union

@@ -3,7 +3,10 @@ from types import SimpleNamespace
 from io import BytesIO
 from uuid import uuid4
 import upathlib._tests
-from upathlib.gcs import GcsBlobUpath, NotFound
+from upathlib.gcs import GcsBlobUpath, exceptions
+
+NotFound = exceptions.NotFound
+
 
 import pytest
 
