@@ -15,13 +15,13 @@ from typing import Optional
 
 import google.auth
 import requests
-from google import resumable_media
 import requests.exceptions
+from google import resumable_media
 from google.api_core import exceptions
+from google.api_core.retry import if_exception_type
 from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
-from google.api_core.retry import if_exception_type
 from overrides import overrides
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -376,7 +376,9 @@ class GcsBlobUpath(BlobUpath):
         # Google imposes rate limiting on such requests.
         # According to Google doc, https://cloud.google.com/storage/quotas,
         #   There is a write limit to the same object name. This limit is once per second.
-        f = DEFAULT_RETRY.with_predicate(if_exception_type(*RETRY_WRITE_ON_EXCEPTIONS))(func)
+        f = DEFAULT_RETRY.with_predicate(if_exception_type(*RETRY_WRITE_ON_EXCEPTIONS))(
+            func
+        )
         # Apply this inside the function so that user could add elements
         # to ``RETRY_WRITE_ON_EXCEPTIONS``.
         return f(*args, **kwargs)
@@ -558,8 +560,15 @@ class GcsBlobUpath(BlobUpath):
         if timeout is None:
             timeout = 120  # seconds
 
-        @DEFAULT_RETRY.with_timeout(timeout).with_predicate(
-            if_exception_type(*RETRY_WRITE_ON_EXCEPTIONS, exceptions.PreconditionFailed, FileExistsError))
+        retry = DEFAULT_RETRY.with_timeout(timeout).with_predicate(
+            if_exception_type(
+                *RETRY_WRITE_ON_EXCEPTIONS,
+                exceptions.PreconditionFailed,
+                FileExistsError,
+            )
+        )
+
+        @retry
         def _acquire_():
             self._write_bytes(b"0")
             self._generation = self._blob().generation
