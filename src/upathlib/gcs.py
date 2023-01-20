@@ -14,17 +14,14 @@ from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
 
 import google.auth
-import opnieuw
 import requests
+import requests.exceptions
 from google import resumable_media
-from google.api_core.exceptions import (
-    GatewayTimeout,
-    NotFound,
-    PreconditionFailed,
-    ServiceUnavailable,
-    TooManyRequests,
-)
+from google.api_core import exceptions
+from google.api_core.retry import if_exception_type
+from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
+from google.cloud.storage.retry import DEFAULT_RETRY
 from overrides import overrides
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -40,11 +37,14 @@ LARGE_FILE_SIZE = MEGABYTES64
 
 
 RETRY_WRITE_ON_EXCEPTIONS = [
-    TooManyRequests,
-    GatewayTimeout,
-    ServiceUnavailable,
-    requests.ReadTimeout,
-    requests.ConnectionError,
+    exceptions.InternalServerError,
+    exceptions.TooManyRequests,
+    exceptions.ServiceUnavailable,
+    exceptions.GatewayTimeout,
+    requests.exceptions.ReadTimeout,
+    requests.exceptions.ConnectionError,
+    requests.exceptions.ChunkedEncodingError,
+    auth_exceptions.TransportError,
 ]
 
 
@@ -243,7 +243,7 @@ class GcsBlobUpath(BlobUpath):
         b = self._blob()
         try:
             b.reload(client=self._client())
-        except NotFound:
+        except exceptions.NotFound:
             return None
         return FileInfo(
             ctime=b.time_created.timestamp(),
@@ -287,7 +287,7 @@ class GcsBlobUpath(BlobUpath):
             # as the source local file?
             # Blob objects has methods `_set_properties`, `_patch_property`,
             # `patch`.
-        except PreconditionFailed:
+        except exceptions.PreconditionFailed:
             raise FileExistsError(self)
 
     def _write_bytes(self, data, **kwargs):
@@ -318,14 +318,14 @@ class GcsBlobUpath(BlobUpath):
             try:
                 self._blob().download_to_file(file_obj, client=self._client())
                 return
-            except NotFound:
+            except exceptions.NotFound:
                 raise FileNotFoundError(self)
 
         def _download(client, blob, start, end):
             buffer = BytesIO()
             try:
                 blob.download_to_file(buffer, client=client, start=start, end=end)
-            except NotFound:
+            except exceptions.NotFound:
                 raise FileNotFoundError(blob.name)
             # Both `start` and `end` are inclusive.
             # The very first `start` should be 0.
@@ -376,11 +376,9 @@ class GcsBlobUpath(BlobUpath):
         # Google imposes rate limiting on such requests.
         # According to Google doc, https://cloud.google.com/storage/quotas,
         #   There is a write limit to the same object name. This limit is once per second.
-        f = opnieuw.retry(
-            retry_on_exceptions=tuple(RETRY_WRITE_ON_EXCEPTIONS),
-            max_calls_total=16,
-            retry_window_after_first_call_in_seconds=100,
-        )(func)
+        f = DEFAULT_RETRY.with_predicate(if_exception_type(*RETRY_WRITE_ON_EXCEPTIONS))(
+            func
+        )
         # Apply this inside the function so that user could add elements
         # to ``RETRY_WRITE_ON_EXCEPTIONS``.
         return f(*args, **kwargs)
@@ -397,9 +395,9 @@ class GcsBlobUpath(BlobUpath):
                     client=self._client(),
                     if_generation_match=None if overwrite else 0,
                 )
-            except NotFound:
+            except exceptions.NotFound:
                 raise FileNotFoundError(self)
-            except PreconditionFailed:
+            except exceptions.PreconditionFailed:
                 raise FileExistsError(target)
         else:
             super()._copy_file(target, overwrite=overwrite)
@@ -533,7 +531,7 @@ class GcsBlobUpath(BlobUpath):
         """
         try:
             self._blob_rate_limit(self._blob().delete, client=self._client())
-        except NotFound:
+        except exceptions.NotFound:
             raise FileNotFoundError(self)
 
     @overrides
@@ -560,30 +558,24 @@ class GcsBlobUpath(BlobUpath):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
         if timeout is None:
-            timeout = 100  # seconds
+            timeout = 120  # seconds
 
+        retry = DEFAULT_RETRY.with_timeout(timeout).with_predicate(
+            if_exception_type(
+                *RETRY_WRITE_ON_EXCEPTIONS,
+                exceptions.PreconditionFailed,
+                FileExistsError,
+            )
+        )
+
+        @retry
         def _acquire_():
             self._write_bytes(b"0")
             self._generation = self._blob().generation
 
-        if timeout == 0:
-            try:
-                _acquire_()
-                return
-            except Exception as e:
-                raise LockAcquireError(f"failed to acquire a lock on {self}") from e
-
         t0 = time.perf_counter()
         try:
-            opnieuw.retry(
-                retry_on_exceptions=(
-                    *RETRY_WRITE_ON_EXCEPTIONS,
-                    PreconditionFailed,
-                    FileExistsError,
-                ),
-                max_calls_total=16,
-                retry_window_after_first_call_in_seconds=timeout,
-            )(_acquire_)()
+            _acquire_()
         except Exception as e:
             raise LockAcquireError(
                 f"waited on {self} for {time.perf_counter() - t0:.2f} seconds"
