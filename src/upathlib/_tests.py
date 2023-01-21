@@ -6,6 +6,7 @@ import os
 import pathlib
 import random
 import time
+from uuid import uuid4
 
 import pytest
 
@@ -174,35 +175,37 @@ def test_copy(p: Upath):
     source = p
     source.rmrf()
 
-    target = LocalUpath("/tmp/upath-test-target")
+    target = LocalUpath("/tmp/upath-test-target") / str(uuid4())
     target.rmrf()
+    try:
+        source_file = source / "testfile"
+        source_file.write_text("abc", overwrite=True)
 
-    source_file = source / "testfile"
-    source_file.write_text("abc", overwrite=True)
+        source_file.copy_file(target)
+        assert target.read_text() == "abc"
 
-    source_file.copy_file(target)
-    assert target.read_text() == "abc"
+        with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
+            # cant' write to `target/'samplefile'`
+            # because `target` is a file.
+            source.copy_dir(target.joinpath("samplefile"))
 
-    with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
-        # cant' write to `target/'samplefile'`
-        # because `target` is a file.
-        source.copy_dir(target.joinpath("samplefile"))
+        target.rmrf()
+        p2 = target.joinpath("samplefile")
+        source.copy_dir(p2)
+        p3 = p2 / source_file.name
+        assert target.ls() == [p2]
+        assert p2.ls() == [p3]
+        assert p3.read_text() == "abc"
 
-    target.rmrf()
-    p2 = target.joinpath("samplefile")
-    source.copy_dir(p2)
-    p3 = p2 / source_file.name
-    assert target.ls() == [p2]
-    assert p2.ls() == [p3]
-    assert p3.read_text() == "abc"
+        p1 = source / "a" / "b" / "c"
+        assert p2.copy_dir(p1) == 1
+        p4 = p1 / source_file.name
+        assert p4.read_text() == "abc"
 
-    p1 = source / "a" / "b" / "c"
-    assert p2.copy_dir(p1) == 1
-    p4 = p1 / source_file.name
-    assert p4.read_text() == "abc"
-
-    assert p2.copy_dir(source / "a" / "b") == 1
-    assert (source / "a" / "b" / source_file.name).read_text() == "abc"
+        assert p2.copy_dir(source / "a" / "b") == 1
+        assert (source / "a" / "b" / source_file.name).read_text() == "abc"
+    finally:
+        target.rmrf()
 
 
 def _access_in_mp(root: Upath, path: str, timeout):
