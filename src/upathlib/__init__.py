@@ -18,9 +18,7 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-# flake8: noqa
-
-__version__ = "0.7.0b2"
+__version__ = "0.7.0"
 
 from pathlib import Path
 from typing import Union
