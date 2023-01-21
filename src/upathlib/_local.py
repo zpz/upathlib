@@ -150,7 +150,7 @@ class LocalUpath(Upath, os.PathLike):
                 raise FileExistsError(self)
         self.parent.path.mkdir(exist_ok=True, parents=True)
         self.path.write_bytes(data)
-    
+
         # If `self` is an existing directory, will raise `IsADirectoryError`.
         # If `self` is an existing file, will overwrite.
 

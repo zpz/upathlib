@@ -230,28 +230,25 @@ def _inc_in_mp(counter, idx):
     t0 = time.perf_counter()
     n = 0
     while time.perf_counter() - t0 < 10:
-        with counter.with_suffix('.lock').lock():
+        with counter.with_suffix(".lock").lock():
             x = counter.read_text()
             time.sleep(random.random() * 0.3)
             counter.write_text(str(int(x) + 1), overwrite=True)
             n += 1
-            print('worker', idx, n)
+            print("worker", idx, n)
         time.sleep(random.random() * 0.2)
     return idx, n
 
 
 def test_lock2(p: Upath):
     p.rmrf()
-    counter = p / 'counter'
-    counter.write_text('0')
+    counter = p / "counter"
+    counter.write_text("0")
     time.sleep(0.2)
     with concurrent.futures.ProcessPoolExecutor(30) as pool:
-        tt = [
-            pool.submit(_inc_in_mp, counter, i)
-            for i in range(30)
-        ]
+        tt = [pool.submit(_inc_in_mp, counter, i) for i in range(30)]
         results = [t.result() for t in tt]
-        print('results:')
+        print("results:")
         for v in sorted(results):
             print(v)
         total1 = sum(v[1] for v in results)
