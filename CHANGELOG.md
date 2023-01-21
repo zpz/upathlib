@@ -4,9 +4,10 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [0.7.0b2] - 2023-01-20
 
-- `GcsBlobUpath` finetune related to exceptions, retry, lock.
+## [0.7.0] - 2023-01-20
+
+- `GcsBlobUpath` finetune and bug fix related to exceptions, retry, lock.
 - `LocalUpath.lock` finetune.
 
   

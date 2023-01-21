@@ -4,7 +4,9 @@
 import concurrent.futures
 import os
 import pathlib
+import random
 import time
+from uuid import uuid4
 
 import pytest
 
@@ -173,35 +175,37 @@ def test_copy(p: Upath):
     source = p
     source.rmrf()
 
-    target = LocalUpath("/tmp/upath-test-target")
+    target = LocalUpath("/tmp/upath-test-target") / str(uuid4())
     target.rmrf()
+    try:
+        source_file = source / "testfile"
+        source_file.write_text("abc", overwrite=True)
 
-    source_file = source / "testfile"
-    source_file.write_text("abc", overwrite=True)
+        source_file.copy_file(target)
+        assert target.read_text() == "abc"
 
-    source_file.copy_file(target)
-    assert target.read_text() == "abc"
+        with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
+            # cant' write to `target/'samplefile'`
+            # because `target` is a file.
+            source.copy_dir(target.joinpath("samplefile"))
 
-    with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
-        # cant' write to `target/'samplefile'`
-        # because `target` is a file.
-        source.copy_dir(target.joinpath("samplefile"))
+        target.rmrf()
+        p2 = target.joinpath("samplefile")
+        source.copy_dir(p2)
+        p3 = p2 / source_file.name
+        assert target.ls() == [p2]
+        assert p2.ls() == [p3]
+        assert p3.read_text() == "abc"
 
-    target.rmrf()
-    p2 = target.joinpath("samplefile")
-    source.copy_dir(p2)
-    p3 = p2 / source_file.name
-    assert target.ls() == [p2]
-    assert p2.ls() == [p3]
-    assert p3.read_text() == "abc"
+        p1 = source / "a" / "b" / "c"
+        assert p2.copy_dir(p1) == 1
+        p4 = p1 / source_file.name
+        assert p4.read_text() == "abc"
 
-    p1 = source / "a" / "b" / "c"
-    assert p2.copy_dir(p1) == 1
-    p4 = p1 / source_file.name
-    assert p4.read_text() == "abc"
-
-    assert p2.copy_dir(source / "a" / "b") == 1
-    assert (source / "a" / "b" / source_file.name).read_text() == "abc"
+        assert p2.copy_dir(source / "a" / "b") == 1
+        assert (source / "a" / "b" / source_file.name).read_text() == "abc"
+    finally:
+        target.rmrf()
 
 
 def _access_in_mp(root: Upath, path: str, timeout):
@@ -214,7 +218,7 @@ def _access_in_mp(root: Upath, path: str, timeout):
         return t0 - time.perf_counter()
 
 
-def test_lock(p: Upath, timeout=None, wait=8):
+def test_lock1(p: Upath, timeout=None, wait=8):
     p.rmrf()
     pp = p / "testlock"
     with pp.lock(timeout=timeout):
@@ -223,6 +227,42 @@ def test_lock(p: Upath, timeout=None, wait=8):
             z = t.result()
             print("mp returned after", z, "seconds")
             assert z <= -(wait / 2)
+
+
+def _inc_in_mp(counter, idx):
+    t0 = time.perf_counter()
+    n = 0
+    while time.perf_counter() - t0 < 10:
+        with counter.with_suffix(".lock").lock():
+            x = counter.read_text()
+            time.sleep(random.random() * 0.3)
+            counter.write_text(str(int(x) + 1), overwrite=True)
+            n += 1
+            print("worker", idx, n)
+        time.sleep(random.random() * 0.2)
+    return idx, n
+
+
+def test_lock2(p: Upath):
+    p.rmrf()
+    counter = p / "counter"
+    counter.write_text("0")
+    time.sleep(0.2)
+    with concurrent.futures.ProcessPoolExecutor(30) as pool:
+        tt = [pool.submit(_inc_in_mp, counter, i) for i in range(30)]
+        results = [t.result() for t in tt]
+        print("results:")
+        for v in sorted(results):
+            print(v)
+        total1 = sum(v[1] for v in results)
+        total2 = int(counter.read_text())
+        print(total1, total2)
+        assert total1 == total2
+
+
+def test_lock(p: Upath):
+    test_lock1(p)
+    test_lock2(p)
 
 
 def test_all(p: Upath):
