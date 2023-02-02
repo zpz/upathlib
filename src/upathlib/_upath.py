@@ -1008,6 +1008,9 @@ class Upath(abc.ABC, EnforceOverrides):
                 # (or in another block that deliberately uses the same file lock).
                 # Reading can be made exclusive by this same lock mechanism.
 
+        The lock file itself (i.e. `self`) is never used for its content;
+        the file is merely a dummy to implement the lock mechanism.
+
         Some storage engines may not provide the capability to implement
         this lock.
         """

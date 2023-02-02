@@ -9,7 +9,7 @@ import logging
 import os
 import time
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
 
@@ -46,6 +46,29 @@ RETRY_WRITE_ON_EXCEPTIONS = [
     requests.exceptions.ChunkedEncodingError,
     auth_exceptions.TransportError,
 ]
+
+
+def get_google_auth(project_id=None, credentials=None, *, scopes: list[str] = None, valid_for_seconds: int = 300):
+    renewed = False
+    if project_id is None or credentials is None:
+        cred, pid = google.auth.default(
+            scopes=scopes or ["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        if credentials is None:
+            credentials = cred
+        if project_id is None:
+            project_id = pid
+        renewed = True
+    
+    if (
+        not credentials.token
+        or (credentials.expiry - datetime.utcnow()).total_seconds() < valid_for_seconds
+    ):
+        credentials.refresh(google.auth.transport.requests.Request())
+        # One check shows that this token expires in one hour.
+        renewed = True
+
+    return project_id, credentials, renewed
 
 
 class GcsBlobUpath(BlobUpath):
@@ -90,26 +113,10 @@ class GcsBlobUpath(BlobUpath):
         Code that runs on a GCP machine may be able to infer ``credentials`` and ``project_id``
         via `google.auth.default() <https://googleapis.dev/python/google-auth/latest/user-guide.html#application-default-credentials>`_.
         """
-        refresh = False
-        if cls._CLIENT is None:
-            refresh = True
-            if cls._PROJECT_ID is None or cls._CREDENTIALS is None:
-                cred, pid = google.auth.default(
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
-                )
-                if cls._CREDENTIALS is None:
-                    cls._CREDENTIALS = cred
-                if cls._PROJECT_ID is None:
-                    cls._PROJECT_ID = pid
-        if (
-            not cls._CREDENTIALS.token
-            or (cls._CREDENTIALS.expiry - datetime.utcnow()).total_seconds()
-            < 300  # 5 minutes
-        ):
-            refresh = True
-            cls._CREDENTIALS.refresh(google.auth.transport.requests.Request())
-            # One check shows that this token expires in one hour.
-        if refresh:
+        cls._PROJECT_ID, cls._CREDENTIALS, renewed = get_google_auth(
+            cls._PROJECT_ID, cls._CREDENTIALS
+        )
+        if cls._CLIENT is None or renewed:
             cls._CLIENT = storage.Client(
                 project=cls._PROJECT_ID, credentials=cls._CREDENTIALS
             )
@@ -576,9 +583,29 @@ class GcsBlobUpath(BlobUpath):
         t0 = time.perf_counter()
         try:
             _acquire_()
+        except FileExistsError as e:
+            finfo = self.file_info()
+            now = datetime.utcnow().replace(tzinfo=timezone.utc)
+            file_age = (now - finfo.time_created).total_seconds()
+            if file_age - timeout > 600:
+                # If the file is older than 10 minutes,
+                # assume it is a dead file, that is, the last lock operation
+                # somehow failed and did not delete the file.
+                logger.warning("the locker file '%s' was created %d seconds ago; assuming it is dead and deleting it",
+                    self, int(file_age))
+                self._blob_rate_limit(
+                    self._blob().delete,
+                    client=self._client(),
+                )  # If this fails, the exception will propagate, which is not LockAcquireError.
+                # After deleting the file, try it again:
+                self._acquire_lease(timeout=timeout)
+            else:
+                raise LockAcquireError(
+                    f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
+                ) from e
         except Exception as e:
             raise LockAcquireError(
-                f"waited on {self} for {time.perf_counter() - t0:.2f} seconds"
+                f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
             ) from e
 
     @contextlib.contextmanager
@@ -611,7 +638,9 @@ class GcsBlobUpath(BlobUpath):
                     self._blob_rate_limit(
                         self._blob().delete,
                         client=self._client(),
-                        if_generation_match=self._generation,
+                        # if_generation_match=self._generation,
+                        #   # 23.2.1: this used to work, but recently I saw LockReleaseError and
+                        #   #         didn't get more info about why deletion failed.
                     )
                 except Exception as e:
                     raise LockReleaseError(f"failed to delete lock file {self}") from e
