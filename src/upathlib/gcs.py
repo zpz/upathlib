@@ -48,7 +48,13 @@ RETRY_WRITE_ON_EXCEPTIONS = [
 ]
 
 
-def get_google_auth(project_id=None, credentials=None, *, scopes: list[str] = None, valid_for_seconds: int = 300):
+def get_google_auth(
+    project_id=None,
+    credentials=None,
+    *,
+    scopes: list[str] = None,
+    valid_for_seconds: int = 300,
+):
     renewed = False
     if project_id is None or credentials is None:
         cred, pid = google.auth.default(
@@ -59,7 +65,7 @@ def get_google_auth(project_id=None, credentials=None, *, scopes: list[str] = No
         if project_id is None:
             project_id = pid
         renewed = True
-    
+
     if (
         not credentials.token
         or (credentials.expiry - datetime.utcnow()).total_seconds() < valid_for_seconds
@@ -591,8 +597,11 @@ class GcsBlobUpath(BlobUpath):
                 # If the file is older than 10 minutes,
                 # assume it is a dead file, that is, the last lock operation
                 # somehow failed and did not delete the file.
-                logger.warning("the locker file '%s' was created %d seconds ago; assuming it is dead and deleting it",
-                    self, int(file_age))
+                logger.warning(
+                    "the locker file '%s' was created %d seconds ago; assuming it is dead and deleting it",
+                    self,
+                    int(file_age),
+                )
                 self._blob_rate_limit(
                     self._blob().delete,
                     client=self._client(),
