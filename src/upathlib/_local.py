@@ -305,7 +305,7 @@ class LocalUpath(Upath, os.PathLike):
                 lock.acquire(timeout=timeout, poll_interval=0.05)
             except Exception as e:
                 raise LockAcquireError(
-                    f"waited on {self} for {time.perf_counter() - t0:.2f} seconds"
+                    f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
                 ) from e
             self._lock = lock
         self._lock_count += 1
