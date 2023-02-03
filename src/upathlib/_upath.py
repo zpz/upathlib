@@ -301,7 +301,7 @@ class Upath(abc.ABC, EnforceOverrides):
         >>> from upathlib import LocalUpath
         >>> p = LocalUpath('/tmp/test/upathlib/data/sales.txt.gz')
         >>> p.path
-        PurePosixPath('/tmp/test/upathlib/data/sales.txt.gz')
+        PosixPath('/tmp/test/upathlib/data/sales.txt.gz')
         >>> p.name
         'sales.txt.gz'
         >>> p.parent.parent.parent.parent
@@ -332,7 +332,7 @@ class Upath(abc.ABC, EnforceOverrides):
         >>> p
         LocalUpath('/tmp/test/upathlib/data/sales.txt')
         >>> p.path
-        PurePosixPath('/tmp/test/upathlib/data/sales.txt')
+        PosixPath('/tmp/test/upathlib/data/sales.txt')
         >>> p.name
         'sales.txt'
         >>> p.stem

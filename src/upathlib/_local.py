@@ -56,6 +56,8 @@ class LocalUpath(Upath, os.PathLike):
         >>> with open(p) as file:
         ...     print(file.read())
         abc
+        >>> p.rmrf()
+        1
         """
         return self.path.__fspath__()
 

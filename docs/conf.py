@@ -22,10 +22,11 @@ today_fmt = '%b %d, %Y'
 # See numpydoc documentation for a numpy-style docstring style guide.
 
 extensions = [
-    "numpydoc",
+    'numpydoc',
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
     'sphinx.ext.todo',
+    'sphinx.ext.doctest',
     ]
 
 todo_include_todos = True
