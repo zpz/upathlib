@@ -51,11 +51,13 @@ class LocalUpath(Upath, os.PathLike):
 
         >>> p = LocalUpath('/tmp/test/data.txt')
         >>> p.rmrf()
-        1
+        0
         >>> p.write_text('abc')
         >>> with open(p) as file:
         ...     print(file.read())
         abc
+        >>> p.rmrf()
+        1
         """
         return self.path.__fspath__()
 
