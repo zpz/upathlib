@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.7.1] - not yet released
 
 - Fine-tune `GcsBlobUpath.lock`.
+- Run doctest in `test_docs.py`.
 
 
 ## [0.7.0] - 2023-01-20

@@ -87,6 +87,15 @@ class GcsBlobUpath(BlobUpath):
     _CREDENTIALS: google.auth.credentials.Credentials = None
     _CLIENT: storage.Client = None
 
+    _LOCK_EXPIRE_IN_SECONDS: int = 600
+    # Things performed while holding a `lock` should finish within
+    # this many seconds. If a worker tries but fails to acquire a lock on a file,
+    # and finds the lock file has existed this long, it assumes the file
+    # is "dead" because somehow the previous locking failed to delete the file properly,
+    # and it will delete this lock file, and retry lock acquisition.
+    #
+    # Usually you don't need to customize this.
+
     @classmethod
     def _client(cls) -> storage.Client:
         """
@@ -145,9 +154,13 @@ class GcsBlobUpath(BlobUpath):
         These several calls are equivalent:
 
         >>> GcsBlobUpath('experiments', 'data', 'first.data', bucket_name='backup')
+        GcsBlobUpath('gs://backup/experiments/data/first.data')
         >>> GcsBlobUpath('/experiments/data/first.data', bucket_name='backup')
+        GcsBlobUpath('gs://backup/experiments/data/first.data')
         >>> GcsBlobUpath('gs://backup/experiments/data/first.data')
+        GcsBlobUpath('gs://backup/experiments/data/first.data')
         >>> GcsBlobUpath('gs://backup', 'experiments', 'data/first.data')
+        GcsBlobUpath('gs://backup/experiments/data/first.data')
         """
         if bucket_name is None:
             # The first arg must be like
@@ -593,8 +606,8 @@ class GcsBlobUpath(BlobUpath):
             finfo = self.file_info()
             now = datetime.utcnow().replace(tzinfo=timezone.utc)
             file_age = (now - finfo.time_created).total_seconds()
-            if file_age - timeout > 600:
-                # If the file is older than 10 minutes,
+            if file_age - timeout > self._LOCK_EXPIRE_IN_SECONDS:
+                # If the file is old,
                 # assume it is a dead file, that is, the last lock operation
                 # somehow failed and did not delete the file.
                 logger.warning(
@@ -647,9 +660,7 @@ class GcsBlobUpath(BlobUpath):
                     self._blob_rate_limit(
                         self._blob().delete,
                         client=self._client(),
-                        # if_generation_match=self._generation,
-                        #   # 23.2.1: this used to work, but recently I saw LockReleaseError and
-                        #   #         didn't get more info about why deletion failed.
+                        if_generation_match=self._generation,
                     )
                 except Exception as e:
                     raise LockReleaseError(f"failed to delete lock file {self}") from e

@@ -78,16 +78,16 @@ We can navigate in the directory. For example,
 
 >>> for v in p.iterdir():
 ...     print(v)
-/tmp/abc/d
 /tmp/abc/x.txt
+/tmp/abc/d
 
 This is only the first level, or "direct children". We can also use "recursive iterdir"
 to get all files under the directory, descending into subdirectories recursively:
 
 >>> for v in p.riterdir():
 ...     print(v)
-/tmp/abc/d/y.data
 /tmp/abc/x.txt
+/tmp/abc/d/y.data
 
 This time only *files* are listed. Subdirectories do not show up because,
 after all, they are *not real* in ``upathlib`` concept.
@@ -121,7 +121,7 @@ We can go "down" the directory tree using ``/``.
 Conversely, we can go "up" using ``parent``:
 
 >>> pp.path
-PurePosixPath('/tmp/abc/e/f/g/data.json')
+PosixPath('/tmp/abc/e/f/g/data.json')
 >>> pp.parent
 LocalUpath('/tmp/abc/e/f/g')
 >>> pp.parent.parent
@@ -148,7 +148,7 @@ LocalUpath('/tmp/abc/e/f/o/p/q')
 Let's see again what we have:
 
 >>> list(p.riterdir())
-[LocalUpath('/tmp/abc/d/y.data'), LocalUpath('/tmp/abc/e/f/g/data.json'), LocalUpath('/tmp/abc/x.txt')]
+[LocalUpath('/tmp/abc/x.txt'), LocalUpath('/tmp/abc/e/f/g/data.json'), LocalUpath('/tmp/abc/d/y.data')]
 
 and to get rid of them all:
 
