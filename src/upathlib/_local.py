@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from typing import Optional, Union
 
 import filelock
+
 # `filelock` is also called `py-filelock`.
 # Tried `fasteners` also. In one use case,
 # `filelock` worked whereas `fasteners.InterprocessLock` failed.
@@ -81,17 +82,27 @@ def _acquire(
         while True:
             with self._thread_lock:
                 if not self.is_locked:
-                    filelock._api._LOGGER.debug("Attempting to acquire lock %s on %s", lock_id, lock_filename)
+                    filelock._api._LOGGER.debug(
+                        "Attempting to acquire lock %s on %s", lock_id, lock_filename
+                    )
                     self._acquire()
 
             if self.is_locked:
-                filelock._api._LOGGER.debug("Lock %s acquired on %s", lock_id, lock_filename)
+                filelock._api._LOGGER.debug(
+                    "Lock %s acquired on %s", lock_id, lock_filename
+                )
                 break
             elif blocking is False:
-                filelock._api._LOGGER.debug("Failed to immediately acquire lock %s on %s", lock_id, lock_filename)
+                filelock._api._LOGGER.debug(
+                    "Failed to immediately acquire lock %s on %s",
+                    lock_id,
+                    lock_filename,
+                )
                 raise filelock.Timeout(self._lock_file)
             elif 0 <= timeout < time.perf_counter() - start_time:
-                filelock._api._LOGGER.debug("Timeout on acquiring lock %s on %s", lock_id, lock_filename)
+                filelock._api._LOGGER.debug(
+                    "Timeout on acquiring lock %s on %s", lock_id, lock_filename
+                )
                 raise filelock.Timeout(self._lock_file)
             else:
                 msg = "Lock %s not acquired on %s, waiting %s seconds ..."
@@ -388,7 +399,9 @@ class LocalUpath(Upath, os.PathLike):
             lock = filelock.FileLock(str(self))
             t0 = time.perf_counter()
             try:
-                lock.acquire(timeout=timeout, poll_interval=self._LOCK_POLL_INTERVAL_SECONDS)
+                lock.acquire(
+                    timeout=timeout, poll_interval=self._LOCK_POLL_INTERVAL_SECONDS
+                )
             except Exception as e:
                 raise LockAcquireError(
                     f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
