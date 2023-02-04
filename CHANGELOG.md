@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fine-tune `GcsBlobUpath.lock`.
 - Run doctest in `test_docs.py`.
+- Fix dependency `filelock` version and hack it to use `time.perf_counter` instead of `time.monotonic`.
 
 
 ## [0.7.0] - 2023-01-20
@@ -16,7 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `GcsBlobUpath` finetune and bug fix related to exceptions, retry, lock.
 - `LocalUpath.lock` finetune.
 
-  
+
 ## [0.6.9] - 2023-01-07
 
 ### Removed
