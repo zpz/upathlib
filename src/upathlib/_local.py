@@ -8,6 +8,7 @@ import pathlib
 import shutil
 import sys
 import time
+import warnings
 from collections.abc import Iterator
 from typing import Optional, Union
 
@@ -28,7 +29,101 @@ from ._upath import FileInfo, LockAcquireError, Upath
 # logging.getLogger("filelock").setLevel(logging.WARNING)
 
 
+# Hack `filelock` to replace `time.nomotonic` by `time.perf_counter`
+def _acquire(
+    self,
+    timeout: float | None = None,
+    poll_interval: float = 0.05,
+    *,
+    poll_intervall: float | None = None,
+    blocking: bool = True,
+) -> filelock.AcquireReturnProxy:
+    """
+    Try to acquire the file lock.
+    :param timeout: maximum wait time for acquiring the lock, ``None`` means use the default :attr:`~timeout` is and
+        if ``timeout < 0``, there is no timeout and this method will block until the lock could be acquired
+    :param poll_interval: interval of trying to acquire the lock file
+    :param poll_intervall: deprecated, kept for backwards compatibility, use ``poll_interval`` instead
+    :param blocking: defaults to True. If False, function will return immediately if it cannot obtain a lock on the
+        first attempt. Otherwise this method will block until the timeout expires or the lock is acquired.
+    :raises Timeout: if fails to acquire lock within the timeout period
+    :return: a context object that will unlock the file when the context is exited
+    .. code-block:: python
+        # You can use this method in the context manager (recommended)
+        with lock.acquire():
+            pass
+        # Or use an equivalent try-finally construct:
+        lock.acquire()
+        try:
+            pass
+        finally:
+            lock.release()
+    .. versionchanged:: 2.0.0
+        This method returns now a *proxy* object instead of *self*,
+        so that it can be used in a with statement without side effects.
+    """
+    # Use the default timeout, if no timeout is provided.
+    if timeout is None:
+        timeout = self.timeout
+
+    if poll_intervall is not None:
+        msg = "use poll_interval instead of poll_intervall"
+        warnings.warn(msg, DeprecationWarning, stacklevel=2)
+        poll_interval = poll_intervall
+
+    # Increment the number right at the beginning. We can still undo it, if something fails.
+    with self._thread_lock:
+        self._lock_counter += 1
+
+    lock_id = id(self)
+    lock_filename = self._lock_file
+    start_time = time.perf_counter()
+    try:
+        while True:
+            with self._thread_lock:
+                if not self.is_locked:
+                    filelock._api._LOGGER.debug(
+                        "Attempting to acquire lock %s on %s", lock_id, lock_filename
+                    )
+                    self._acquire()
+
+            if self.is_locked:
+                filelock._api._LOGGER.debug(
+                    "Lock %s acquired on %s", lock_id, lock_filename
+                )
+                break
+            elif blocking is False:
+                filelock._api._LOGGER.debug(
+                    "Failed to immediately acquire lock %s on %s",
+                    lock_id,
+                    lock_filename,
+                )
+                raise filelock.Timeout(self._lock_file)
+            elif 0 <= timeout < time.perf_counter() - start_time:
+                filelock._api._LOGGER.debug(
+                    "Timeout on acquiring lock %s on %s", lock_id, lock_filename
+                )
+                raise filelock.Timeout(self._lock_file)
+            else:
+                msg = "Lock %s not acquired on %s, waiting %s seconds ..."
+                filelock._api._LOGGER.debug(msg, lock_id, lock_filename, poll_interval)
+                time.sleep(poll_interval)
+    except BaseException:  # Something did go wrong, so decrement the counter.
+        with self._thread_lock:
+            self._lock_counter = max(0, self._lock_counter - 1)
+        raise
+    return filelock.AcquireReturnProxy(lock=self)
+
+
+# `filelock` is pinned to 3.9.0 with this hack.
+# Once a new `filelock` version is out, check whether
+# it has made similar changes.
+filelock.BaseFileLock.acquire = _acquire
+
+
 class LocalUpath(Upath, os.PathLike):
+    _LOCK_POLL_INTERVAL_SECONDS = 0.03
+
     def __init__(self, *pathsegments: str):
         """
         Create a path on the local file system.
@@ -304,7 +399,9 @@ class LocalUpath(Upath, os.PathLike):
             lock = filelock.FileLock(str(self))
             t0 = time.perf_counter()
             try:
-                lock.acquire(timeout=timeout, poll_interval=0.05)
+                lock.acquire(
+                    timeout=timeout, poll_interval=self._LOCK_POLL_INTERVAL_SECONDS
+                )
             except Exception as e:
                 raise LockAcquireError(
                     f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
