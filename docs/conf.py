@@ -76,10 +76,8 @@ html_theme_options = {
     'collapse_navigation': False,
 }
 
+html_theme_options = {
+    'github_url': 'https://github.com/zpz/mpservice',
+}
 
 html_static_path = ['_static']
-
-rst_epilog = ""
-with open('links.rst') as f:
-    rst_epilog += f.read()
-
