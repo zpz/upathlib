@@ -87,7 +87,7 @@ class AzureBlobUpath(BlobUpath):
         self._blob_client = None
         self._lease = None
         self._lock_count = 0
-        return super().__setstate__(z1)
+        super().__setstate__(z1)
 
     def __repr__(self) -> str:
         return "{}('{}', container_name='{}')".format(

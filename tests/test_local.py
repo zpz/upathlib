@@ -1,5 +1,7 @@
+import multiprocessing as mp
 import os
 import pathlib
+from time import sleep
 from uuid import uuid4
 
 import upathlib._tests
@@ -64,3 +66,29 @@ def test_pathlike(test_path):
     p.write_text('abc')
     with open(p) as file:
         assert file.read() == 'abc'
+
+
+def mp_rmrf(p):
+    p.rmrf()
+    (p / 'c.txt').write_text('c')
+    sleep(1.1)
+
+
+def test_mp(test_path):
+    p = test_path
+    p.rmrf()  # this creates a thread pool
+    print('')
+    for c in ('fork', 'spawn'):
+        (p / 'a.txt').write_text('a')
+        (p / 'b.txt').write_text('b')
+        print('context:', c)
+        ctx = mp.get_context(c)
+        worker = ctx.Process(target=mp_rmrf, args=(p,))
+        worker.start()
+        print('worker started')
+        p.rmrf()
+        worker.join()
+        print('worker finished')
+        assert p.is_dir()
+
+

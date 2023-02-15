@@ -86,6 +86,10 @@ class GcsBlobUpath(BlobUpath):
     _PROJECT_ID: str = None
     _CREDENTIALS: google.auth.credentials.Credentials = None
     _CLIENT: storage.Client = None
+    # The `storage.Client` object is not pickle-able.
+    # But if it is copied into another "forked" process, it will function properly.
+    # Hence this is safe with multiprocessing, be it forked or spawned.
+    # In a "spawned" process, this will start as None.
 
     _LOCK_EXPIRE_IN_SECONDS: int = 600
     # Things performed while holding a `lock` should finish within
@@ -208,7 +212,7 @@ class GcsBlobUpath(BlobUpath):
         self._bucket_ = None
         self._lock_count = 0
         self._generation = -1
-        return super().__setstate__(z1)
+        super().__setstate__(z1)
 
     def _bucket(self) -> storage.Bucket:
         """
