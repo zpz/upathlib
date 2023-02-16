@@ -151,7 +151,7 @@ def gcp(mocker):
     # mocker.patch('upathlib.gcp.service_account')
     mocker.patch('upathlib.gcs.storage.Client', Client)
     mocker.patch('upathlib.gcs.GcsBlobUpath._PROJECT_ID', 'abc')
-    mocker.patch('upathlib.gcs.GcsBlobUpath._CREDENTIALS', SimpleNamespace(token='x', expiry=datetime.utcnow() + timedelta(days=1)))
+    mocker.patch('upathlib.gcs.GcsBlobUpath._CREDENTIALS', SimpleNamespace(token='x', expiry=datetime.utcnow() + timedelta(days=1))) # noqa: S106
     mocker.patch('upathlib.gcs.GcsBlobUpath._CLIENT', Client())
     c = GcsBlobUpath(
             '/tmp/test',

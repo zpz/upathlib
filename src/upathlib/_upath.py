@@ -81,20 +81,116 @@ class FileInfo:
 
 @functools.total_ordering
 class Upath(abc.ABC, EnforceOverrides):
-    _thread_pools = None
+    def __init__(
+        self,
+        *pathsegments: str,
+    ):
+        """
+        Create a ``Upath`` instance. Because ``Upath`` is an abstract class,
+        this is always called on a subclass to instantiate a path on the specific
+        storage system.
 
-    @classmethod
-    def _thread_pool_executors(cls):
-        if not cls._thread_pools:
+        Subclasses for cloud blob stores may need to add additional parameters
+        representing, e.g., container/bucket name, etc.
+
+        Parameters
+        ----------
+        *pathsegments
+            Analogous to the input to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
+            The first segment may or may not start with ``'/'``.
+            The path constructed with ``*pathsegments`` is always "absolute" under a known "root".
+
+            For a local POSIX file system, the root is the usual ``'/'``.
+
+            For a local Windows file system, the root is resolved to a particular "drive".
+
+            For Azure blob store, the root is that in a "container".
+
+            For AWS and GCP blob stores, the root is that in a "bucket".
+
+            If missing, the path constructed is the "root". However,
+            the subclass :class:`LocalUpath` plugs in the current working directory
+            for a missing ``*pathsegments``.
+
+            .. note:: If one segment starts with ``'/'``, it will reset to the "root"
+                and discard all the segments that have come before it. For example,
+                ``Upath('work', 'projects', '/', 'projects')``
+                is the same as ``Upath('/', 'projects)``.
+
+            .. note:: The first element of ``*pathsegments`` may start with some platform-specific
+                strings. For example, ``'/'`` on Linux, ``'c://'`` on Windows, ``'gs://'`` on
+                Google Cloud Storage. Please see subclasses for specifics.
+
+            .. notes:: Some methods use threads. If one upath object is "derived" from another, e.g.::
+
+                    a = LocalUpath(...)
+                    b = a / 'data.txt'
+
+                then the objects share the same thread pools. Upath objects that are independently
+                created "from scratch" don't share thread pools. If you have a large number of Upath
+                objects, you should let them share thread pools as much as you can.
+        """
+
+        self._path = os.path.normpath(
+            os.path.join("/", *pathsegments)
+        )  # pylint: disable=no-value-for-parameter
+        # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
+        # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
+        # It does not have a trailing `/` unless the path is just `/` itself.
+        self._thread_pools = []
+        # Use a list to share its content with other objects.
+        # The list contains at most one element.
+
+    def __getstate__(self):
+        return (self._path,)
+
+    def __setstate__(self, data):
+        self._path = data[0]
+        self._thread_pools = []
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}('{self._path}')"
+        # Subclass may want to customize this method to add more info,
+        # e.g. "bucket" name.
+
+    def __str__(self) -> str:
+        return self._path
+
+    def __eq__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self.as_uri() == other.as_uri()
+
+    def __lt__(self, other) -> bool:
+        if other.__class__ is not self.__class__:
+            return NotImplemented
+        return self.as_uri() < other.as_uri()
+
+    def __hash__(self) -> int:
+        return hash(self.as_uri())
+
+    def __truediv__(self: T, key: str) -> T:
+        """
+        This method is invoked by ``self / key``.
+        This calls the method :meth:`joinpath`.
+        """
+        return self.joinpath(key)
+
+    def _thread_pool_executors(self):
+        if not self._thread_pools:
             n = min(32, (os.cpu_count() or 1) + 4)
-            cls._thread_pools = (
-                ThreadPoolExecutor(
-                    n,
-                    thread_name_prefix="UpathExecutor0",
-                ),
-                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
+            self._thread_pools.append(
+                (
+                    ThreadPoolExecutor(
+                        n,
+                        thread_name_prefix="UpathExecutor0",
+                    ),
+                    ThreadPoolExecutor(
+                        min(n - 2, 10), thread_name_prefix="UpathExecutor1"
+                    ),
+                )
             )
-        return cls._thread_pools
+        return self._thread_pools[0]
         # Currently there can be two "layers" of threads running during `download_dir`.
         # In `download_dir`, the download of each file runs in the threads provided
         # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
@@ -102,9 +198,8 @@ class Upath(abc.ABC, EnforceOverrides):
         # We dedicate the two executors mainly so that the second layer of chunk downloads
         # do not starve for threads.
 
-    @classmethod
     def _run_in_executor(
-        cls,
+        self,
         tasks: Iterable[tuple[Callable, tuple, dict, str]],
         quiet: bool = False,
     ):
@@ -128,10 +223,10 @@ class Upath(abc.ABC, EnforceOverrides):
             # This is the case when GCP downloads a large file by multiple parts.
             # This is working on one large file, and it is trying to start threads
             # to tackle parts of it.
-            executor = cls._thread_pool_executors()[1]
+            executor = self._thread_pool_executors()[1]
             # No progress printout.
         else:
-            executor = cls._thread_pool_executors()[0]
+            executor = self._thread_pool_executors()[0]
             if not quiet:
                 pbar = tqdm(
                     total=n_tasks,
@@ -182,88 +277,6 @@ class Upath(abc.ABC, EnforceOverrides):
         finally:
             if pbar:
                 pbar.close()
-
-    def __init__(
-        self,
-        *pathsegments: str,
-    ):
-        """
-        Create a ``Upath`` instance. Because ``Upath`` is an abstract class,
-        this is always called on a subclass to instantiate a path on the specific
-        storage system.
-
-        Subclasses for cloud blob stores may need to add additional parameters
-        representing, e.g., container/bucket name, etc.
-
-        Parameters
-        ----------
-        *pathsegments
-            Analogous to the input to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
-            The first segment may or may not start with ``'/'``.
-            The path constructed with ``*pathsegments`` is always "absolute" under a known "root".
-
-            For a local POSIX file system, the root is the usual ``'/'``.
-
-            For a local Windows file system, the root is resolved to a particular "drive".
-
-            For Azure blob store, the root is that in a "container".
-
-            For AWS and GCP blob stores, the root is that in a "bucket".
-
-            If missing, the path constructed is the "root". However,
-            the subclass :class:`LocalUpath` plugs in the current working directory
-            for a missing ``*pathsegments``.
-
-            .. note:: If one segment starts with ``'/'``, it will reset to the "root"
-                and discard all the segments that have come before it. For example,
-                ``Upath('work', 'projects', '/', 'projects')``
-                is the same as ``Upath('/', 'projects)``.
-
-            .. note:: The first element of ``*pathsegments`` may start with some platform-specific
-                strings. For example, ``'/'`` on Linux, ``'c://'`` on Windows, ``'gs://'`` on
-                Google Cloud Storage. Please see subclasses for specifics.
-        """
-
-        self._path = os.path.normpath(
-            os.path.join("/", *pathsegments)
-        )  # pylint: disable=no-value-for-parameter
-        # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
-        # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
-        # It does not have a trailing `/` unless the path is just `/` itself.
-
-    def __getstate__(self):
-        return (self._path,)
-
-    def __setstate__(self, data):
-        self._path = data[0]
-
-    def __repr__(self) -> str:
-        return f"{self.__class__.__name__}('{self._path}')"
-        # Subclass may want to customize this method to add more info,
-        # e.g. "bucket" name.
-
-    def __str__(self) -> str:
-        return self._path
-
-    def __eq__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self.as_uri() == other.as_uri()
-
-    def __lt__(self, other) -> bool:
-        if other.__class__ is not self.__class__:
-            return NotImplemented
-        return self.as_uri() < other.as_uri()
-
-    def __hash__(self) -> int:
-        return hash(self.as_uri())
-
-    def __truediv__(self: T, key: str) -> T:
-        """
-        This method is invoked by ``self / key``.
-        This calls the method :meth:`joinpath`.
-        """
-        return self.joinpath(key)
 
     @property
     def path(self) -> pathlib.PurePath:
@@ -475,6 +488,7 @@ class Upath(abc.ABC, EnforceOverrides):
         # TODO: the implementation is a little hacky.
         r = self.root
         r._path = os.path.normpath(os.path.join("/", *paths))
+        r._thread_pools = self._thread_pools  # let objects share the thread pools
         return r
 
     def joinpath(self: T, *other: str) -> T:
@@ -727,9 +741,8 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    @classmethod
     def _copy_dir(
-        cls, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False
+        self, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False
     ):
         def foo():
             source_path = source.path
@@ -752,7 +765,7 @@ class Upath(abc.ABC, EnforceOverrides):
                     )
 
         n = 0
-        for _ in cls._run_in_executor(foo(), quiet):
+        for _ in self._run_in_executor(foo(), quiet):
             n += 1
         return n
 

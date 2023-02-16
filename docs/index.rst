@@ -109,7 +109,7 @@ We know the JSON file is also a text file, so we can treat it as such:
 >>> pp.read_text()
 '{"name": "John", "age": 38}'
 
-But usually we're prefer to get back the Python object directly:
+But usually we prefer to get back the Python object directly:
 
 >>> v = pp.read_json()
 >>> v

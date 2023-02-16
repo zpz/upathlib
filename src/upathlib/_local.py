@@ -156,6 +156,15 @@ class LocalUpath(Upath, os.PathLike):
         """
         return self.path.__fspath__()
 
+    def __getstate__(self):
+        return None, super().__getstate__()
+
+    def __setstate__(self, data):
+        _, z1 = data
+        self._lock_count = 0
+        self._lock = None
+        super().__setstate__(z1)
+
     @property
     @overrides
     def path(self) -> pathlib.Path:
