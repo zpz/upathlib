@@ -81,7 +81,6 @@ class FileInfo:
 
 @functools.total_ordering
 class Upath(abc.ABC, EnforceOverrides):
-
     def __init__(
         self,
         *pathsegments: str,
@@ -180,13 +179,17 @@ class Upath(abc.ABC, EnforceOverrides):
     def _thread_pool_executors(self):
         if not self._thread_pools:
             n = min(32, (os.cpu_count() or 1) + 4)
-            self._thread_pools.append((
-                ThreadPoolExecutor(
-                    n,
-                    thread_name_prefix="UpathExecutor0",
-                ),
-                ThreadPoolExecutor(min(n - 2, 10), thread_name_prefix="UpathExecutor1"),
-            ))
+            self._thread_pools.append(
+                (
+                    ThreadPoolExecutor(
+                        n,
+                        thread_name_prefix="UpathExecutor0",
+                    ),
+                    ThreadPoolExecutor(
+                        min(n - 2, 10), thread_name_prefix="UpathExecutor1"
+                    ),
+                )
+            )
         return self._thread_pools[0]
         # Currently there can be two "layers" of threads running during `download_dir`.
         # In `download_dir`, the download of each file runs in the threads provided
