@@ -1,3 +1,4 @@
+from concurrent.futures import ProcessPoolExecutor
 import multiprocessing as mp
 import os
 import pathlib
@@ -7,7 +8,7 @@ from uuid import uuid4
 import upathlib._tests
 
 import pytest
-from upathlib import LocalUpath
+from upathlib import LocalUpath, _upath
 
 
 @pytest.fixture
@@ -69,26 +70,29 @@ def test_pathlike(test_path):
 
 
 def mp_rmrf(p):
+    # Thread pool is not copied even in 'forked' process:
+    assert len(_upath._global_thread_pools_) == 0
     p.rmrf()
+    assert len(_upath._global_thread_pools_) == 1
     (p / 'c.txt').write_text('c')
     sleep(1.1)
 
 
 def test_mp(test_path):
     p = test_path
-    p.rmrf()  # this creates a thread pool
+    p.rmrf()
     print('')
     for c in ('fork', 'spawn'):
         (p / 'a.txt').write_text('a')
         (p / 'b.txt').write_text('b')
         print('context:', c)
-        ctx = mp.get_context(c)
-        worker = ctx.Process(target=mp_rmrf, args=(p,))
-        worker.start()
-        print('worker started')
+        with ProcessPoolExecutor(mp_context=mp.get_context(c)) as pool:
+            t = pool.submit(mp_rmrf, p=p)
+            t.result()
+
+        assert len(p.ls()) == 1
+        assert (p / 'c.txt').read_text() == 'c'
         p.rmrf()
-        worker.join()
-        print('worker finished')
-        assert p.is_dir()
+        assert len(_upath._global_thread_pools_) == 1
 
 

@@ -62,7 +62,7 @@ This is indicated by ``self: T`` and return type ``-> T:``.
 """
 
 
-_global_thread_pools_: dict[str, ThreadPoolExecutor] = weakref.WeakKeyDictionary()
+_global_thread_pools_: dict[str, ThreadPoolExecutor] = weakref.WeakValueDictionary()
 # References:
 #  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
 #  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
@@ -219,7 +219,8 @@ class Upath(abc.ABC, EnforceOverrides):
     def _get_thread_pool(self, name):
         pool = self._thread_pools.get(name)
         if pool is None:
-            self._thread_pools[name] = _get_global_thread_pool(name)
+            pool = _get_global_thread_pool(name)
+            self._thread_pools[name] = pool
         return pool
 
     def _run_in_executor(
