@@ -7,6 +7,7 @@ from __future__ import annotations
 import os
 import random
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from io import UnsupportedOperation
@@ -23,6 +24,7 @@ from azure.core.exceptions import (
 )
 from azure.storage.blob import BlobClient, BlobLeaseClient, ContainerClient
 from overrides import overrides
+from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, Upath
@@ -190,7 +192,7 @@ class AzureBlobUpath(BlobUpath):
                 self._blob_client.upload_blob(data)
 
     @overrides
-    def iterdir(self):
+    def iterdir(self) -> Iterator[Self]:
         with self._provide_container_client():
             prefix = self.blob_name + "/"
             k = len(prefix)
@@ -335,7 +337,7 @@ class AzureBlobUpath(BlobUpath):
                 raise FileNotFoundError(self)
 
     @overrides
-    def riterdir(self):
+    def riterdir(self) -> Iterator[Self]:
         with self._provide_container_client():
             prefix = self.blob_name + "/"
             k = len(prefix)

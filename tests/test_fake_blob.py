@@ -1,6 +1,9 @@
+from __future__ import annotations
 import contextlib
+from collections.abc import Iterator
 from datetime import datetime
 from uuid import uuid4
+from typing_extensions import Self
 
 import upathlib._tests
 from upathlib import BlobUpath, FileInfo
@@ -128,7 +131,7 @@ class FakeBlobUpath(BlobUpath):
             raise FileNotFoundError(self) from e
 
     @overrides
-    def riterdir(self):
+    def riterdir(self) -> Iterator[Self]:
         p = self._path
         if not p.endswith('/'):
             p += '/'
@@ -144,7 +147,7 @@ class FakeBlobUpath(BlobUpath):
 
     @property
     @overrides
-    def root(self):
+    def root(self) -> Self:
         return self.__class__('/', bucket=self._bucket)
 
     @overrides

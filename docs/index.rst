@@ -173,8 +173,6 @@ Upath
     :no-undoc-members:
     :no-special-members:
 
-.. autodata:: upathlib._upath.T
-
 .. autoclass:: upathlib.Upath
 
 .. autoclass:: upathlib.FileInfo

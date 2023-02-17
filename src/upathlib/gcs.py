@@ -23,6 +23,7 @@ from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
 from overrides import overrides
+from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
@@ -486,7 +487,7 @@ class GcsBlobUpath(BlobUpath):
         self._blob_rate_limit(_upload)
 
     @overrides
-    def iterdir(self) -> Iterator[GcsBlobUpath]:
+    def iterdir(self) -> Iterator[Self]:
         """
         Yield immediate children under the current dir.
         """
@@ -565,7 +566,7 @@ class GcsBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
 
     @overrides
-    def riterdir(self) -> Iterator[GcsBlobUpath]:
+    def riterdir(self) -> Iterator[Self]:
         """
         Yield all blobs recursively under the current dir.
         """
