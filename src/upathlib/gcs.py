@@ -12,7 +12,6 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
-from typing_extensions import Self
 
 import google.auth
 import requests
@@ -24,6 +23,7 @@ from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
 from overrides import overrides
+from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath

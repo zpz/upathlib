@@ -34,12 +34,11 @@ from typing import (
     Iterable,
     Iterator,
     Optional,
-    TypeVar,
 )
-from typing_extensions import Self
 
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
+from typing_extensions import Self
 
 from .serializer import (
     JsonSerializer,

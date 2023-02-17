@@ -3,9 +3,9 @@ from __future__ import annotations
 import pathlib
 import sys
 from collections.abc import Iterator
-from typing_extensions import Self
 
 from overrides import EnforceOverrides, overrides
+from typing_extensions import Self
 
 from ._local import LocalPathType, LocalUpath
 from ._upath import Upath
