@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
+from typing_extensions import Self
 
 import google.auth
 import requests
@@ -486,7 +487,7 @@ class GcsBlobUpath(BlobUpath):
         self._blob_rate_limit(_upload)
 
     @overrides
-    def iterdir(self) -> Iterator[GcsBlobUpath]:
+    def iterdir(self) -> Iterator[Self]:
         """
         Yield immediate children under the current dir.
         """
@@ -565,7 +566,7 @@ class GcsBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
 
     @overrides
-    def riterdir(self) -> Iterator[GcsBlobUpath]:
+    def riterdir(self) -> Iterator[Self]:
         """
         Yield all blobs recursively under the current dir.
         """

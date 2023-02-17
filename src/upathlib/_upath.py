@@ -36,6 +36,7 @@ from typing import (
     Optional,
     TypeVar,
 )
+from typing_extensions import Self
 
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
@@ -54,7 +55,7 @@ from .serializer import (
 #  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
 # to suppress the "urllib3 connection lost" warning.
 
-T = TypeVar("T", bound="Upath")
+# T = TypeVar("T", bound="Upath")
 """
 The type variable ``T`` represents the class :class:`Upath` or a subclass of it.
 Many methods return a new path of the same type.
@@ -68,7 +69,7 @@ _global_thread_pools_: dict[str, ThreadPoolExecutor] = weakref.WeakValueDictiona
 #  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
 
 
-def _get_global_thread_pool(name):
+def _get_global_thread_pool(name: str) -> ThreadPoolExecutor:
     # Currently there can be two "layers" of threads running during `download_dir`.
     # In `download_dir`, the download of each file runs in the threads provided
     # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
@@ -209,14 +210,14 @@ class Upath(abc.ABC, EnforceOverrides):
     def __hash__(self) -> int:
         return hash(self.as_uri())
 
-    def __truediv__(self: T, key: str) -> T:
+    def __truediv__(self, key: str) -> Self:
         """
         This method is invoked by ``self / key``.
         This calls the method :meth:`joinpath`.
         """
         return self.joinpath(key)
 
-    def _get_thread_pool(self, name):
+    def _get_thread_pool(self, name: str) -> ThreadPoolExecutor:
         pool = self._thread_pools.get(name)
         if pool is None:
             pool = _get_global_thread_pool(name)
@@ -484,7 +485,7 @@ class Upath(abc.ABC, EnforceOverrides):
         raise NotImplementedError
 
     @property
-    def parent(self: T) -> T:
+    def parent(self) -> Self:
         """
         The parent of the path.
 
@@ -494,13 +495,13 @@ class Upath(abc.ABC, EnforceOverrides):
 
     @property
     @abc.abstractmethod
-    def root(self: T) -> T:
+    def root(self) -> Self:
         """
         Return a new path representing the root.
         """
         raise NotImplementedError
 
-    def _with_path(self: T, *paths) -> T:
+    def _with_path(self, *paths) -> Self:
         """
         Return a new object of the same class at the specified ``*paths``.
         The new path is unrelated to the current path; in other words,
@@ -515,7 +516,7 @@ class Upath(abc.ABC, EnforceOverrides):
         r._path = os.path.normpath(os.path.join("/", *paths))
         return r
 
-    def joinpath(self: T, *other: str) -> T:
+    def joinpath(self, *other: str) -> Self:
         """Join this path with more segments, return the new path object.
 
         Calling this method is equivalent to combining the path with each
@@ -529,7 +530,7 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return self._with_path(os.path.join(self._path, *other))
 
-    def with_name(self: T, name: str) -> T:
+    def with_name(self, name: str) -> Self:
         """
         Return a new path the the "name" part substituted by the new value.
         If the original path doesn't have a name (i.e. the original path is the root),
@@ -543,11 +544,11 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return self._with_path(str(self.path.with_name(name)))
 
-    # def with_stem(self: T, stem: str) -> T:
+    # def with_stem(self, stem: str) -> Self:
     #     # Available in Python 3.9+.
     #     return self._with_path(str(self.path.with_stem(stem)))
 
-    def with_suffix(self: T, suffix: str) -> T:
+    def with_suffix(self, suffix: str) -> Self:
         """
         Return a new path with the suffix replaced by the specified value.
         If the original path doesn't have a suffix, the new suffix is appended instead.
@@ -923,7 +924,7 @@ class Upath(abc.ABC, EnforceOverrides):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def iterdir(self: T) -> Iterator[T]:
+    def iterdir(self) -> Iterator[Self]:
         """Yield the immediate (i.e. non-recursive) children
         of the current dir (i.e. ``self``).
 
@@ -939,7 +940,7 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         raise NotImplementedError
 
-    def ls(self: T) -> list[T]:
+    def ls(self) -> list[Self]:
         """Return the elements yielded by :meth:`iterdir` in a sorted list.
 
         Sorting is by a full path string maintained internally.
@@ -949,7 +950,7 @@ class Upath(abc.ABC, EnforceOverrides):
         return sorted(self.iterdir())
 
     @abc.abstractmethod
-    def riterdir(self: T) -> Iterator[T]:
+    def riterdir(self) -> Iterator[Self]:
         """Yield files under the current dir (i.e. ``self``) *recursively*.
         The method name means "recursive iterdir".
 

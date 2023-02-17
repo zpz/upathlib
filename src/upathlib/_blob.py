@@ -3,11 +3,12 @@ from __future__ import annotations
 import pathlib
 import sys
 from collections.abc import Iterator
+from typing_extensions import Self
 
 from overrides import EnforceOverrides, overrides
 
 from ._local import LocalPathType, LocalUpath
-from ._upath import T, Upath
+from ._upath import Upath
 
 
 def _resolve_local_path(p: LocalPathType):
@@ -67,7 +68,7 @@ class BlobUpath(Upath, EnforceOverrides):
             return False
 
     @overrides
-    def iterdir(self: T) -> Iterator[T]:
+    def iterdir(self) -> Iterator[Self]:
         """
         Yield immediate children under the current dir.
 
