@@ -78,13 +78,15 @@ def _get_global_thread_pool(name):
     pool = _global_thread_pools_.get(name)
     if pool is None:
         n = min(32, (os.cpu_count() or 1) + 4)
-        if name == 'first':
+        if name == "first":
             pool = ThreadPoolExecutor(
-                n, thread_name_prefix='UpathExecutor0',
+                n,
+                thread_name_prefix="UpathExecutor0",
             )
-        elif name == 'second':
+        elif name == "second":
             pool = ThreadPoolExecutor(
-                min(n - 2, 10), thread_name_prefix='UpathExecutor1',
+                min(n - 2, 10),
+                thread_name_prefix="UpathExecutor1",
             )
         else:
             raise ValueError(name)
@@ -245,10 +247,10 @@ class Upath(abc.ABC, EnforceOverrides):
             # This is the case when GCP downloads a large file by multiple parts.
             # This is working on one large file, and it is trying to start threads
             # to tackle parts of it.
-            executor = self._get_thread_pool('second')
+            executor = self._get_thread_pool("second")
             # No progress printout.
         else:
-            executor = self._get_thread_pool('first')
+            executor = self._get_thread_pool("first")
             if not quiet:
                 pbar = tqdm(
                     total=n_tasks,
