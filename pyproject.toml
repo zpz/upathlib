@@ -15,6 +15,7 @@ dependencies = [
     "overrides",
     "tqdm",
     "zstandard >=0.18.0",
+    "typing-extensions",
 ]
 requires-python = ">=3.8"
 readme = "README.rst"
@@ -53,8 +54,6 @@ test = [
     "numpy",
     "pytest-mock",
     "ruff",
-    "pytest-parallel",
-    "py",
 ]
 
 
@@ -75,7 +74,7 @@ ignore = ["E501"]  # line length
 
 [tool.pytest.ini_options]
 minversion = "6.0"
-addopts = "-sv --log-cli-level info -p no:cacheprovider --tb short --workers auto"
+addopts = "-sv --log-cli-level info -p no:cacheprovider --tb short"
 
 
 [tool.coverage.report]

@@ -24,6 +24,7 @@ import pathlib
 import queue
 import sys
 import threading
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import UnsupportedOperation
@@ -59,6 +60,53 @@ The type variable ``T`` represents the class :class:`Upath` or a subclass of it.
 Many methods return a new path of the same type.
 This is indicated by ``self: T`` and return type ``-> T:``.
 """
+
+
+_global_thread_pools_: dict[str, ThreadPoolExecutor] = weakref.WeakKeyDictionary()
+# References:
+#  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
+#  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
+
+
+def _get_global_thread_pool(name):
+    # Currently there can be two "layers" of threads running during `download_dir`.
+    # In `download_dir`, the download of each file runs in the threads provided
+    # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
+    # and download each chunk in a thread provided by `UpathExecutor1`.
+    # We dedicate the two executors mainly so that the second layer of chunk downloads
+    # do not starve for threads.
+    pool = _global_thread_pools_.get(name)
+    if pool is None:
+        n = min(32, (os.cpu_count() or 1) + 4)
+        if name == 'first':
+            pool = ThreadPoolExecutor(
+                n, thread_name_prefix='UpathExecutor0',
+            )
+        elif name == 'second':
+            pool = ThreadPoolExecutor(
+                min(n - 2, 10), thread_name_prefix='UpathExecutor1',
+            )
+        else:
+            raise ValueError(name)
+        _global_thread_pools_[name] = pool
+    return pool
+
+
+try:
+    register_at_fork = os.register_at_fork  # not available on Windows
+
+    def _clear_global_thread_pools():
+        for key in list(_global_thread_pools_.keys()):
+            pool = _global_thread_pools_.get(key)
+            if pool is not None:
+                # TODO: if `pool` has locks, things may go wrong.
+                pool.shutdown(wait=False)
+                _global_thread_pools_.pop(key, None)
+
+    register_at_fork(after_in_child=_clear_global_thread_pools)
+
+except AttributeError:  # on Windows
+    pass
 
 
 class LockAcquireError(TimeoutError):
@@ -120,15 +168,6 @@ class Upath(abc.ABC, EnforceOverrides):
             .. note:: The first element of ``*pathsegments`` may start with some platform-specific
                 strings. For example, ``'/'`` on Linux, ``'c://'`` on Windows, ``'gs://'`` on
                 Google Cloud Storage. Please see subclasses for specifics.
-
-            .. notes:: Some methods use threads. If one upath object is "derived" from another, e.g.::
-
-                    a = LocalUpath(...)
-                    b = a / 'data.txt'
-
-                then the objects share the same thread pools. Upath objects that are independently
-                created "from scratch" don't share thread pools. If you have a large number of Upath
-                objects, you should let them share thread pools as much as you can.
         """
 
         self._path = os.path.normpath(
@@ -137,16 +176,15 @@ class Upath(abc.ABC, EnforceOverrides):
         # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
         # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
-        self._thread_pools = []
-        # Use a list to share its content with other objects.
-        # The list contains at most one element.
+        self._thread_pools = {}
 
     def __getstate__(self):
+        # Do not pickle `self._thread_pools`.
         return (self._path,)
 
     def __setstate__(self, data):
         self._path = data[0]
-        self._thread_pools = []
+        self._thread_pools = {}
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self._path}')"
@@ -176,27 +214,11 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return self.joinpath(key)
 
-    def _thread_pool_executors(self):
-        if not self._thread_pools:
-            n = min(32, (os.cpu_count() or 1) + 4)
-            self._thread_pools.append(
-                (
-                    ThreadPoolExecutor(
-                        n,
-                        thread_name_prefix="UpathExecutor0",
-                    ),
-                    ThreadPoolExecutor(
-                        min(n - 2, 10), thread_name_prefix="UpathExecutor1"
-                    ),
-                )
-            )
-        return self._thread_pools[0]
-        # Currently there can be two "layers" of threads running during `download_dir`.
-        # In `download_dir`, the download of each file runs in the threads provided
-        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
-        # and download each chunk in a thread provided by `UpathExecutor1`.
-        # We dedicate the two executors mainly so that the second layer of chunk downloads
-        # do not starve for threads.
+    def _get_thread_pool(self, name):
+        pool = self._thread_pools.get(name)
+        if pool is None:
+            self._thread_pools[name] = _get_global_thread_pool(name)
+        return pool
 
     def _run_in_executor(
         self,
@@ -223,10 +245,10 @@ class Upath(abc.ABC, EnforceOverrides):
             # This is the case when GCP downloads a large file by multiple parts.
             # This is working on one large file, and it is trying to start threads
             # to tackle parts of it.
-            executor = self._thread_pool_executors()[1]
+            executor = self._get_thread_pool('second')
             # No progress printout.
         else:
-            executor = self._thread_pool_executors()[0]
+            executor = self._get_thread_pool('first')
             if not quiet:
                 pbar = tqdm(
                     total=n_tasks,
@@ -488,7 +510,6 @@ class Upath(abc.ABC, EnforceOverrides):
         # TODO: the implementation is a little hacky.
         r = self.root
         r._path = os.path.normpath(os.path.join("/", *paths))
-        r._thread_pools = self._thread_pools  # let objects share the thread pools
         return r
 
     def joinpath(self: T, *other: str) -> T:
