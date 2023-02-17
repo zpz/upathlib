@@ -11,7 +11,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
 from io import UnsupportedOperation
-from typing_extensions import Self
 
 # from azure.storage.blob.aio import (
 # ContainerClient as aContainerClient,
@@ -25,6 +24,7 @@ from azure.core.exceptions import (
 )
 from azure.storage.blob import BlobClient, BlobLeaseClient, ContainerClient
 from overrides import overrides
+from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, Upath
