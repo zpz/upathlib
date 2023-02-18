@@ -98,6 +98,7 @@ try:
 except AttributeError:  # on Windows
     pass
 else:
+
     def _clear_global_thread_pools():
         for key in list(_global_thread_pools_.keys()):
             pool = _global_thread_pools_.get(key)
