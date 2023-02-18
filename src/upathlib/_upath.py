@@ -95,19 +95,18 @@ def _get_global_thread_pool(name: str) -> ThreadPoolExecutor:
 
 try:
     register_at_fork = os.register_at_fork  # not available on Windows
-
+except AttributeError:  # on Windows
+    pass
+else:
     def _clear_global_thread_pools():
         for key in list(_global_thread_pools_.keys()):
             pool = _global_thread_pools_.get(key)
             if pool is not None:
                 # TODO: if `pool` has locks, things may go wrong.
                 pool.shutdown(wait=False)
-                _global_thread_pools_.pop(key, None)
+            _global_thread_pools_.pop(key, None)
 
     register_at_fork(after_in_child=_clear_global_thread_pools)
-
-except AttributeError:  # on Windows
-    pass
 
 
 class LockAcquireError(TimeoutError):
