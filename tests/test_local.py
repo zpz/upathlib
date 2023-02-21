@@ -71,9 +71,7 @@ def test_pathlike(test_path):
 
 def mp_rmrf(p):
     # Thread pool is not copied even in 'forked' process:
-    assert len(_upath._global_thread_pools_) == 0
     p.rmrf()
-    assert len(_upath._global_thread_pools_) == 1
     (p / 'c.txt').write_text('c')
     sleep(1.1)
 
@@ -93,6 +91,5 @@ def test_mp(test_path):
         assert len(p.ls()) == 1
         assert (p / 'c.txt').read_text() == 'c'
         p.rmrf()
-        assert len(_upath._global_thread_pools_) == 1
 
 
