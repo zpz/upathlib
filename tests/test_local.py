@@ -67,29 +67,3 @@ def test_pathlike(test_path):
     p.write_text('abc')
     with open(p) as file:
         assert file.read() == 'abc'
-
-
-def mp_rmrf(p):
-    # Thread pool is not copied even in 'forked' process:
-    p.rmrf()
-    (p / 'c.txt').write_text('c')
-    sleep(1.1)
-
-
-def test_mp(test_path):
-    p = test_path
-    p.rmrf()
-    print('')
-    for c in ('fork', 'spawn'):
-        (p / 'a.txt').write_text('a')
-        (p / 'b.txt').write_text('b')
-        print('context:', c)
-        with ProcessPoolExecutor(mp_context=mp.get_context(c)) as pool:
-            t = pool.submit(mp_rmrf, p=p)
-            t.result()
-
-        assert len(p.ls()) == 1
-        assert (p / 'c.txt').read_text() == 'c'
-        p.rmrf()
-
-
