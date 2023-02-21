@@ -24,7 +24,6 @@ import pathlib
 import queue
 import sys
 import threading
-import weakref
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -35,7 +34,7 @@ from typing import (
     Optional,
 )
 
-from mpservice.util import get_shared_thread_pool, MAX_THREADS
+from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
 from typing_extensions import Self
@@ -167,10 +166,10 @@ class Upath(abc.ABC, EnforceOverrides):
         # and download each chunk in a thread provided by `UpathExecutor1`.
         # We dedicate the two executors mainly so that the second layer of chunk downloads
         # do not starve for threads.
-        if name == 'first':
-            return get_shared_thread_pool('upathlib-first', MAX_THREADS)
-        elif name == 'second':
-            return get_shared_thread_pool('upathlib-second', MAX_THREADS - 2)
+        if name == "first":
+            return get_shared_thread_pool("upathlib-first", MAX_THREADS)
+        elif name == "second":
+            return get_shared_thread_pool("upathlib-second", MAX_THREADS - 2)
         else:
             raise ValueError(name)
 
