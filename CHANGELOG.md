@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fine-tune `GcsBlobUpath.lock`.
 - Run doctest in `test_docs.py`.
 - Fix dependency `filelock` version and hack it to use `time.perf_counter` instead of `time.monotonic`.
-- Tuned use of global thread pool to make it safe with forked processes.
+- Use `mpservice` for global thread pools to make them safe with forked processes.
 
 
 ## [0.7.0] - 2023-01-20

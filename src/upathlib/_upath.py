@@ -24,7 +24,6 @@ import pathlib
 import queue
 import sys
 import threading
-import weakref
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -35,6 +34,7 @@ from typing import (
     Optional,
 )
 
+from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from overrides import EnforceOverrides
 from tqdm.auto import tqdm
 from typing_extensions import Self
@@ -52,62 +52,6 @@ from .serializer import (
 # End user may want to do this:
 #  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
 # to suppress the "urllib3 connection lost" warning.
-
-# T = TypeVar("T", bound="Upath")
-"""
-The type variable ``T`` represents the class :class:`Upath` or a subclass of it.
-Many methods return a new path of the same type.
-This is indicated by ``self: T`` and return type ``-> T:``.
-"""
-
-
-_global_thread_pools_: dict[str, ThreadPoolExecutor] = weakref.WeakValueDictionary()
-# References:
-#  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
-#  https://thorstenball.com/blog/2014/10/13/why-threads-cant-fork/
-
-
-def _get_global_thread_pool(name: str) -> ThreadPoolExecutor:
-    # Currently there can be two "layers" of threads running during `download_dir`.
-    # In `download_dir`, the download of each file runs in the threads provided
-    # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
-    # and download each chunk in a thread provided by `UpathExecutor1`.
-    # We dedicate the two executors mainly so that the second layer of chunk downloads
-    # do not starve for threads.
-    pool = _global_thread_pools_.get(name)
-    if pool is None:
-        n = min(32, (os.cpu_count() or 1) + 4)
-        if name == "first":
-            pool = ThreadPoolExecutor(
-                n,
-                thread_name_prefix="UpathExecutor0",
-            )
-        elif name == "second":
-            pool = ThreadPoolExecutor(
-                min(n - 2, 10),
-                thread_name_prefix="UpathExecutor1",
-            )
-        else:
-            raise ValueError(name)
-        _global_thread_pools_[name] = pool
-    return pool
-
-
-try:
-    register_at_fork = os.register_at_fork  # not available on Windows
-except AttributeError:  # on Windows
-    pass
-else:
-
-    def _clear_global_thread_pools():
-        for key in list(_global_thread_pools_.keys()):
-            pool = _global_thread_pools_.get(key)
-            if pool is not None:
-                # TODO: if `pool` has locks, things may go wrong.
-                pool.shutdown(wait=False)
-            _global_thread_pools_.pop(key, None)
-
-    register_at_fork(after_in_child=_clear_global_thread_pools)
 
 
 class LockAcquireError(TimeoutError):
@@ -216,11 +160,18 @@ class Upath(abc.ABC, EnforceOverrides):
         return self.joinpath(key)
 
     def _get_thread_pool(self, name: str) -> ThreadPoolExecutor:
-        pool = self._thread_pools.get(name)
-        if pool is None:
-            pool = _get_global_thread_pool(name)
-            self._thread_pools[name] = pool
-        return pool
+        # Currently there can be two "layers" of threads running during `download_dir`.
+        # In `download_dir`, the download of each file runs in the threads provided
+        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
+        # and download each chunk in a thread provided by `UpathExecutor1`.
+        # We dedicate the two executors mainly so that the second layer of chunk downloads
+        # do not starve for threads.
+        if name == "first":
+            return get_shared_thread_pool("upathlib-first", MAX_THREADS)
+        elif name == "second":
+            return get_shared_thread_pool("upathlib-second", MAX_THREADS - 2)
+        else:
+            raise ValueError(name)
 
     def _run_in_executor(
         self,
