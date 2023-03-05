@@ -381,11 +381,7 @@ class GcsBlobUpath(BlobUpath):
                 if k >= file_size:
                     break
 
-        if self._quiet_multidownload:
-            desc = False
-        else:
-            desc = f"Downloading {self!r}"
-        for buf, k in self._run_in_executor(_do_download(), desc):
+        for buf, k in self._run_in_executor(_do_download(), self._quiet_multidownload):
             n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(
