@@ -46,10 +46,9 @@ gcs = [
 doc = [
     "sphinx < 6.0.0",  # 6.0.0 has a bug complaining "'logo' is undefined
     "numpydoc",
-    "pydata-sphinx-theme",
+    "pydata-sphinx-theme < 0.13.0",  # 0.13.0 seems to have a bug, maybe related to the sphinx bug?
 ]
 test = [
-    "bandit",
     "black",
     "mypy",
     "numpy",

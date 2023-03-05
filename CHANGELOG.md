@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.7.2] - in progress
+
+### Bug fixes
+
+- Suppress progress printouts in `rmrf`.
+
+
 ## [0.7.1] - 2022-02-25
 
 - Fine-tune `GcsBlobUpath.lock`.

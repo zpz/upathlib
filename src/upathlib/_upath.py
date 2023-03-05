@@ -176,7 +176,7 @@ class Upath(abc.ABC, EnforceOverrides):
     def _run_in_executor(
         self,
         tasks: Iterable[tuple[Callable, tuple, dict, str]],
-        quiet: bool = False,
+        quiet: bool,
     ):
         """
         This method is used to run multiple I/O jobs concurrently, e.g.
@@ -852,13 +852,8 @@ class Upath(abc.ABC, EnforceOverrides):
             for p in self.riterdir():
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
-        if quiet:
-            desc = False
-        else:
-            desc = f"Removing {self!r}"
-
         n = 0
-        for _ in self._run_in_executor(foo(), desc):
+        for _ in self._run_in_executor(foo(), quiet):
             n += 1
         return n
 
