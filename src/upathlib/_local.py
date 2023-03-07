@@ -427,5 +427,4 @@ class LocalUpath(Upath, os.PathLike):
                 self._lock = None
 
 
-
 LocalPathType = Union[str, pathlib.Path, LocalUpath]
