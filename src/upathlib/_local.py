@@ -23,7 +23,7 @@ import filelock
 from deprecation import deprecated
 from overrides import overrides
 
-from ._upath import FileInfo, LockAcquireError, Upath
+from ._upath import FileInfo, LockAcquireError, Upath, LockReleaseError
 
 # End user may want to do this:
 # logging.getLogger("filelock").setLevel(logging.WARNING)
@@ -422,9 +422,14 @@ class LocalUpath(Upath, os.PathLike):
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
-                self.remove_file()  # This must be done before releasing the lock, or lock can "leak".
-                self._lock.release(force=True)
-                self._lock = None
-
+                try:
+                    try:
+                        self.remove_file()  # This must be done before releasing the lock, or lock can "leak".
+                    except FileNotFoundError:
+                        pass
+                    self._lock.release(force=True)
+                    self._lock = None
+                except Exception as e:
+                    raise LockReleaseError(f"failed to release lock file {self}") from e
 
 LocalPathType = Union[str, pathlib.Path, LocalUpath]
