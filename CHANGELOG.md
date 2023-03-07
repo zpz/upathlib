@@ -5,14 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.7.2] - in progress
+## [0.7.2] - 2023-03-06
 
 ### Bug fixes
 
 - Suppress progress printouts in `rmrf`.
+- Bug fix and clarification on `lock`---upon exiting the context manager, the lock file must be deleted.
 
 
-## [0.7.1] - 2022-02-25
+## [0.7.1] - 2023-02-25
 
 - Fine-tune `GcsBlobUpath.lock`.
 - Run doctest in `test_docs.py`.

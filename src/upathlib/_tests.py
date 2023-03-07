@@ -2,6 +2,7 @@
 # in a path that is safe for testing.
 
 import concurrent.futures
+import multiprocessing
 import os
 import pathlib
 import random
@@ -226,7 +227,9 @@ def test_lock1(p: Upath, timeout=None, wait=8):
             t = pool.submit(_access_in_mp, p / "/", pp._path, wait)
             z = t.result()
             print("mp returned after", z, "seconds")
+            # The work is not able to acquire the lock:
             assert z <= -(wait / 2)
+    assert not pp.exists()
 
 
 def _inc_in_mp(counter, idx):
@@ -235,10 +238,11 @@ def _inc_in_mp(counter, idx):
     while time.perf_counter() - t0 < 10:
         with counter.with_suffix(".lock").lock():
             x = counter.read_text()
+            print('x:', x, 'worker', idx, flush=True)
             time.sleep(random.random() * 0.3)
             counter.write_text(str(int(x) + 1), overwrite=True)
             n += 1
-            print("worker", idx, n)
+            print("        worker", idx, n, flush=True)
         time.sleep(random.random() * 0.2)
     return idx, n
 
@@ -256,8 +260,10 @@ def test_lock2(p: Upath):
             print(v)
         total1 = sum(v[1] for v in results)
         total2 = int(counter.read_text())
+        print('')
         print(total1, total2)
         assert total1 == total2
+    assert not counter.with_suffix(".lock").exists()
 
 
 def test_lock(p: Upath):

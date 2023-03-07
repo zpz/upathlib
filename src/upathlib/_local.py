@@ -422,8 +422,10 @@ class LocalUpath(Upath, os.PathLike):
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
-                self._lock.release()
+                self.remove_file()  # This must be done before releasing the lock, or lock can "leak".
+                self._lock.release(force=True)
                 self._lock = None
+
 
 
 LocalPathType = Union[str, pathlib.Path, LocalUpath]

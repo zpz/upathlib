@@ -256,6 +256,7 @@ class AzureBlobUpath(BlobUpath):
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
+                    self.remove_file()
                     self._lease.release()
                     self._lease = None
                     self._lock_count = 0
