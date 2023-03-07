@@ -661,7 +661,7 @@ class GcsBlobUpath(BlobUpath):
                     self._blob_rate_limit(
                         self._blob().delete,
                         client=self._client(),
-                        if_generation_match=self._generation,
+                        if_generation_match=self._generation,  # TODO: should we remove this condition?
                     )
                 except Exception as e:
                     raise LockReleaseError(f"failed to delete lock file {self}") from e

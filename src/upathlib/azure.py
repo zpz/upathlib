@@ -27,7 +27,7 @@ from overrides import overrides
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
-from ._upath import FileInfo, LockAcquireError, Upath
+from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 # End user may want to do this:
 # logging.getLogger("azure.storage").setLevel(logging.WARNING)
@@ -256,9 +256,18 @@ class AzureBlobUpath(BlobUpath):
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
-                    self._lease.release()
-                    self._lease = None
-                    self._lock_count = 0
+                    try:
+                        try:
+                            self.remove_file()
+                        except FileNotFoundError:
+                            pass
+                        self._lease.release()
+                        self._lease = None
+                        self._lock_count = 0
+                    except Exception as e:
+                        raise LockReleaseError(
+                            f"failed to release lock file {self}"
+                        ) from e
 
     # @asynccontextmanager
     # async def a_lock(self, *, timeout=None):

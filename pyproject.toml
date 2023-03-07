@@ -11,7 +11,7 @@ authors = [
 dependencies = [
     "filelock >=3.3.0,<=3.9.0",
     "deprecation",
-    "orjson >=3.6.0",
+    "orjson",
     "overrides",
     "tqdm",
     "zstandard >=0.18.0",

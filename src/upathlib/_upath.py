@@ -944,7 +944,8 @@ class Upath(abc.ABC, EnforceOverrides):
     @contextlib.contextmanager
     @abc.abstractmethod
     def lock(self, *, timeout: int = None):
-        """Lock the current file (i.e. ``self``), in order to have exclusive access.
+        """Lock the current file (i.e. ``self``), in order to have exclusive access to the code block
+        that has possesion of the lock.
 
         ``timeout``: if the lock can't be acquired within ``timeout`` seconds,
         ``LockAcquireError`` is raised. If ``None``, wait for a default
@@ -957,8 +958,6 @@ class Upath(abc.ABC, EnforceOverrides):
         lock itself. Actual waiting time could be slightly longer or shorter.
 
         This is a "mandatory lock", as opposed to an "advisory lock".
-        However, this API does not specify that the locked file
-        can be accessed for its content or used in any particular way.
         The intended use case is for this lock to be used
         for implementing a (cooperative) "code lock".
 
@@ -977,7 +976,7 @@ class Upath(abc.ABC, EnforceOverrides):
 
             yield self
 
-        One way to achive cooperative locking on a file via this mandatory
+        One way to achive cooperative locking on a file via this
         lock is like this::
 
             f = Upath('abc.txt')
@@ -990,8 +989,11 @@ class Upath(abc.ABC, EnforceOverrides):
                 # (or in another block that deliberately uses the same file lock).
                 # Reading can be made exclusive by this same lock mechanism.
 
-        The lock file itself (i.e. `self`) is never used for its content;
-        the file is merely a dummy to implement the lock mechanism.
+        .. note:: This method should always be called on an "auxiliary file" (like in the example above),
+          whose sole purpose is to implement the lock; the file being locked should not be used for any other purpose.
+
+        .. note:: Just before exiting the context manager, the implementation should
+          delete the lock file.
 
         Some storage engines may not provide the capability to implement
         this lock.
