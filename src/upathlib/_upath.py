@@ -668,7 +668,7 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    @deprecated(deprecated_in='0.7.3', removed_in='0.7.6')
+    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
     def write_orjson(self, data: Any, *, overwrite=False, **kwargs) -> None:
         """
         ``overwrite`` is passed to :meth:`write_bytes`.
@@ -679,14 +679,14 @@ class Upath(abc.ABC, EnforceOverrides):
             OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
-    @deprecated(deprecated_in='0.7.3', removed_in='0.7.6')
+    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
     def read_orjson(self, **kwargs) -> Any:
         """
         ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.deserialize`.
         """
         return OrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    @deprecated(deprecated_in='0.7.3', removed_in='07.6')
+    @deprecated(deprecated_in="0.7.3", removed_in="07.6")
     def write_orjson_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
         """
         ``overwrite`` is passed to :meth:`write_bytes`.
@@ -697,14 +697,14 @@ class Upath(abc.ABC, EnforceOverrides):
             ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
-    @deprecated(deprecated_in='0.7.3', removed_in='0.7.6')
+    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
     def read_orjson_z(self, **kwargs) -> Any:
         """
         ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.deserialize`.
         """
         return ZOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    @deprecated(deprecated_in='0.7.3', removed_in='0.7.6')
+    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
     def write_orjson_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
         """
         ``overwrite`` is passed to :meth:`write_bytes`.
@@ -715,7 +715,7 @@ class Upath(abc.ABC, EnforceOverrides):
             ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
         )
 
-    @deprecated(deprecated_in='0.7.3', removed_in='0.7.6')
+    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
     def read_orjson_zstd(self, **kwargs) -> Any:
         """
         ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.deserialize`.
