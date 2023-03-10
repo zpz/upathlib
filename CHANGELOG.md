@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.7.3] - in progress
+
+### Deprecated or removed
+
+- Deprecated orjson serializers and read/write methods
+
+
 ## [0.7.2] - 2023-03-06
 
 ### Bug fixes
