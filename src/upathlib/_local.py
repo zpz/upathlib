@@ -28,7 +28,6 @@ from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 # logging.getLogger("filelock").setLevel(logging.WARNING)
 
 
-
 class LocalUpath(Upath, os.PathLike):
     _LOCK_POLL_INTERVAL_SECONDS = 0.03
 
