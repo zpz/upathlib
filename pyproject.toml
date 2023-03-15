@@ -9,7 +9,7 @@ authors = [
     {name = "Zepu Zhang", email = "zepu.zhang@gmail.com"},
 ]
 dependencies = [
-    "filelock >=3.3.0,<=3.9.0",
+    "filelock >= 3.9.1",
     "deprecation",
     "orjson",
     "overrides",
