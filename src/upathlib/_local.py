@@ -162,6 +162,10 @@ class LocalUpath(Upath, os.PathLike):
             if not overwrite:
                 raise FileExistsError(self)
         self.parent.path.mkdir(exist_ok=True, parents=True)
+        try:
+            memoryview(data)  # bytes, bytearray, array.array, memoryview
+        except TypeError:
+            data = data.read()  # file-like object, like BytesIO, that is at beginning
         self.path.write_bytes(data)
 
         # If `self` is an existing directory, will raise `IsADirectoryError`.

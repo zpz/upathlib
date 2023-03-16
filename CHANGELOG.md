@@ -9,7 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Deprecated or removed
 
-- Deprecated orjson serializers and read/write methods
+- Deprecated orjson serializers and read/write methods.
+
+### Added
+
+- `LocalUpath.write_bytes` now accepts file-like data as input.
 
 
 ## [0.7.2] - 2023-03-06
