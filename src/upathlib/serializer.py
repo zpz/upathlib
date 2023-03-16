@@ -97,30 +97,6 @@ class JsonSerializer(TextSerializer):
         return _loads(json.loads, y, **kwargs)
 
 
-# class ZJsonSerializer(ByteSerializer):
-#     @classmethod
-#     def serialize(cls, x, *, level=ZLIB_LEVEL, **kwargs):
-#         y = json.dumps(x, **kwargs).encode()
-#         return zlib.compress(y, level=level)
-
-#     @classmethod
-#     def deserialize(cls, y, **kwargs):
-#         y = zlib.decompress(y).decode()
-#         return _loads(json.loads, y, **kwargs)
-
-
-# class ZstdJsonSerializer(ByteSerializer):
-#     @classmethod
-#     def serialize(cls, x, *, level=ZSTD_LEVEL, **kwargs):
-#         y = json.dumps(x, **kwargs).encode()
-#         return zstandard.compress(y, level=level)
-
-#     @classmethod
-#     def deserialize(cls, y, **kwargs):
-#         y = zstandard.decompress(y).decode()
-#         return _loads(json.loads, y, **kwargs)
-
-
 class OrjsonSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x, **kwargs):
