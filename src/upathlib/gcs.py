@@ -338,7 +338,9 @@ class GcsBlobUpath(BlobUpath):
         try:
             memoryview(data)
         except TypeError:  # file-like data
-            self._write_from_buffer(data, content_type="text/plain", overwrite=overwrite)
+            self._write_from_buffer(
+                data, content_type="text/plain", overwrite=overwrite
+            )
         else:  # bytes-like data
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
 

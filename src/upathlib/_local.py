@@ -163,7 +163,9 @@ class LocalUpath(Upath, os.PathLike):
                 raise FileExistsError(self)
         self.parent.path.mkdir(exist_ok=True, parents=True)
         try:
-            memoryview(data)  # bytes-like object, such as bytes, bytearray, array.array, memoryview
+            memoryview(
+                data
+            )  # bytes-like object, such as bytes, bytearray, array.array, memoryview
         except TypeError:
             data = data.read()  # file-like object, like BytesIO, that is at beginning
         self.path.write_bytes(data)
