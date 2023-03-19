@@ -542,6 +542,10 @@ class Upath(abc.ABC, EnforceOverrides):
         Parent "directories" are created as needed, if applicable.
 
         If ``overwrite`` is ``False`` and the current file exists, ``FileExistsError`` is raised.
+
+        ``data`` is either "byte-like" (such as bytes, bytearray, memoryview) or "file-like"
+        open in "binary" mode. In the second case, the file should be positioned at the beginning
+        (such as by calling ``.seek(0)``.)
         """
         raise NotImplementedError
 

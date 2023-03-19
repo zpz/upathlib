@@ -335,10 +335,14 @@ class GcsBlobUpath(BlobUpath):
         The case where ``data`` is a ``BufferedReader`` object, such as an open file,
         is not well tested.
         """
-        if isinstance(data, bytes):
+        try:
+            memoryview(data)
+        except TypeError:  # file-like data
+            self._write_from_buffer(
+                data, content_type="text/plain", overwrite=overwrite
+            )
+        else:  # bytes-like data
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
-            return
-        self._write_from_buffer(data, content_type="text/plain", overwrite=overwrite)
 
     def _read_into_buffer(self, file_obj):
         file_info = self.file_info()
