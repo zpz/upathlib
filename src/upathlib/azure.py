@@ -10,7 +10,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from io import UnsupportedOperation, BufferedReader
+from io import BufferedReader, UnsupportedOperation
 
 # from azure.storage.blob.aio import (
 # ContainerClient as aContainerClient,

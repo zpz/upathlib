@@ -27,7 +27,7 @@ import threading
 from collections.abc import Iterable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from io import UnsupportedOperation, BufferedReader
+from io import BufferedReader, UnsupportedOperation
 from typing import (
     Any,
     Callable,
@@ -536,7 +536,9 @@ class Upath(abc.ABC, EnforceOverrides):
         return self._with_path(str(self.path.with_suffix(suffix)))
 
     @abc.abstractmethod
-    def write_bytes(self, data: bytes | BufferedReader, *, overwrite: bool = False) -> None:
+    def write_bytes(
+        self, data: bytes | BufferedReader, *, overwrite: bool = False
+    ) -> None:
         """Write bytes ``data`` to the current file.
 
         Parent "directories" are created as needed, if applicable.

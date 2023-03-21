@@ -155,7 +155,9 @@ class LocalUpath(Upath, os.PathLike):
             raise FileNotFoundError(self) from e
 
     @overrides
-    def write_bytes(self, data: bytes | BufferedReader, *, overwrite: bool = False) -> None:
+    def write_bytes(
+        self, data: bytes | BufferedReader, *, overwrite: bool = False
+    ) -> None:
         """
         Write the bytes ``data`` to the current file.
         """
