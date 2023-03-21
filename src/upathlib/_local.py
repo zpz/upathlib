@@ -9,6 +9,7 @@ import shutil
 import sys
 import time
 from collections.abc import Iterator
+from io import BufferedReader
 from typing import Optional, Union
 
 import filelock
@@ -154,7 +155,7 @@ class LocalUpath(Upath, os.PathLike):
             raise FileNotFoundError(self) from e
 
     @overrides
-    def write_bytes(self, data: bytes, *, overwrite: bool = False) -> None:
+    def write_bytes(self, data: bytes | BufferedReader, *, overwrite: bool = False) -> None:
         """
         Write the bytes ``data`` to the current file.
         """
