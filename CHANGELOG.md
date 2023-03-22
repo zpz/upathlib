@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.7.4] - 2023-03-21
+
+Upgraded Python to 3.10 for development and testing.
+Fixed an error in parameter type annotation related to `overrides`
+that was revealed in this migration.
+There was no changes to any functionality.
+
+
 ## [0.7.3] - 2023-03-19
 
 ### Deprecated or removed

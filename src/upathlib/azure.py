@@ -10,7 +10,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime
-from io import UnsupportedOperation
+from io import BufferedReader, UnsupportedOperation
 
 # from azure.storage.blob.aio import (
 # ContainerClient as aContainerClient,
@@ -354,7 +354,7 @@ class AzureBlobUpath(BlobUpath):
                 yield self / p.name[k:]
 
     @overrides
-    def write_bytes(self, data: bytes, *, overwrite=False) -> None:
+    def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False) -> None:
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
 
