@@ -3,14 +3,11 @@ from io import BytesIO
 from types import SimpleNamespace
 from uuid import uuid4
 
+import pytest
 import upathlib._tests
 from upathlib.gcs import GcsBlobUpath, exceptions
-import pytest
-
 
 NotFound = exceptions.NotFound
-
-
 
 
 class Blob:
@@ -169,7 +166,9 @@ def gcp(mocker):
     mocker.patch('upathlib.gcs.GcsBlobUpath._PROJECT_ID', 'abc')
     mocker.patch(
         'upathlib.gcs.GcsBlobUpath._CREDENTIALS',
-        SimpleNamespace(token='x', expiry=datetime.utcnow() + timedelta(days=1)),  # noqa: S106
+        SimpleNamespace(
+            token='x', expiry=datetime.utcnow() + timedelta(days=1)  # noqa: S106
+        ),  # noqa: S106
     )  # noqa: S106
     mocker.patch('upathlib.gcs.GcsBlobUpath._CLIENT', Client())
     c = GcsBlobUpath(
