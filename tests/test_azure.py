@@ -2,11 +2,10 @@ import io
 from datetime import datetime
 from types import SimpleNamespace
 from uuid import uuid4
-import upathlib._tests
-from upathlib.azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
 
 import pytest
-
+import upathlib._tests
+from upathlib.azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
 
 CONTAINERS = {}
 
@@ -75,11 +74,11 @@ class BlobClient:
         if isinstance(data, io.BufferedReader):
             data = data.read()
         CONTAINERS[self._container_name][self.name] = {
-                'data': data,
-                'time_created': datetime.now(),
-                'time_modified': datetime.now(),
-                'size': len(data),
-                }
+            'data': data,
+            'time_created': datetime.now(),
+            'time_modified': datetime.now(),
+            'size': len(data),
+        }
 
     def download_blob(self):
         z = CONTAINERS[self._container_name][self.name]['data']
@@ -127,9 +126,9 @@ def azure(mocker):
     mocker.patch('upathlib.azure.AzureBlobUpath._SAS_TOKEN', '1010')
 
     c = AzureBlobUpath(
-            '/tmp/test',
-            container_name='test',
-            ) / str(uuid4())
+        '/tmp/test',
+        container_name='test',
+    ) / str(uuid4())
     try:
         c.rmrf()
         yield c

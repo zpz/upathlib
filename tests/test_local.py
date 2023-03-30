@@ -1,14 +1,10 @@
-from concurrent.futures import ProcessPoolExecutor
-import multiprocessing as mp
 import os
 import pathlib
-from time import sleep
 from uuid import uuid4
 
-import upathlib._tests
-
 import pytest
-from upathlib import LocalUpath, _upath
+import upathlib._tests
+from upathlib import LocalUpath
 
 
 @pytest.fixture
@@ -16,7 +12,9 @@ def test_path():
     if os.name == 'posix':
         p = LocalUpath('/tmp/upathlib_local_test') / str(uuid4())
     else:
-        p = LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test')) / str(uuid4())
+        p = LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test')) / str(
+            uuid4()
+        )
     try:
         p.rmrf()
         yield p
@@ -28,8 +26,7 @@ def test_localupath_init():
     p = LocalUpath()
     assert p._path == str(pathlib.Path.cwd())
     p = LocalUpath('a', 'b', 'c', 'd')
-    assert str(p.path) == str(pathlib.Path(
-        pathlib.Path.cwd(), 'a', 'b', 'c', 'd'))
+    assert str(p.path) == str(pathlib.Path(pathlib.Path.cwd(), 'a', 'b', 'c', 'd'))
 
 
 def test_all(test_path):

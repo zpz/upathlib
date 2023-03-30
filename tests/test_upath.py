@@ -1,7 +1,6 @@
 from pathlib import Path
-from upathlib import Upath, LocalUpath, resolve_path, GcsBlobUpath
-from google.auth.exceptions import DefaultCredentialsError
-import pytest
+
+from upathlib import GcsBlobUpath, LocalUpath, resolve_path
 
 
 def test_resolve_path():
@@ -11,8 +10,6 @@ def test_resolve_path():
     assert isinstance(p, LocalUpath)
     p = resolve_path(LocalUpath('./a'))
     assert isinstance(p, LocalUpath)
-    
+
     p = resolve_path('gs://mybucket/abc')
     assert isinstance(p, GcsBlobUpath)
-
-    
