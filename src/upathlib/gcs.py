@@ -22,9 +22,9 @@ from google.api_core.retry import if_exception_type
 from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
+from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from overrides import overrides
 from typing_extensions import Self
-from mpservice.util import MAX_THREADS, get_shared_thread_pool
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
@@ -345,10 +345,7 @@ class GcsBlobUpath(BlobUpath):
         else:  # bytes-like data
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
 
-    def _multipart_download(
-        self,
-        blob_size, file_obj
-    ):
+    def _multipart_download(self, blob_size, file_obj):
         client = self._client()
         blob = self._blob()
 
@@ -360,7 +357,9 @@ class GcsBlobUpath(BlobUpath):
             current_size = 0
             while True:
                 try:
-                    blob.download_to_file(buffer, client=client, start=start + current_size, end=end)
+                    blob.download_to_file(
+                        buffer, client=client, start=start + current_size, end=end
+                    )
                 except exceptions.NotFound:
                     raise FileNotFoundError(blob.name)
                 current_size = buffer.tell()

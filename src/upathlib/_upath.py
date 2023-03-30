@@ -25,7 +25,6 @@ import queue
 import sys
 import threading
 from collections.abc import Iterable, Iterator
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BufferedReader, UnsupportedOperation
 from typing import (
