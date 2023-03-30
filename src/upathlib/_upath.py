@@ -160,20 +160,6 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return self.joinpath(key)
 
-    def _get_thread_pool(self, name: str) -> ThreadPoolExecutor:
-        # Currently there can be two "layers" of threads running during `download_dir`.
-        # In `download_dir`, the download of each file runs in the threads provided
-        # by `UpathExecutor0`. If a file is large, `GcsBlobUpath` will split the work into chunks
-        # and download each chunk in a thread provided by `UpathExecutor1`.
-        # We dedicate the two executors mainly so that the second layer of chunk downloads
-        # do not starve for threads.
-        if name == "first":
-            return get_shared_thread_pool("upathlib-first", MAX_THREADS)
-        elif name == "second":
-            return get_shared_thread_pool("upathlib-second", MAX_THREADS - 2)
-        else:
-            raise ValueError(name)
-
     def _run_in_executor(
         self,
         tasks: Iterable[tuple[Callable, tuple, dict, str]],
@@ -195,19 +181,13 @@ class Upath(abc.ABC, EnforceOverrides):
             return
 
         pbar = None
-        if threading.current_thread().name.startswith("UpathExecutor0"):
-            # This is the case when GCP downloads a large file by multiple parts.
-            # This is working on one large file, and it is trying to start threads
-            # to tackle parts of it.
-            executor = self._get_thread_pool("second")
-            # No progress printout.
-        else:
-            executor = self._get_thread_pool("first")
-            if not quiet:
-                pbar = tqdm(
-                    total=n_tasks,
-                    bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
-                )
+        executor = get_shared_thread_pool("upathlib", MAX_THREADS)
+
+        if not quiet:
+            pbar = tqdm(
+                total=n_tasks,
+                bar_format="{percentage:5.1f}%, {n:.0f}/{total_fmt}, {elapsed} | {desc}",
+            )
 
         def enqueue(tasks, executor, q, to_stop):
             for func, args, kwargs, desc in tasks:
