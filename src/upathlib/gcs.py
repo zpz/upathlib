@@ -389,7 +389,7 @@ class GcsBlobUpath(BlobUpath):
             n = file_obj.write(buf.getbuffer())
             if n != k:
                 raise BufferError(
-                    f"expecting to read {k} bytes; actually read {n} bytes"
+                    f"expecting to write {k} bytes, actually wrote {n} bytes, while downloading {self}; buffer size {buf.seek(0, 2)}"
                 )
             buf.close()
 
