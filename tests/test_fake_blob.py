@@ -1,13 +1,14 @@
 from __future__ import annotations
+
 import contextlib
 from collections.abc import Iterator
 from datetime import datetime
 from uuid import uuid4
-from typing_extensions import Self
 
 import upathlib._tests
-from upathlib import BlobUpath, FileInfo
 from overrides import overrides
+from typing_extensions import Self
+from upathlib import BlobUpath, FileInfo
 
 
 class ResourceNotFoundError(Exception):
@@ -67,11 +68,12 @@ class FakeBlobStore:
             raise ResourceNotFoundError(name)
 
     def copy_blob(self, bucket: str, name: str, target: str, *, overwrite=False):
-        self.write_bytes(bucket=bucket,
-                         name=target,
-                         data=self.read_bytes(bucket, name),
-                         overwrite=overwrite,
-                         )
+        self.write_bytes(
+            bucket=bucket,
+            name=target,
+            data=self.read_bytes(bucket, name),
+            overwrite=overwrite,
+        )
 
     def exists(self, bucket: str, name: str):
         z = self._data[bucket]
@@ -113,7 +115,9 @@ class FakeBlobUpath(BlobUpath):
     @overrides
     def _copy_file(self, target, *, overwrite=False):
         if isinstance(target, FakeBlobUpath):
-            _store.copy_blob(self._bucket, self._path, target._path, overwrite=overwrite)
+            _store.copy_blob(
+                self._bucket, self._path, target._path, overwrite=overwrite
+            )
         else:
             super()._copy_file(target, overwrite=overwrite)
 
@@ -136,7 +140,7 @@ class FakeBlobUpath(BlobUpath):
         if not p.endswith('/'):
             p += '/'
         for pp in _store.list_blobs(self._bucket, p):
-            yield self / pp[len(p):]
+            yield self / pp[len(p) :]
 
     @overrides
     def remove_file(self):
@@ -153,8 +157,7 @@ class FakeBlobUpath(BlobUpath):
     @overrides
     def write_bytes(self, data, *, overwrite=False):
         try:
-            _store.write_bytes(self._bucket, self._path,
-                               data, overwrite=overwrite)
+            _store.write_bytes(self._bucket, self._path, data, overwrite=overwrite)
         except ResourceExistsError as e:
             raise FileExistsError(self) from e
 

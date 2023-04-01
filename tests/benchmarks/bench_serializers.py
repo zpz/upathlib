@@ -1,11 +1,15 @@
 from time import perf_counter
+
 import numpy
 from faker import Faker
 from upathlib.serializer import (
-    PickleSerializer, CompressedPickleSerializer,
-    JsonByteSerializer, JsonSerializer,
-    OrjsonSerializer, CompressedOrjsonSerializer,
-    )
+    CompressedOrjsonSerializer,
+    CompressedPickleSerializer,
+    JsonByteSerializer,
+    JsonSerializer,
+    OrjsonSerializer,
+    PickleSerializer,
+)
 
 
 def make_native(seed=1234):
@@ -15,10 +19,10 @@ def make_native(seed=1234):
         'data': {
             'float': [x + 0.3 for x in range(10000)],
             'int': list(range(10000)),
-            },
+        },
         'attributes': {fake.name(): fake.sentence() for _ in range(5000)},
         'details': [fake.text() for _ in range(2000)],
-        }
+    }
 
 
 def make_numpy(seed=5678):
@@ -26,7 +30,8 @@ def make_numpy(seed=5678):
     return {
         'int': numpy.random.randint(1, 100000, 100000),
         'float': numpy.random.rand(1000, 1000),
-        }
+    }
+
 
 native_data = make_native()
 numpy_data = make_numpy()
@@ -38,9 +43,11 @@ def bench(ser, data, nrepeat):
         z = ser.serialize(data)
     t1 = perf_counter()
     for _ in range(nrepeat):
-        zz = ser.deserialize(z)
+        ser.deserialize(z)
     t2 = perf_counter()
-    print(f'{ser.__name__:26} {t1 - t0:6.2f} seconds, {len(z):>8} bytes, {t2 - t1:6.2f} seconds')
+    print(
+        f'{ser.__name__:26} {t1 - t0:6.2f} seconds, {len(z):>8} bytes, {t2 - t1:6.2f} seconds'
+    )
 
 
 def main():

@@ -22,6 +22,7 @@ from google.api_core.retry import if_exception_type
 from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
+from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from overrides import overrides
 from typing_extensions import Self
 
@@ -29,6 +30,9 @@ from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 logger = logging.getLogger(__name__)
+
+# When downloading large files, there may be INFO logs from `google.resumable_media._helpers` about "No MD5 checksum was returned...".
+# You may want to suppress that log by setting its level to WARNING.
 
 
 # 67108864 = 256 * 1024 * 256 = 64 MB
@@ -344,6 +348,61 @@ class GcsBlobUpath(BlobUpath):
         else:  # bytes-like data
             self._blob_rate_limit(self._write_bytes, data, overwrite=overwrite)
 
+    def _multipart_download(self, blob_size, file_obj):
+        client = self._client()
+        blob = self._blob()
+
+        def _download(start, end):
+            # Both `start` and `end` are inclusive.
+            # The very first `start` should be 0.
+            buffer = BytesIO()
+            target_size = end - start + 1
+            current_size = 0
+            while True:
+                try:
+                    blob.download_to_file(
+                        buffer, client=client, start=start + current_size, end=end
+                    )
+                except exceptions.NotFound:
+                    raise FileNotFoundError(blob.name)
+                current_size = buffer.tell()
+                if current_size >= target_size:
+                    break
+                # When a large number (say 10) of workers independently download
+                # the same large blob, practice showed the number of bytes downloaded
+                # may not match the number that was requested.
+                # I did not see this mentioned in GCP doc.
+            buffer.seek(0)
+            if current_size > target_size:
+                buffer.truncate(target_size)
+            return buffer
+
+        executor = get_shared_thread_pool("upathlib-gcs", MAX_THREADS - 2)
+        k = 0
+        tasks = []
+        while True:
+            kk = min(k + LARGE_FILE_SIZE, blob_size)
+            t = executor.submit(_download, k, kk - 1)
+            tasks.append(t)
+            k = kk
+            if k >= blob_size:
+                break
+
+        try:
+            it = 0
+            for t in tasks:
+                buf = t.result()
+                file_obj.write(buf.getbuffer())
+                buf.close()
+                it += 1
+        except Exception:
+            for tt in tasks[it:]:
+                if not tt.done():
+                    tt.cancel()
+                    # This may not succeed, but there isn't a good way to
+                    # guarantee cancellation here.
+            raise
+
     def _read_into_buffer(self, file_obj):
         file_info = self.file_info()
         if not file_info:
@@ -355,43 +414,8 @@ class GcsBlobUpath(BlobUpath):
                 return
             except exceptions.NotFound:
                 raise FileNotFoundError(self)
-
-        def _download(client, blob, start, end):
-            buffer = BytesIO()
-            try:
-                blob.download_to_file(buffer, client=client, start=start, end=end)
-            except exceptions.NotFound:
-                raise FileNotFoundError(blob.name)
-            # Both `start` and `end` are inclusive.
-            # The very first `start` should be 0.
-            buffer.seek(0)
-            return buffer, end - start + 1
-
-        def _do_download():
-            client = self._client()
-            blob = self._blob()
-            k = 0
-            p = 0
-            while True:
-                kk = min(k + LARGE_FILE_SIZE, file_size)
-                p += 1
-                yield (
-                    _download,
-                    (client, blob, k, kk - 1),
-                    {},
-                    f"part {p}",
-                )
-                k = kk
-                if k >= file_size:
-                    break
-
-        for buf, k in self._run_in_executor(_do_download(), self._quiet_multidownload):
-            n = file_obj.write(buf.getbuffer())
-            if n != k:
-                raise BufferError(
-                    f"expecting to read {k} bytes; actually read {n} bytes"
-                )
-            buf.close()
+        else:
+            self._multipart_download(file_size, file_obj)
 
     @overrides
     def read_bytes(self) -> bytes:

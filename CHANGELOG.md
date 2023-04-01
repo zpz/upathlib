@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.7.5] - 2023-03-31
+
+### Fixed
+
+- Fine-tune multipart download of large blobs from Google Cloud Storage.
+
+
 ## [0.7.4] - 2023-03-21
 
 Upgraded Python to 3.10 for development and testing.

@@ -1,14 +1,13 @@
 from datetime import datetime, timedelta
-from types import SimpleNamespace
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
+
+import pytest
 import upathlib._tests
 from upathlib.gcs import GcsBlobUpath, exceptions
 
 NotFound = exceptions.NotFound
-
-
-import pytest
 
 
 class Blob:
@@ -41,7 +40,7 @@ class Blob:
             'time_created': datetime.now(),
             'time_updated': datetime.now(),
             'size': len(data),
-            }
+        }
 
     def download_to_file(self, file_obj, client=None):
         try:
@@ -83,11 +82,20 @@ class Bucket:
         if name in self._blobs:
             return self.blob(name)
 
-    def copy_blob(self, blob, target_bucket, target_blob_name, client=None, if_generation_match=None):
+    def copy_blob(
+        self,
+        blob,
+        target_bucket,
+        target_blob_name,
+        client=None,
+        if_generation_match=None,
+    ):
         buffer = BytesIO()
         blob.download_to_file(buffer)
         buffer.seek(0)
-        target_bucket.blob(target_blob_name).upload_from_file(buffer, if_generation_match=if_generation_match)
+        target_bucket.blob(target_blob_name).upload_from_file(
+            buffer, if_generation_match=if_generation_match
+        )
 
 
 class Page:
@@ -107,16 +115,14 @@ class BlobLists:
         self._max_results = max_results
 
     def __iter__(self):
-        zz = [x for x in self._bucket._blobs
-              if x.startswith(self._prefix)]
+        zz = [x for x in self._bucket._blobs if x.startswith(self._prefix)]
         if not self._delimiter:
             yield from (self._bucket.blob(z) for z in zz)
         else:
             k = len(self._prefix)
             yield from (
-                    self._bucket.blob(z) for z in zz
-                    if self._delimiter not in z[k:]
-                    )
+                self._bucket.blob(z) for z in zz if self._delimiter not in z[k:]
+            )
 
     @property
     def prefixes(self):
@@ -141,9 +147,16 @@ class Client:
     def bucket(self, name):
         return Bucket(name)
 
-    def list_blobs(self, bucket, prefix, delimiter=None, max_results=None, page_size=None, fields=None):
+    def list_blobs(
+        self,
+        bucket,
+        prefix,
+        delimiter=None,
+        max_results=None,
+        page_size=None,
+        fields=None,
+    ):
         return BlobLists(bucket, prefix, delimiter, max_results=max_results)
-
 
 
 @pytest.fixture()
@@ -151,12 +164,17 @@ def gcp(mocker):
     # mocker.patch('upathlib.gcp.service_account')
     mocker.patch('upathlib.gcs.storage.Client', Client)
     mocker.patch('upathlib.gcs.GcsBlobUpath._PROJECT_ID', 'abc')
-    mocker.patch('upathlib.gcs.GcsBlobUpath._CREDENTIALS', SimpleNamespace(token='x', expiry=datetime.utcnow() + timedelta(days=1))) # noqa: S106
+    mocker.patch(
+        'upathlib.gcs.GcsBlobUpath._CREDENTIALS',
+        SimpleNamespace(
+            token='x', expiry=datetime.utcnow() + timedelta(days=1)  # noqa: S106
+        ),  # noqa: S106
+    )  # noqa: S106
     mocker.patch('upathlib.gcs.GcsBlobUpath._CLIENT', Client())
     c = GcsBlobUpath(
-            '/tmp/test',
-            bucket_name='test',
-            ) / str(uuid4())
+        '/tmp/test',
+        bucket_name='test',
+    ) / str(uuid4())
     print('c._bucket', c._bucket)
     c.rmrf()
     try:
