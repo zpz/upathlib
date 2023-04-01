@@ -31,6 +31,9 @@ from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 logger = logging.getLogger(__name__)
 
+# When downloading large files, there may be INFO logs from `google.resumable_media._helpers` about "No MD5 checksum was returned...".
+# You may want to suppress that log by setting its level to WARNING.
+
 
 # 67108864 = 256 * 1024 * 256 = 64 MB
 MEGABYTES32 = 33554432
@@ -389,14 +392,7 @@ class GcsBlobUpath(BlobUpath):
             it = 0
             for t in tasks:
                 buf = t.result()
-                data = buf.getbuffer()
-                n = file_obj.write(data)
-                k = len(data)
-                if n != k:
-                    # This should never happen.
-                    raise BufferError(
-                        f"expecting to write {k} bytes, actually wrote {n} bytes, while downloading {self}; buffer size {buf.seek(0, 2)}"
-                    )
+                file_obj.write(buf.getbuffer())
                 buf.close()
                 it += 1
         except Exception:
