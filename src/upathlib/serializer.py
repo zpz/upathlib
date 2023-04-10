@@ -82,15 +82,23 @@ class PickleSerializer(ByteSerializer):
         return _loads(pickle.loads, y)
 
 
+def z_compress(x: bytes, level=ZLIB_LEVEL) -> bytes:
+    return zlib.compress(x, level=level)
+
+
+def z_decompress(x: bytes) -> bytes:
+    return zlib.decompress(x)
+
+
 class ZPickleSerializer(PickleSerializer):
     @classmethod
     def serialize(cls, x, *, level=ZLIB_LEVEL, protocol=None):
         y = super().serialize(x, protocol=protocol)
-        return zlib.compress(y, level=level)
+        return z_compress(y, level=level)
 
     @classmethod
     def deserialize(cls, y):
-        y = zlib.decompress(y)
+        y = z_decompress(y)
         return super().deserialize(y)
 
 
@@ -100,15 +108,21 @@ except ImportError:
     pass
 else:
 
+    def zstd_compress(x: bytes, level=ZSTD_LEVEL) -> bytes:
+        return zstandard.compress(x, level=level)
+
+    def zstd_decompress(x: bytes) -> bytes:
+        return zstandard.decompress(x)
+
     class ZstdPickleSerializer(PickleSerializer):
         @classmethod
         def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None):
             y = super().serialize(x, protocol=protocol)
-            return zstandard.compress(y, level=level)
+            return zstd_compress(y, level=level)
 
         @classmethod
         def deserialize(cls, y):
-            y = zstandard.decompress(y)
+            y = zstd_decompress(y)
             return super().deserialize(y)
 
 
@@ -118,13 +132,19 @@ except ImportError:
     pass
 else:
 
+    def lz4_compress(x: bytes, level=LZ4_LEVEL) -> bytes:
+        return lz4.frame.compress(x, compression_level=level)
+
+    def lz4_decompress(x: bytes) -> bytes:
+        return lz4.frame.decompress(x)
+
     class Lz4PickleSerializer(PickleSerializer):
         @classmethod
         def serialize(cls, x, *, level=LZ4_LEVEL, protocol=None):
             y = super().serialize(x, protocol=protocol)
-            return lz4.frame.compress(y, compression_level=level)
+            return lz4_compress(y, level=level)
 
         @classmethod
         def deserialize(cls, y):
-            y = lz4.frame.decompress(y)
+            y = lz4_decompress(y)
             return super().deserialize(y)

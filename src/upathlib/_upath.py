@@ -41,16 +41,19 @@ from .serializer import (
     JsonSerializer,
     PickleSerializer,
     ZPickleSerializer,
+    z_compress, z_decompress,
 )
 
 try:
-    from .serializer import ZstdPickleSerializer
+    from .serializer import ZstdPickleSerializer, zstd_compress, zstd_decompress
 except ImportError:
     ZstdPickleSerializer = None
+    zstd_compress, zstd_decompress = None, None
 try:
-    from .serializer import Lz4PickleSerializer
+    from .serializer import Lz4PickleSerializer, lz4_compress, lz4_decompress
 except ImportError:
     Lz4PickleSerializer = None
+    lz4_compress, lz4_decompress = None, None
 
 
 # End user may want to do this:
