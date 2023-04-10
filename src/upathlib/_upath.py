@@ -33,21 +33,25 @@ from typing import (
     Optional,
 )
 
-from deprecation import deprecated
 from mpservice.util import MAX_THREADS, get_shared_thread_pool
-from overrides import EnforceOverrides
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
 from .serializer import (
     JsonSerializer,
-    OrjsonSerializer,
     PickleSerializer,
-    ZOrjsonSerializer,
     ZPickleSerializer,
-    ZstdOrjsonSerializer,
-    ZstdPickleSerializer,
 )
+
+try:
+    from .serializer import ZstdPickleSerializer
+except ImportError:
+    ZstdPickleSerializer = None
+try:
+    from .serializer import Lz4PickleSerializer
+except ImportError:
+    Lz4PickleSerializer = None
+
 
 # End user may want to do this:
 #  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
@@ -73,7 +77,7 @@ class FileInfo:
 
 
 @functools.total_ordering
-class Upath(abc.ABC, EnforceOverrides):
+class Upath(abc.ABC):
     def __init__(
         self,
         *pathsegments: str,
@@ -637,75 +641,41 @@ class Upath(abc.ABC, EnforceOverrides):
         """
         return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        """
-        ``overwrite`` is passed to :meth:`write_bytes`.
+    if ZstdPickleSerializer is not None:
 
-        ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.serialize`.
-        """
-        self.write_bytes(
-            ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
-        )
+        def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
+            """
+            ``overwrite`` is passed to :meth:`write_bytes`.
 
-    def read_pickle_zstd(self, **kwargs) -> Any:
-        """
-        ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.deserialize`.
-        """
-        return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
+            ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.serialize`.
+            """
+            self.write_bytes(
+                ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+            )
 
-    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
-    def write_orjson(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        """
-        ``overwrite`` is passed to :meth:`write_bytes`.
+        def read_pickle_zstd(self, **kwargs) -> Any:
+            """
+            ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.deserialize`.
+            """
+            return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-        ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.serialize`.
-        """
-        self.write_bytes(
-            OrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
-        )
+    if Lz4PickleSerializer is not None:
 
-    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
-    def read_orjson(self, **kwargs) -> Any:
-        """
-        ``**kwargs`` are passed to :meth:`serializer.OrjsonSerializer.deserialize`.
-        """
-        return OrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
+        def write_pickle_lz4(self, data: Any, *, overwrite=False, **kwargs) -> None:
+            """
+            ``overwrite`` is passed to :meth:`write_bytes`.
 
-    @deprecated(deprecated_in="0.7.3", removed_in="07.6")
-    def write_orjson_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        """
-        ``overwrite`` is passed to :meth:`write_bytes`.
+            ``**kwargs`` are passed to :meth:`serializer.Lz4PickleSerializer.serialize`.
+            """
+            self.write_bytes(
+                Lz4PickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+            )
 
-        ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.serialize`.
-        """
-        self.write_bytes(
-            ZOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
-        )
-
-    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
-    def read_orjson_z(self, **kwargs) -> Any:
-        """
-        ``**kwargs`` are passed to :meth:`serializer.ZOrjsonSerializer.deserialize`.
-        """
-        return ZOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
-
-    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
-    def write_orjson_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
-        """
-        ``overwrite`` is passed to :meth:`write_bytes`.
-
-        ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.serialize`.
-        """
-        self.write_bytes(
-            ZstdOrjsonSerializer.serialize(data, **kwargs), overwrite=overwrite
-        )
-
-    @deprecated(deprecated_in="0.7.3", removed_in="0.7.6")
-    def read_orjson_zstd(self, **kwargs) -> Any:
-        """
-        ``**kwargs`` are passed to :meth:`serializer.ZstdOrjsonSerializer.deserialize`.
-        """
-        return ZstdOrjsonSerializer.deserialize(self.read_bytes(), **kwargs)
+        def read_pickle_lz4(self, **kwargs) -> Any:
+            """
+            ``**kwargs`` are passed to :meth:`serializer.Lz4PickleSerializer.deserialize`.
+            """
+            return Lz4PickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def _copy_dir(
         self, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False

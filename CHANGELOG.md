@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.7.6] - 2023-04-10
+
+### Removed
+
+- `orjson` related methods.
+- all uses of `overrides`
+
+### Added
+
+- `lz4` serializer
+- optional dependency `lz4`
+
+### Changed
+
+- `zstandard` becomes an "optional", rather than mandatory, dependency.
+
+
 ## [0.7.5] - 2023-03-31
 
 ### Fixed

@@ -64,3 +64,19 @@ def test_pathlike(test_path):
     p.write_text('abc')
     with open(p) as file:
         assert file.read() == 'abc'
+
+
+def test_pickle(test_path):
+    p = test_path
+    p.rmrf()
+    pp = p / 'data.dat'
+
+    data = [1, 2, {'a': 3, 'b': [1, 'c']}]
+    pp.write_pickle(data, overwrite=True)
+    assert pp.read_pickle() == data
+    pp.write_pickle_z(data, overwrite=True)
+    assert pp.read_pickle_z() == data
+    pp.write_pickle_zstd(data, overwrite=True)
+    assert pp.read_pickle_zstd() == data
+    pp.write_pickle_lz4(data, overwrite=True)
+    assert pp.read_pickle_lz4() == data

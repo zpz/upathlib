@@ -1,5 +1,6 @@
 from upathlib.serializer import (
     JsonSerializer,
+    Lz4PickleSerializer,
     PickleSerializer,
     ZPickleSerializer,
     ZstdPickleSerializer,
@@ -14,6 +15,7 @@ def test_all():
         PickleSerializer,
         ZPickleSerializer,
         ZstdPickleSerializer,
+        Lz4PickleSerializer,
     ):
         y = serde.serialize(data)
         z = serde.deserialize(y)

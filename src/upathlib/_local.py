@@ -21,7 +21,6 @@ import filelock
 # Other options to look into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
 from deprecation import deprecated
-from overrides import overrides
 
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
@@ -74,7 +73,6 @@ class LocalUpath(Upath, os.PathLike):
         super().__setstate__(z1)
 
     @property
-    @overrides
     def path(self) -> pathlib.Path:
         """
         Return the `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_ object
@@ -89,7 +87,6 @@ class LocalUpath(Upath, os.PathLike):
     def localpath(self):
         return self.path
 
-    @overrides
     def as_uri(self) -> str:
         """
         Represent the path as a file URI.
@@ -98,21 +95,18 @@ class LocalUpath(Upath, os.PathLike):
         """
         return self.path.as_uri()
 
-    @overrides
     def is_dir(self) -> bool:
         """
         Return whether the current path is a dir.
         """
         return self.path.is_dir()
 
-    @overrides
     def is_file(self) -> bool:
         """
         Return whether the current path is a file.
         """
         return self.path.is_file()
 
-    @overrides
     def file_info(self) -> Optional[FileInfo]:
         """
         Return file info if the current path is a file;
@@ -134,7 +128,6 @@ class LocalUpath(Upath, os.PathLike):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @property
-    @overrides
     def root(self) -> LocalUpath:
         """
         Return a new path representing the root.
@@ -144,7 +137,6 @@ class LocalUpath(Upath, os.PathLike):
         """
         return self.__class__(self.path.root)
 
-    @overrides
     def read_bytes(self) -> bytes:
         """
         Read the content of the current file as bytes.
@@ -154,7 +146,6 @@ class LocalUpath(Upath, os.PathLike):
         except (IsADirectoryError, FileNotFoundError) as e:
             raise FileNotFoundError(self) from e
 
-    @overrides
     def write_bytes(
         self, data: bytes | BufferedReader, *, overwrite: bool = False
     ) -> None:
@@ -176,7 +167,6 @@ class LocalUpath(Upath, os.PathLike):
         # If `self` is an existing directory, will raise `IsADirectoryError`.
         # If `self` is an existing file, will overwrite.
 
-    @overrides
     def _copy_file(self, target: Upath, *, overwrite: bool = False):
         if isinstance(target, LocalUpath):
             if not overwrite and target.is_file():
@@ -190,7 +180,6 @@ class LocalUpath(Upath, os.PathLike):
         else:
             super()._copy_file(target, overwrite=overwrite)
 
-    @overrides
     def remove_dir(self, **kwargs) -> int:
         """
         Remove the current dir along with all its contents recursively.
@@ -200,7 +189,6 @@ class LocalUpath(Upath, os.PathLike):
             shutil.rmtree(self.path)
         return n
 
-    @overrides
     def remove_file(self) -> None:
         """Remove the current file."""
         try:
@@ -288,7 +276,6 @@ class LocalUpath(Upath, os.PathLike):
         self._rename_file(target_._path, overwrite=overwrite)
         return target_
 
-    @overrides
     def iterdir(self) -> Iterator[LocalUpath]:
         """
         Yield the immediate children under the current dir.
@@ -299,7 +286,6 @@ class LocalUpath(Upath, os.PathLike):
         except (NotADirectoryError, FileNotFoundError):
             pass
 
-    @overrides
     def riterdir(self) -> Iterator[LocalUpath]:
         """
         Yield all files under the current dir recursively.
@@ -311,7 +297,6 @@ class LocalUpath(Upath, os.PathLike):
                 yield from p.riterdir()
 
     @contextlib.contextmanager
-    @overrides
     def lock(self, *, timeout=None):
         """
         This uses the package `filelock <https://github.com/tox-dev/py-filelock>`_ to implement
