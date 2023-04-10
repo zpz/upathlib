@@ -14,8 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 
-- `lz4` serializer
 - optional dependency `lz4`
+- `Lz4PickleSerializer`
+- functions `z_compress`, `z_decompress`, `zstd_compress`, `zstd_decompress`, `lz4_compress`, `lz4_decompress`
+- methods `write_pickle_lz4`, `read_pickle_lz4`
+
 
 ### Changed
 
