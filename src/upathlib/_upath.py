@@ -678,7 +678,15 @@ class Upath(abc.ABC):
             return Lz4PickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def _copy_dir(
-        self, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False, concurrent: bool = True,
+        self,
+        source,
+        dest,
+        method: str,
+        *,
+        overwrite: bool,
+        quiet: bool,
+        reversed=False,
+        concurrent: bool = True,
     ):
         def foo():
             source_path = source.path
@@ -755,7 +763,12 @@ class Upath(abc.ABC):
         if not quiet:
             print(f"Copying from {self!r} into {target_!r}", file=sys.stderr)
         return self._copy_dir(
-            self, target_, "copy_file", overwrite=overwrite, quiet=quiet, concurrent=concurrent,
+            self,
+            target_,
+            "copy_file",
+            overwrite=overwrite,
+            quiet=quiet,
+            concurrent=concurrent,
         )
 
     def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
@@ -815,6 +828,7 @@ class Upath(abc.ABC):
         int
             The number of files removed.
         """
+
         def foo():
             for p in self.riterdir():
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
