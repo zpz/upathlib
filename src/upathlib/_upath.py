@@ -42,6 +42,7 @@ from .serializer import (
     PickleSerializer,
     ZPickleSerializer,
 )
+
 try:
     from .serializer import ZstdPickleSerializer
 except ImportError:
@@ -641,6 +642,7 @@ class Upath(abc.ABC):
         return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     if ZstdPickleSerializer is not None:
+
         def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
             """
             ``overwrite`` is passed to :meth:`write_bytes`.
@@ -658,6 +660,7 @@ class Upath(abc.ABC):
             return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     if Lz4PickleSerializer is not None:
+
         def write_pickle_lz4(self, data: Any, *, overwrite=False, **kwargs) -> None:
             """
             ``overwrite`` is passed to :meth:`write_bytes`.

@@ -19,7 +19,9 @@ T = TypeVar("T")
 MEGABYTE = 1048576  # 1024 * 1024
 ZLIB_LEVEL = 3  # official default is 6
 ZSTD_LEVEL = 3  # official default is 3
-LZ4_LEVEL = 0   # official default is 0; high-compression value is 3, much slower at compressing
+LZ4_LEVEL = (
+    0  # official default is 0; high-compression value is 3, much slower at compressing
+)
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 
@@ -97,6 +99,7 @@ try:
 except ImportError:
     pass
 else:
+
     class ZstdPickleSerializer(PickleSerializer):
         @classmethod
         def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None):
@@ -114,6 +117,7 @@ try:
 except ImportError:
     pass
 else:
+
     class Lz4PickleSerializer(PickleSerializer):
         @classmethod
         def serialize(cls, x, *, level=LZ4_LEVEL, protocol=None):
