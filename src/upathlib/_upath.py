@@ -41,7 +41,6 @@ from .serializer import (
     JsonSerializer,
     PickleSerializer,
     ZPickleSerializer,
-    z_compress, z_decompress,
 )
 
 try:
