@@ -678,7 +678,15 @@ class Upath(abc.ABC):
             return Lz4PickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     def _copy_dir(
-        self, source, dest, method: str, *, overwrite: bool, quiet: bool, reversed=False
+        self,
+        source,
+        dest,
+        method: str,
+        *,
+        overwrite: bool,
+        quiet: bool,
+        reversed=False,
+        concurrent: bool = True,
     ):
         def foo():
             source_path = source.path
@@ -701,8 +709,13 @@ class Upath(abc.ABC):
                     )
 
         n = 0
-        for _ in self._run_in_executor(foo(), quiet):
-            n += 1
+        if concurrent:
+            for _ in self._run_in_executor(foo(), quiet):
+                n += 1
+        else:
+            for f, args, kwargs, _ in foo():
+                f(*args, **kwargs)
+                n += 1
         return n
 
     def copy_dir(
@@ -711,6 +724,7 @@ class Upath(abc.ABC):
         *,
         overwrite: bool = False,
         quiet: bool = False,
+        concurrent: bool = True,
     ) -> int:
         """Copy the content of the current directory (i.e. ``self``) recursively to ``target``.
 
@@ -749,7 +763,12 @@ class Upath(abc.ABC):
         if not quiet:
             print(f"Copying from {self!r} into {target_!r}", file=sys.stderr)
         return self._copy_dir(
-            self, target_, "copy_file", overwrite=overwrite, quiet=quiet
+            self,
+            target_,
+            "copy_file",
+            overwrite=overwrite,
+            quiet=quiet,
+            concurrent=concurrent,
         )
 
     def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
@@ -795,7 +814,7 @@ class Upath(abc.ABC):
 
         self._copy_file(target_, overwrite=overwrite)
 
-    def remove_dir(self, *, quiet: bool = True) -> int:
+    def remove_dir(self, *, quiet: bool = True, concurrent: bool = True) -> int:
         """Remove the current directory (i.e. ``self``) and all its contents recursively.
 
         Essentially, this removes each file that is yielded by :meth:`riterdir`.
@@ -815,8 +834,13 @@ class Upath(abc.ABC):
                 yield p.remove_file, [], {}, str(p.path.relative_to(self.path))
 
         n = 0
-        for _ in self._run_in_executor(foo(), quiet):
-            n += 1
+        if concurrent:
+            for _ in self._run_in_executor(foo(), quiet):
+                n += 1
+        else:
+            for f, *_ in foo():
+                f()
+                n += 1
         return n
 
     @abc.abstractmethod
@@ -874,7 +898,7 @@ class Upath(abc.ABC):
         """
         raise NotImplementedError
 
-    def rmrf(self, *, quiet: bool = True) -> int:
+    def rmrf(self, *, quiet: bool = True, concurrent: bool = True) -> int:
         """Remove the current file or dir (i.e. ``self``) recursively.
 
         Analogous to the Linux command ``rm -rf``, hence the name of this method.
@@ -898,7 +922,7 @@ class Upath(abc.ABC):
         else:
             n = 1
         try:
-            m = self.remove_dir(quiet=quiet)
+            m = self.remove_dir(quiet=quiet, concurrent=concurrent)
         except FileNotFoundError:
             m = 0
         return n + m
