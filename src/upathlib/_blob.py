@@ -4,7 +4,6 @@ import pathlib
 import sys
 from collections.abc import Iterator
 
-from overrides import EnforceOverrides, overrides
 from typing_extensions import Self
 
 from ._local import LocalPathType, LocalUpath
@@ -21,7 +20,7 @@ def _resolve_local_path(p: LocalPathType):
     return p
 
 
-class BlobUpath(Upath, EnforceOverrides):
+class BlobUpath(Upath):
     """
     BlobUpath is a base class for paths in a *cloud* storage, aka "blob store".
     This is in contrast to a *local* disk storage, which is implemnted by :class:`LocalUpath`.
@@ -37,7 +36,6 @@ class BlobUpath(Upath, EnforceOverrides):
         """
         return self._path.lstrip("/")
 
-    @overrides
     def is_dir(self) -> bool:
         """In a typical blob store, there is no such concept as a
         "directory". Here we emulate the concept in a local file
@@ -67,7 +65,6 @@ class BlobUpath(Upath, EnforceOverrides):
         except StopIteration:
             return False
 
-    @overrides
     def iterdir(self) -> Iterator[Self]:
         """
         Yield immediate children under the current dir.

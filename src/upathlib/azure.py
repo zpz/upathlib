@@ -23,7 +23,6 @@ from azure.core.exceptions import (
     ResourceNotFoundError,
 )
 from azure.storage.blob import BlobClient, BlobLeaseClient, ContainerClient
-from overrides import overrides
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -99,7 +98,6 @@ class AzureBlobUpath(BlobUpath):
     def __str__(self) -> str:
         return f"{self._container_name}://{self._path.lstrip('/')}"
 
-    @overrides
     def as_uri(self) -> str:
         # TODO: what's the conventional lead word for Azure?
         return f"azure://{self._container_name}/{self._path.lstrip('/')}"
@@ -108,12 +106,10 @@ class AzureBlobUpath(BlobUpath):
     def container_name(self):
         return self._container_name
 
-    @overrides
     def is_file(self) -> bool:
         with self._provide_blob_client():
             return self._blob_client.exists()
 
-    @overrides
     def file_info(self):
         try:
             with self._provide_blob_client():
@@ -134,7 +130,6 @@ class AzureBlobUpath(BlobUpath):
             return None
 
     @property
-    @overrides
     def root(self) -> AzureBlobUpath:
         """
         Return a new path representing the root of the same container.
@@ -153,14 +148,12 @@ class AzureBlobUpath(BlobUpath):
                 )
                 assert copy["copy_status"] == "success"
 
-    @overrides
     def _copy_file(self, target: Upath, *, overwrite=False):
         if isinstance(target, AzureBlobUpath):
             target._copy_file_from(self, overwrite=overwrite)
         else:
             super()._copy_file(target, overwrite=overwrite)
 
-    @overrides
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         target = _resolve_local_path(target)
         if target.is_file():
@@ -178,7 +171,6 @@ class AzureBlobUpath(BlobUpath):
                 data = self._blob_client.download_blob()
                 data.readinto(f)
 
-    @overrides
     def upload_file(self, source: LocalPathType, *, overwrite: bool = False):
         source = _resolve_local_path(source)
         if self.is_file():
@@ -191,7 +183,6 @@ class AzureBlobUpath(BlobUpath):
             with open(str(source), "rb") as data:
                 self._blob_client.upload_blob(data)
 
-    @overrides
     def iterdir(self) -> Iterator[Self]:
         with self._provide_container_client():
             prefix = self.blob_name + "/"
@@ -239,7 +230,6 @@ class AzureBlobUpath(BlobUpath):
             time.sleep(random.uniform(0.05, 1.0))
 
     @contextmanager
-    @overrides
     def lock(self, *, timeout=None):
         """
         References:
@@ -326,7 +316,6 @@ class AzureBlobUpath(BlobUpath):
         else:
             yield
 
-    @overrides
     def read_bytes(self) -> bytes:
         with self._provide_blob_client():
             try:
@@ -334,7 +323,6 @@ class AzureBlobUpath(BlobUpath):
             except ResourceNotFoundError as e:
                 raise FileNotFoundError(self) from e
 
-    @overrides
     def remove_file(self):
         with self._provide_blob_client():
             try:
@@ -345,7 +333,6 @@ class AzureBlobUpath(BlobUpath):
             except ResourceNotFoundError:
                 raise FileNotFoundError(self)
 
-    @overrides
     def riterdir(self) -> Iterator[Self]:
         with self._provide_container_client():
             prefix = self.blob_name + "/"
@@ -353,7 +340,6 @@ class AzureBlobUpath(BlobUpath):
             for p in self._container_client.list_blobs(name_starts_with=prefix):
                 yield self / p.name[k:]
 
-    @overrides
     def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False) -> None:
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)

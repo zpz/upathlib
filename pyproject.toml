@@ -11,10 +11,7 @@ authors = [
 dependencies = [
     "filelock >= 3.9.1",
     "deprecation",
-    "orjson",
-    "overrides",
     "tqdm",
-    "zstandard >=0.18.0",
     "typing-extensions",
     "mpservice >= 0.11.9",
 ]
@@ -43,6 +40,8 @@ gcs = [
     "google-cloud-storage >=2.0,<3.0",
     "requests",
 ]
+zstandard = ["zstandard"]
+lz4 = ["lz4"]
 doc = [
     "sphinx",
     "numpydoc",

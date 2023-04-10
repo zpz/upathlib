@@ -6,7 +6,6 @@ from datetime import datetime
 from uuid import uuid4
 
 import upathlib._tests
-from overrides import overrides
 from typing_extensions import Self
 from upathlib import BlobUpath, FileInfo
 
@@ -100,19 +99,15 @@ class FakeBlobUpath(BlobUpath):
         super().__init__(*parts)
         self._bucket = bucket
 
-    @overrides
     def as_uri(self) -> str:
         return f"fake://{self._path}"
 
-    @overrides
     def file_info(self):
         return _store.file_info(self._bucket, self._path)
 
-    @overrides
     def is_file(self) -> bool:
         return _store.exists(self._bucket, self._path)
 
-    @overrides
     def _copy_file(self, target, *, overwrite=False):
         if isinstance(target, FakeBlobUpath):
             _store.copy_blob(
@@ -122,19 +117,16 @@ class FakeBlobUpath(BlobUpath):
             super()._copy_file(target, overwrite=overwrite)
 
     @contextlib.contextmanager
-    @overrides
     def lock(self, *, timeout=None):
         # place holder
         yield self
 
-    @overrides
     def read_bytes(self) -> bytes:
         try:
             return _store.read_bytes(self._bucket, self._path)
         except ResourceNotFoundError as e:
             raise FileNotFoundError(self) from e
 
-    @overrides
     def riterdir(self) -> Iterator[Self]:
         p = self._path
         if not p.endswith('/'):
@@ -142,7 +134,6 @@ class FakeBlobUpath(BlobUpath):
         for pp in _store.list_blobs(self._bucket, p):
             yield self / pp[len(p) :]
 
-    @overrides
     def remove_file(self):
         try:
             _store.delete_blob(self._bucket, self._path)
@@ -150,11 +141,9 @@ class FakeBlobUpath(BlobUpath):
             raise FileNotFoundError(self)
 
     @property
-    @overrides
     def root(self) -> Self:
         return self.__class__('/', bucket=self._bucket)
 
-    @overrides
     def write_bytes(self, data, *, overwrite=False):
         try:
             _store.write_bytes(self._bucket, self._path, data, overwrite=overwrite)

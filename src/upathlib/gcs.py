@@ -23,7 +23,6 @@ from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
 from mpservice.util import MAX_THREADS, get_shared_thread_pool
-from overrides import overrides
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -234,14 +233,12 @@ class GcsBlobUpath(BlobUpath):
         """
         return self._bucket().blob(self.blob_name)
 
-    @overrides
     def as_uri(self) -> str:
         """
         Represent the path as a file URI, like 'gs://bucket-name/path/to/blob'.
         """
         return f"gs://{self.bucket_name}/{self._path.lstrip('/')}"
 
-    @overrides
     def is_file(self) -> bool:
         """
         The result of this call is not cached, in case the object is modified anytime
@@ -249,7 +246,6 @@ class GcsBlobUpath(BlobUpath):
         """
         return self._blob().exists(self._client())
 
-    @overrides
     def is_dir(self) -> bool:
         """
         If there is a dummy blob with name ``f"{self.name}/"``,
@@ -269,7 +265,6 @@ class GcsBlobUpath(BlobUpath):
         )
         return len(list(blobs)) > 0
 
-    @overrides
     def file_info(self) -> Optional[FileInfo]:
         """
         Return file info if the current path is a file;
@@ -293,7 +288,6 @@ class GcsBlobUpath(BlobUpath):
         # My experiments showed that `ctime` and `mtime` are equal.
 
     @property
-    @overrides
     def root(self) -> GcsBlobUpath:
         """
         Return a new path representing the root of the same bucket.
@@ -330,7 +324,6 @@ class GcsBlobUpath(BlobUpath):
         b.seek(0)
         self._write_from_buffer(b, content_type="text/plain", size=len(data), **kwargs)
 
-    @overrides
     def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False):
         """
         Write bytes ``data`` to the current blob.
@@ -417,7 +410,6 @@ class GcsBlobUpath(BlobUpath):
         else:
             self._multipart_download(file_size, file_obj)
 
-    @overrides
     def read_bytes(self) -> bytes:
         """
         Return the content of the current blob as bytes.
@@ -438,7 +430,6 @@ class GcsBlobUpath(BlobUpath):
         # to ``RETRY_WRITE_ON_EXCEPTIONS``.
         return f(*args, **kwargs)
 
-    @overrides
     def _copy_file(self, target: Upath, *, overwrite=False) -> None:
         if isinstance(target, GcsBlobUpath):
             # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
@@ -457,7 +448,6 @@ class GcsBlobUpath(BlobUpath):
         else:
             super()._copy_file(target, overwrite=overwrite)
 
-    @overrides
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         """
         Download the content of the current blob to ``target``.
@@ -484,7 +474,6 @@ class GcsBlobUpath(BlobUpath):
             target.remove_file()
             raise
 
-    @overrides
     def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
         Upload the content of ``source`` to the current blob.
@@ -510,7 +499,6 @@ class GcsBlobUpath(BlobUpath):
 
         self._blob_rate_limit(_upload)
 
-    @overrides
     def iterdir(self) -> Iterator[Self]:
         """
         Yield immediate children under the current dir.
@@ -566,7 +554,6 @@ class GcsBlobUpath(BlobUpath):
             # If this is an "empty subfolder", it is counted but it can be
             # misleading. User should avoid creating such empty folders.
 
-    @overrides
     def remove_dir(self, **kwargs) -> int:
         """
         Remove the current dir and all the content under it recursively.
@@ -579,7 +566,6 @@ class GcsBlobUpath(BlobUpath):
             p.delete()
         return z
 
-    @overrides
     def remove_file(self) -> None:
         """
         Remove the current blob.
@@ -589,7 +575,6 @@ class GcsBlobUpath(BlobUpath):
         except exceptions.NotFound:
             raise FileNotFoundError(self)
 
-    @overrides
     def riterdir(self) -> Iterator[Self]:
         """
         Yield all blobs recursively under the current dir.
@@ -660,7 +645,6 @@ class GcsBlobUpath(BlobUpath):
             ) from e
 
     @contextlib.contextmanager
-    @overrides
     def lock(self, *, timeout: int | float = None):
         """
         This implementation does not prevent the file from being deleted

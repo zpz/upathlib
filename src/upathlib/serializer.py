@@ -5,8 +5,13 @@ import pickle
 import zlib
 from typing import TypeVar
 
-import orjson
-import zstandard
+# zstandard has good compression ratio and also quite fast.
+# It is very "balanced".
+# lz4 has lower compression ratio than zstandard but is much faster.
+#
+# See:
+#   https://stackoverflow.com/questions/67537111/how-do-i-decide-between-lz4-and-snappy-compression
+#   https://gist.github.com/oldcai/7230548
 
 T = TypeVar("T")
 
@@ -14,6 +19,8 @@ T = TypeVar("T")
 MEGABYTE = 1048576  # 1024 * 1024
 ZLIB_LEVEL = 3  # official default is 6
 ZSTD_LEVEL = 3  # official default is 3
+LZ4_LEVEL = 0   # official default is 0; high-compression value is 3, much slower at compressing
+PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 
 def _loads(func, data, **kwargs):
@@ -29,18 +36,6 @@ def _loads(func, data, **kwargs):
             gc.enable()
 
 
-class ByteSerializer(abc.ABC):
-    @classmethod
-    @abc.abstractmethod
-    def serialize(cls, x: T, **kwargs) -> bytes:
-        raise NotImplementedError
-
-    @classmethod
-    @abc.abstractmethod
-    def deserialize(cls, y: bytes, **kwargs) -> T:
-        raise NotImplementedError
-
-
 class TextSerializer(abc.ABC):
     @classmethod
     @abc.abstractmethod
@@ -53,10 +48,32 @@ class TextSerializer(abc.ABC):
         raise NotImplementedError
 
 
+class JsonSerializer(TextSerializer):
+    @classmethod
+    def serialize(cls, x, **kwargs):
+        return json.dumps(x, **kwargs)
+
+    @classmethod
+    def deserialize(cls, y, **kwargs):
+        return _loads(json.loads, y, **kwargs)
+
+
+class ByteSerializer(abc.ABC):
+    @classmethod
+    @abc.abstractmethod
+    def serialize(cls, x: T, **kwargs) -> bytes:
+        raise NotImplementedError
+
+    @classmethod
+    @abc.abstractmethod
+    def deserialize(cls, y: bytes, **kwargs) -> T:
+        raise NotImplementedError
+
+
 class PickleSerializer(ByteSerializer):
     @classmethod
     def serialize(cls, x, *, protocol=None):
-        return pickle.dumps(x, protocol=protocol)
+        return pickle.dumps(x, protocol=protocol or PICKLE_PROTOCOL)
 
     @classmethod
     def deserialize(cls, y):
@@ -75,57 +92,35 @@ class ZPickleSerializer(PickleSerializer):
         return super().deserialize(y)
 
 
-class ZstdPickleSerializer(PickleSerializer):
-    @classmethod
-    def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None):
-        y = super().serialize(x, protocol=protocol)
-        return zstandard.compress(y, level=level)
+try:
+    import zstandard
+except ImportError:
+    pass
+else:
+    class ZstdPickleSerializer(PickleSerializer):
+        @classmethod
+        def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None):
+            y = super().serialize(x, protocol=protocol)
+            return zstandard.compress(y, level=level)
 
-    @classmethod
-    def deserialize(cls, y):
-        y = zstandard.decompress(y)
-        return super().deserialize(y)
-
-
-class JsonSerializer(TextSerializer):
-    @classmethod
-    def serialize(cls, x, **kwargs):
-        return json.dumps(x, **kwargs)
-
-    @classmethod
-    def deserialize(cls, y, **kwargs):
-        return _loads(json.loads, y, **kwargs)
+        @classmethod
+        def deserialize(cls, y):
+            y = zstandard.decompress(y)
+            return super().deserialize(y)
 
 
-class OrjsonSerializer(ByteSerializer):
-    @classmethod
-    def serialize(cls, x, **kwargs):
-        return orjson.dumps(x, **kwargs)  # pylint: disable=no-member
+try:
+    import lz4.frame
+except ImportError:
+    pass
+else:
+    class Lz4PickleSerializer(PickleSerializer):
+        @classmethod
+        def serialize(cls, x, *, level=LZ4_LEVEL, protocol=None):
+            y = super().serialize(x, protocol=protocol)
+            return lz4.frame.compress(y, compression_level=level)
 
-    @classmethod
-    def deserialize(cls, y):
-        return _loads(orjson.loads, y)  # pylint: disable=no-member
-
-
-class ZOrjsonSerializer(OrjsonSerializer):
-    @classmethod
-    def serialize(cls, x, *, level=ZLIB_LEVEL, **kwargs):
-        y = super().serialize(x, **kwargs)
-        return zlib.compress(y, level=level)
-
-    @classmethod
-    def deserialize(cls, y):
-        y = zlib.decompress(y)
-        return super().deserialize(y)
-
-
-class ZstdOrjsonSerializer(OrjsonSerializer):
-    @classmethod
-    def serialize(cls, x, *, level=ZSTD_LEVEL, **kwargs):
-        y = super().serialize(x, **kwargs)
-        return zstandard.compress(y, level=level)
-
-    @classmethod
-    def deserialize(cls, y):
-        y = zstandard.decompress(y)
-        return super().deserialize(y)
+        @classmethod
+        def deserialize(cls, y):
+            y = lz4.frame.decompress(y)
+            return super().deserialize(y)
