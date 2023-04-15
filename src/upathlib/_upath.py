@@ -898,7 +898,7 @@ class Upath(abc.ABC):
         """
         raise NotImplementedError
 
-    def rmrf(self, *, quiet: bool = True, concurrent: bool = True) -> int:
+    def rmrf(self, *, quiet: bool = True, concurrent: bool = False) -> int:
         """Remove the current file or dir (i.e. ``self``) recursively.
 
         Analogous to the Linux command ``rm -rf``, hence the name of this method.
@@ -912,6 +912,9 @@ class Upath(abc.ABC):
             /a/b/c
 
         then ``Upath('/a/b/c').rmrf()`` would remove all of them.
+
+        ``concurrent`` is ``False`` by default because this method is often used in
+        ``__del__`` of user classes, and thread pool is problematic in ``__del__``.
         """
         if self._path == "/":
             raise UnsupportedOperation("`rmrf` not allowed on root directory")
