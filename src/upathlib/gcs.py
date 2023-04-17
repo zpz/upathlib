@@ -28,7 +28,8 @@ from google.cloud import storage
 # `google.cloud` is repo python-cloud-core.
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
-    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+    ConditionalRetryPolicy,
+    is_generation_specified
 )
 
 # The default timeout in `DEFAULT_RETRY` is 120 seconds.
@@ -706,7 +707,11 @@ class GcsBlobUpath(BlobUpath):
                     self._blob().delete(
                         if_generation_match=self._generation,  # TODO: should we remove this condition?
                         timeout=120,
-                        retry=DEFAULT_RETRY_IF_GENERATION_SPECIFIED.with_timeout(240),
+                        retry=ConditionalRetryPolicy(
+                            DEFAULT_RETRY.with_timeout(240),
+                            is_generation_specified,
+                            ["query_params"],
+                        )
                     )
 
                 except Exception as e:
