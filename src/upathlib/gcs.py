@@ -14,8 +14,6 @@ from io import BufferedReader, BytesIO, UnsupportedOperation
 from typing import Optional
 
 import google.auth
-import requests
-import requests.exceptions
 from google import resumable_media
 from google.api_core import exceptions
 from google.cloud import storage
@@ -26,8 +24,8 @@ from google.cloud import storage
 # `google.cloud` is repo python-cloud-core.
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
-    ConditionalRetryPolicy,
     DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+    ConditionalRetryPolicy,
     is_generation_specified,
 )
 
@@ -54,7 +52,7 @@ LARGE_FILE_SIZE = MEGABYTES64
 
 def retry_if_generation_specified(retry_timeout=None):
     if retry_timeout is None:
-        return DEFAULT_RETRY_IF_GENERATION_SPECIFIED                         
+        return DEFAULT_RETRY_IF_GENERATION_SPECIFIED
     return ConditionalRetryPolicy(
         DEFAULT_RETRY.with_timeout(retry_timeout),
         is_generation_specified,
@@ -316,7 +314,12 @@ class GcsBlobUpath(BlobUpath):
         return obj
 
     def _write_from_buffer(
-        self, file_obj, *, overwrite=False, content_type=None, size=None,
+        self,
+        file_obj,
+        *,
+        overwrite=False,
+        content_type=None,
+        size=None,
         retry_timeout=None,
     ):
         if self._path == "/":
