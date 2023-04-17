@@ -21,12 +21,16 @@ from google.api_core import exceptions
 from google.api_core.retry import if_exception_type
 from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
-from google.cloud.storage.constants import _DEFAULT_TIMEOUT
+
 # 60 seconds; this is the "connection timeout" to server.
 # From my reading, it's the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
 # that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
 # `google.cloud` is repo python-cloud-core.
-from google.cloud.storage.retry import DEFAULT_RETRY, DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+from google.cloud.storage.retry import (
+    DEFAULT_RETRY,
+    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+)
+
 # The default timeout in `DEFAULT_RETRY` is 120 seconds.
 from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from typing_extensions import Self
@@ -282,8 +286,11 @@ class GcsBlobUpath(BlobUpath):
         """
         b = self._blob()
         try:
-            b.reload(client=self._client(), timeout=request_timeout,
-                    retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)))
+            b.reload(
+                client=self._client(),
+                timeout=request_timeout,
+                retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)),
+            )
         except exceptions.NotFound:
             return None
         return FileInfo(
@@ -365,7 +372,10 @@ class GcsBlobUpath(BlobUpath):
             while True:
                 try:
                     blob.download_to_file(
-                        buffer, client=client, start=start + current_size, end=end,
+                        buffer,
+                        client=client,
+                        start=start + current_size,
+                        end=end,
                         raw_download=True,
                     )
                     # "checksum mismatch" errors were encountered when downloading Parquet files.
@@ -417,7 +427,9 @@ class GcsBlobUpath(BlobUpath):
         file_size = file_info.size  # bytes
         if file_size <= LARGE_FILE_SIZE:
             try:
-                self._blob().download_to_file(file_obj, client=self._client(), raw_download=True)
+                self._blob().download_to_file(
+                    file_obj, client=self._client(), raw_download=True
+                )
                 # "checksum mismatch" errors were encountered when downloading Parquet files.
                 # `raw_download=True` seems to prevent that error.
                 return
