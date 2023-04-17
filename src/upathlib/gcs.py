@@ -29,7 +29,7 @@ from google.cloud import storage
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
     ConditionalRetryPolicy,
-    is_generation_specified
+    is_generation_specified,
 )
 
 # The default timeout in `DEFAULT_RETRY` is 120 seconds.
@@ -711,7 +711,7 @@ class GcsBlobUpath(BlobUpath):
                             DEFAULT_RETRY.with_timeout(240),
                             is_generation_specified,
                             ["query_params"],
-                        )
+                        ),
                     )
 
                 except Exception as e:
