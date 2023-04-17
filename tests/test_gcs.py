@@ -24,7 +24,7 @@ class Blob:
     def exists(self, client=None):
         return self.name in self._bucket._blobs
 
-    def reload(self, client=None):
+    def reload(self, client=None, timeout=None, retry=None):
         if not self.exists(client):
             raise NotFound(self.name)
 
@@ -42,7 +42,7 @@ class Blob:
             'size': len(data),
         }
 
-    def download_to_file(self, file_obj, client=None):
+    def download_to_file(self, file_obj, client=None, raw_download=None):
         try:
             z = self._bucket._blobs[self.name]
             file_obj.write(z['data'])
