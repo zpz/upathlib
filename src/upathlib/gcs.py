@@ -283,6 +283,7 @@ class GcsBlobUpath(BlobUpath):
         """
         b = self._blob()
         try:
+            print('type(b)', type(b))
             b.reload(
                 client=self._client(),
                 timeout=request_timeout,
