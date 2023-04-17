@@ -21,7 +21,13 @@ from google.api_core import exceptions
 from google.api_core.retry import if_exception_type
 from google.auth import exceptions as auth_exceptions
 from google.cloud import storage
-from google.cloud.storage.retry import DEFAULT_RETRY
+from google.cloud.storage.constants import _DEFAULT_TIMEOUT
+# 60 seconds; this is the "connection timeout" to server.
+# From my reading, it's the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
+# that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
+# `google.cloud` is repo python-cloud-core.
+from google.cloud.storage.retry import DEFAULT_RETRY, DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+# The default timeout in `DEFAULT_RETRY` is 120 seconds.
 from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from typing_extensions import Self
 
@@ -39,6 +45,7 @@ MEGABYTES32 = 33554432
 MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 
+# DEFAULT_RETRY has default timeout 120 seconds.
 
 RETRY_WRITE_ON_EXCEPTIONS = [
     exceptions.InternalServerError,
@@ -265,14 +272,18 @@ class GcsBlobUpath(BlobUpath):
         )
         return len(list(blobs)) > 0
 
-    def file_info(self) -> Optional[FileInfo]:
+    def file_info(self, *, request_timeout=60) -> Optional[FileInfo]:
         """
         Return file info if the current path is a file;
         otherwise return ``None``.
+
+        ``request_timeout`` is the http request timeout, not "retry" timeout.
+        The default is 60 (``google.cloud.storage.constants._DEFAULT_TIMEOUT``).
         """
         b = self._blob()
         try:
-            b.reload(client=self._client())
+            b.reload(client=self._client(), timeout=request_timeout,
+                    retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)))
         except exceptions.NotFound:
             return None
         return FileInfo(
@@ -354,8 +365,11 @@ class GcsBlobUpath(BlobUpath):
             while True:
                 try:
                     blob.download_to_file(
-                        buffer, client=client, start=start + current_size, end=end
+                        buffer, client=client, start=start + current_size, end=end,
+                        raw_download=True,
                     )
+                    # "checksum mismatch" errors were encountered when downloading Parquet files.
+                    # `raw_download=True` seems to prevent that error.
                 except exceptions.NotFound:
                     raise FileNotFoundError(blob.name)
                 current_size = buffer.tell()
@@ -396,14 +410,16 @@ class GcsBlobUpath(BlobUpath):
                     # guarantee cancellation here.
             raise
 
-    def _read_into_buffer(self, file_obj):
-        file_info = self.file_info()
+    def _read_into_buffer(self, file_obj, *, request_timeout=120):
+        file_info = self.file_info(request_timeout=request_timeout)
         if not file_info:
             raise FileNotFoundError(self)
         file_size = file_info.size  # bytes
         if file_size <= LARGE_FILE_SIZE:
             try:
-                self._blob().download_to_file(file_obj, client=self._client())
+                self._blob().download_to_file(file_obj, client=self._client(), raw_download=True)
+                # "checksum mismatch" errors were encountered when downloading Parquet files.
+                # `raw_download=True` seems to prevent that error.
                 return
             except exceptions.NotFound:
                 raise FileNotFoundError(self)
@@ -617,7 +633,7 @@ class GcsBlobUpath(BlobUpath):
         try:
             _acquire_()
         except FileExistsError as e:
-            finfo = self.file_info()
+            finfo = self.file_info(request_timeout=timeout)
             now = datetime.utcnow().replace(tzinfo=timezone.utc)
             file_age = (now - finfo.time_created).total_seconds()
             if file_age - timeout > self._LOCK_EXPIRE_IN_SECONDS:
@@ -670,11 +686,17 @@ class GcsBlobUpath(BlobUpath):
             self._lock_count -= 1
             if self._lock_count == 0:
                 try:
-                    self._blob_rate_limit(
-                        self._blob().delete,
-                        client=self._client(),
+                    # self._blob_rate_limit(
+                    #     self._blob().delete,
+                    #     client=self._client(),
+                    #     if_generation_match=self._generation,  # TODO: should we remove this condition?
+                    # )
+                    self._blob().delete(
                         if_generation_match=self._generation,  # TODO: should we remove this condition?
+                        timeout=120,
+                        retry=DEFAULT_RETRY_IF_GENERATION_SPECIFIED.with_timeout(240),
                     )
+
                 except Exception as e:
                     raise LockReleaseError(f"failed to delete lock file {self}") from e
 
