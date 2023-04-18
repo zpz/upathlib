@@ -335,4 +335,5 @@ class LocalUpath(Upath, os.PathLike):
             except Exception as e:
                 raise LockReleaseError(f"failed to release lock on file {self}") from e
 
+
 LocalPathType = Union[str, pathlib.Path, LocalUpath]
