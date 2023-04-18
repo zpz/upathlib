@@ -228,21 +228,22 @@ def test_lock1(p: Upath, timeout=None, wait=8):
             print("mp returned after", z, "seconds")
             # The work is not able to acquire the lock:
             assert z <= -(wait / 2)
-    assert not pp.exists()
+    if not isinstance(p, LocalUpath):
+        assert not pp.exists()
 
 
 def _inc_in_mp(counter, idx):
     t0 = time.perf_counter()
     n = 0
-    while time.perf_counter() - t0 < 10:
+    while time.perf_counter() - t0 < 5:
         with counter.with_suffix(".lock").lock():
             x = counter.read_text()
             print("x:", x, "worker", idx, flush=True)
-            time.sleep(random.random() * 0.3)
+            time.sleep(random.random() * 0.1)
             counter.write_text(str(int(x) + 1), overwrite=True)
             n += 1
             print("        worker", idx, n, flush=True)
-        time.sleep(random.random() * 0.2)
+        time.sleep(random.random() * 0.1)
     return idx, n
 
 
@@ -262,7 +263,8 @@ def test_lock2(p: Upath):
         print("")
         print(total1, total2)
         assert total1 == total2
-    assert not counter.with_suffix(".lock").exists()
+    if not isinstance(p, LocalUpath):
+        assert not counter.with_suffix(".lock").exists()
 
 
 def test_lock(p: Upath):

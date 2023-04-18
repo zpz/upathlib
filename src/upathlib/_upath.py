@@ -981,8 +981,8 @@ class Upath(abc.ABC):
         .. note:: This method should always be called on an "auxiliary file" (like in the example above),
           whose sole purpose is to implement the lock; the file being locked should not be used for any other purpose.
 
-        .. note:: Just before exiting the context manager, the implementation should
-          delete the lock file.
+        .. note:: It's up to a specific subclass to decide whether it should delete the lock file
+          just before exiting the context manager.
 
         Some storage engines may not provide the capability to implement
         this lock.
