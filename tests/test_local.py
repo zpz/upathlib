@@ -33,7 +33,10 @@ def test_all(test_path):
     upathlib._tests.test_all(test_path)
 
 
-def test_lock(test_path):
+def test_lock():
+    test_path = LocalUpath('/tmp/upathlib_local_test') / 'test-lock'
+    # Use a fix path to see whether there are issues, because
+    # the implementation leaves the lock file around.
     upathlib._tests.test_lock(test_path)
 
 

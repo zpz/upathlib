@@ -7,9 +7,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [0.7.8] - in progress
 
+### Changed
+
+- ``LocalUpath.lock`` no longer deletes the file after lock release.
+
 ### Enhanced
 
-- Finetuned "retry" logic in GCS.
+- Fine-tuned "retry" logic in GCS.
+- Fine-tuned ``LocalUpath.lock``.
 
 
 ## [0.7.7] - 2023-04-14

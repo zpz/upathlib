@@ -283,7 +283,6 @@ class GcsBlobUpath(BlobUpath):
         """
         b = self._blob()
         try:
-            print('type(b)', type(b))
             b.reload(
                 client=self._client(),
                 timeout=request_timeout,
@@ -653,7 +652,7 @@ class GcsBlobUpath(BlobUpath):
             ) from e
 
     @contextlib.contextmanager
-    def lock(self, *, timeout: int | float = None):
+    def lock(self, *, timeout=None):
         """
         This implementation does not prevent the file from being deleted
         by other workers that does not use the 'if-generation-match' condition.

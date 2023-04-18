@@ -41,7 +41,6 @@ class LocalUpath(Upath, os.PathLike):
         This is passed to `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_.
         """
         super().__init__(str(pathlib.Path(*pathsegments).absolute()))
-        self._lock_count: int = 0
         self._lock = None
 
     def __fspath__(self) -> str:
@@ -68,7 +67,6 @@ class LocalUpath(Upath, os.PathLike):
 
     def __setstate__(self, data):
         _, z1 = data
-        self._lock_count = 0
         self._lock = None
         super().__setstate__(z1)
 
@@ -309,37 +307,33 @@ class LocalUpath(Upath, os.PathLike):
         """
         This uses the package `filelock <https://github.com/tox-dev/py-filelock>`_ to implement
         a file lock for inter-process communication.
+
+        ..note.. At the end, this file is not deleted. If it is purely a dummy file to implement locking
+          for other things, user may want to delete this file after use.
         """
         if timeout is None:
             timeout = 60
-        if self._lock_count == 0:
-            os.makedirs(self.parent, exist_ok=True)
-            lock = filelock.FileLock(str(self))
-            t0 = time.perf_counter()
-            try:
-                lock.acquire(
-                    timeout=timeout, poll_interval=self._LOCK_POLL_INTERVAL_SECONDS
-                )
-            except Exception as e:
-                raise LockAcquireError(
-                    f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
-                ) from e
+        lock = self._lock
+        if lock is None:
+            lock = filelock.FileLock(str(self))  # this object manages re-entry itself
             self._lock = lock
-        self._lock_count += 1
+        os.makedirs(self.parent, exist_ok=True)
+        t0 = time.perf_counter()
+        try:
+            lock.acquire(
+                timeout=timeout, poll_interval=self._LOCK_POLL_INTERVAL_SECONDS
+            )
+        except Exception as e:
+            raise LockAcquireError(
+                f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
+            ) from e
         try:
             yield
         finally:
-            self._lock_count -= 1
-            if self._lock_count == 0:
-                try:
-                    try:
-                        self.remove_file()  # This must be done before releasing the lock, or lock can "leak".
-                    except FileNotFoundError:
-                        pass
-                    self._lock.release(force=True)
-                    self._lock = None
-                except Exception as e:
-                    raise LockReleaseError(f"failed to release lock file {self}") from e
+            try:
+                lock.release()  # in a re-entry situation, this may not actually "release" the lock
+            except Exception as e:
+                raise LockReleaseError(f"failed to release lock on file {self}") from e
 
 
 LocalPathType = Union[str, pathlib.Path, LocalUpath]
