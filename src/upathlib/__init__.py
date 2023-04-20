@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Union
 
 from ._blob import BlobUpath
-from ._local import LocalUpath, LocalPathType
+from ._local import LocalPathType, LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 try:

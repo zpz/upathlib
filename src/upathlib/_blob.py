@@ -88,7 +88,12 @@ class BlobUpath(Upath):
                 subdirs.add(tail)
 
     def download_dir(
-        self, target: LocalPathType, *, overwrite: bool = False, quiet: bool = False, **kwargs,
+        self,
+        target: LocalPathType,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
+        **kwargs,
     ) -> int:
         """
         A specialization of :meth:`~upathlib.Upath.copy_dir` where the target location
@@ -99,7 +104,12 @@ class BlobUpath(Upath):
         if not quiet:
             print(f"Downloading from {self!r} into {target!r}", file=sys.stderr)
         return self._copy_dir(
-            self, target, "download_file", overwrite=overwrite, quiet=quiet, **kwargs,
+            self,
+            target,
+            "download_file",
+            overwrite=overwrite,
+            quiet=quiet,
+            **kwargs,
         )
 
     def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
@@ -112,7 +122,12 @@ class BlobUpath(Upath):
         self.copy_file(target, overwrite=overwrite)
 
     def upload_dir(
-        self, source: LocalPathType, *, overwrite: bool = False, quiet: bool = False, **kwargs,
+        self,
+        source: LocalPathType,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
+        **kwargs,
     ) -> int:
         """
         A specialization of :meth:`~upathlib.Upath.copy_dir` for :class:`~upathlib.LocalUpath`
@@ -122,7 +137,13 @@ class BlobUpath(Upath):
         if not quiet:
             print(f"Importing from {source!r} into {self!r}", file=sys.stderr)
         return self._copy_dir(
-            source, self, "upload_file", overwrite=overwrite, quiet=quiet, reversed=True, **kwargs,
+            source,
+            self,
+            "upload_file",
+            overwrite=overwrite,
+            quiet=quiet,
+            reversed=True,
+            **kwargs,
         )
 
     def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:

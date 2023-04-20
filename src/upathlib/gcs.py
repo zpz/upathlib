@@ -28,13 +28,11 @@ from google.cloud.storage.retry import (
     ConditionalRetryPolicy,
     is_generation_specified,
 )
-
 from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
-
 
 # To see retry info, uncomment the following. The printout is typically not overwhelming.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
@@ -478,7 +476,9 @@ class GcsBlobUpath(BlobUpath):
         else:
             super()._copy_file(target, overwrite=overwrite)
 
-    def download_file(self, target: LocalPathType, *, overwrite=False, concurrent=True) -> None:
+    def download_file(
+        self, target: LocalPathType, *, overwrite=False, concurrent=True
+    ) -> None:
         """
         Download the content of the current blob to ``target``.
         """
