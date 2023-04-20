@@ -29,18 +29,21 @@ from google.cloud.storage.retry import (
     is_generation_specified,
 )
 
-# The default timeout in `DEFAULT_RETRY` is 120 seconds.
 from mpservice.util import MAX_THREADS, get_shared_thread_pool
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
+
+# To see retry info, uncomment the following. The printout is typically not overwhelming.
+# logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
+
+
 logger = logging.getLogger(__name__)
 
 # When downloading large files, there may be INFO logs from `google.resumable_media._helpers` about "No MD5 checksum was returned...".
 # You may want to suppress that log by setting its level to WARNING.
-
 
 # 67108864 = 256 * 1024 * 256 = 64 MB
 MEGABYTES32 = 33554432
@@ -85,6 +88,9 @@ def get_google_auth(
         credentials.refresh(google.auth.transport.requests.Request())
         # One check shows that this token expires in one hour.
         renewed = True
+
+    if renewed:
+        logger.debug("Google credentials refreshed")
 
     return project_id, credentials, renewed
 
@@ -424,12 +430,12 @@ class GcsBlobUpath(BlobUpath):
                     # guarantee cancellation here.
             raise
 
-    def _read_into_buffer(self, file_obj, *, request_timeout=120):
-        file_info = self.file_info(request_timeout=request_timeout)
+    def _read_into_buffer(self, file_obj, *, concurrent=True):
+        file_info = self.file_info()
         if not file_info:
             raise FileNotFoundError(self)
         file_size = file_info.size  # bytes
-        if file_size <= LARGE_FILE_SIZE:
+        if file_size <= LARGE_FILE_SIZE or not concurrent:
             try:
                 self._blob().download_to_file(
                     file_obj, client=self._client(), raw_download=True
@@ -442,12 +448,12 @@ class GcsBlobUpath(BlobUpath):
         else:
             self._multipart_download(file_size, file_obj)
 
-    def read_bytes(self) -> bytes:
+    def read_bytes(self, **kwargs) -> bytes:
         """
         Return the content of the current blob as bytes.
         """
         buffer = BytesIO()
-        self._read_into_buffer(buffer)
+        self._read_into_buffer(buffer, **kwargs)
         return buffer.getvalue()
 
     # Google imposes rate limiting on create/update/delete requests.
@@ -472,7 +478,7 @@ class GcsBlobUpath(BlobUpath):
         else:
             super()._copy_file(target, overwrite=overwrite)
 
-    def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
+    def download_file(self, target: LocalPathType, *, overwrite=False, concurrent=True) -> None:
         """
         Download the content of the current blob to ``target``.
         """
@@ -489,7 +495,7 @@ class GcsBlobUpath(BlobUpath):
             with open(target, "wb") as file_obj:
                 # If `target` is an existing directory,
                 # will raise `IsADirectoryError`.
-                self._read_into_buffer(file_obj)
+                self._read_into_buffer(file_obj, concurrent=concurrent)
             updated = self._blob().updated
             if updated is not None:
                 mtime = updated.timestamp()
