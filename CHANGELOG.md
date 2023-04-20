@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - Fine-tuned "retry" logic in GCS.
 - Fine-tuned ``LocalUpath.lock``.
+- Support parameter ``concurrent: bool`` in folder operations (and GCS file download) where possible.
 
 
 ## [0.7.7] - 2023-04-14

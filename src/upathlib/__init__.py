@@ -18,13 +18,13 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.7.8b2"
+__version__ = "0.7.8b3"
 
 from pathlib import Path
 from typing import Union
 
 from ._blob import BlobUpath
-from ._local import LocalUpath
+from ._local import LocalPathType, LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 try:
