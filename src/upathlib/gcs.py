@@ -21,12 +21,7 @@ from google.cloud import storage
 # From my reading, it's the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
 # that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
 # `google.cloud` is repo python-cloud-core.
-from google.cloud.storage.retry import (
-    DEFAULT_RETRY,
-    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
-    ConditionalRetryPolicy,
-    is_generation_specified,
-)
+from google.cloud.storage.retry import DEFAULT_RETRY
 from mpservice.concurrent.futures import get_shared_thread_pool
 from mpservice.threading import MAX_THREADS
 from typing_extensions import Self
@@ -49,16 +44,6 @@ MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 
 # DEFAULT_RETRY has default timeout 120 seconds.
-
-
-def retry_if_generation_specified(retry_timeout=None):
-    if retry_timeout is None:
-        return DEFAULT_RETRY_IF_GENERATION_SPECIFIED
-    return ConditionalRetryPolicy(
-        DEFAULT_RETRY.with_timeout(retry_timeout),
-        is_generation_specified,
-        ["query_params"],
-    )
 
 
 def get_google_auth(
@@ -324,7 +309,6 @@ class GcsBlobUpath(BlobUpath):
         overwrite=False,
         content_type=None,
         size=None,
-        retry_timeout=None,
     ):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
@@ -336,7 +320,6 @@ class GcsBlobUpath(BlobUpath):
                 size=size,
                 client=self._client(),
                 if_generation_match=None if overwrite else 0,
-                retry=retry_if_generation_specified(retry_timeout=retry_timeout),
             )
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
@@ -627,9 +610,13 @@ class GcsBlobUpath(BlobUpath):
         if timeout is None:
             timeout = 120  # seconds
 
+        retry = DEFAULT_RETRY.with_timeout(timeout).with_predicate(
+            lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
+        )
+
         t0 = time.perf_counter()
         try:
-            self._write_bytes(b"0", retry_timeout=timeout)
+            retry(self._write_bytes)(b'0')
             self._generation = self._blob().generation
         except FileExistsError as e:
             finfo = self.file_info(request_timeout=timeout)
@@ -685,8 +672,6 @@ class GcsBlobUpath(BlobUpath):
                 try:
                     self._blob().delete(
                         if_generation_match=self._generation,  # TODO: should we remove this condition?
-                        timeout=150,
-                        retry=retry_if_generation_specified(retry_timeout=300),
                     )
 
                 except Exception as e:
