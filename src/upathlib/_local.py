@@ -10,7 +10,6 @@ import sys
 import time
 from collections.abc import Iterator
 from io import BufferedReader
-from typing import Optional, Union
 
 import filelock
 
@@ -105,7 +104,7 @@ class LocalUpath(Upath, os.PathLike):
         """
         return self.path.is_file()
 
-    def file_info(self) -> Optional[FileInfo]:
+    def file_info(self) -> FileInfo | None:
         """
         Return file info if the current path is a file;
         otherwise return ``None``.
@@ -336,4 +335,4 @@ class LocalUpath(Upath, os.PathLike):
                 raise LockReleaseError(f"failed to release lock on file {self}") from e
 
 
-LocalPathType = Union[str, pathlib.Path, LocalUpath]
+LocalPathType = str | pathlib.Path | LocalUpath

@@ -11,7 +11,6 @@ import time
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
-from typing import Optional
 
 import google.auth
 from google import resumable_media
@@ -28,7 +27,8 @@ from google.cloud.storage.retry import (
     ConditionalRetryPolicy,
     is_generation_specified,
 )
-from mpservice.util import MAX_THREADS, get_shared_thread_pool
+from mpservice.concurrent.futures import get_shared_thread_pool
+from mpservice.threading import MAX_THREADS
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -277,7 +277,7 @@ class GcsBlobUpath(BlobUpath):
         )
         return len(list(blobs)) > 0
 
-    def file_info(self, *, request_timeout=60) -> Optional[FileInfo]:
+    def file_info(self, *, request_timeout=60) -> FileInfo | None:
         """
         Return file info if the current path is a file;
         otherwise return ``None``.

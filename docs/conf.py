@@ -70,14 +70,10 @@ html_theme = 'pydata_sphinx_theme'
 
 html_theme_options = {
     "github_url": "https://github.com/zpz/upathlib",
-    "footer_items": ["copyright"],
+    "footer_end": ["copyright"],
     'show_nav_level': 4,  # no effect?
     'navigation_depth': 4,  # no effect?
     'collapse_navigation': False,
-}
-
-html_theme_options = {
-    'github_url': 'https://github.com/zpz/mpservice',
 }
 
 html_static_path = ['_static']
