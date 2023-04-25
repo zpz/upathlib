@@ -30,10 +30,10 @@ from io import BufferedReader, UnsupportedOperation
 from typing import (
     Any,
     Callable,
-    Optional,
 )
 
-from mpservice.util import MAX_THREADS, get_shared_thread_pool
+from mpservice.concurrent.futures import get_shared_thread_pool
+from mpservice.threading import MAX_THREADS
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
@@ -411,7 +411,7 @@ class Upath(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def file_info(self) -> Optional[FileInfo]:
+    def file_info(self) -> FileInfo | None:
         """
         If :meth:`is_file` is ``False``, return ``None``; otherwise, return file info.
         """
@@ -549,8 +549,8 @@ class Upath(abc.ABC):
         data: str,
         *,
         overwrite: bool = False,
-        encoding: Optional[str] = None,
-        errors: Optional[str] = None,
+        encoding: str | None = None,
+        errors: str | None = None,
     ) -> None:
         """Write text ``data`` to the current file.
 
@@ -565,7 +565,7 @@ class Upath(abc.ABC):
         self.write_bytes(z, overwrite=overwrite)
 
     def read_text(
-        self, *, encoding: Optional[str] = None, errors: Optional[str] = None
+        self, *, encoding: str | None = None, errors: str | None = None
     ) -> str:
         """
         Return the decoded contents of the pointed-to file as a string.
