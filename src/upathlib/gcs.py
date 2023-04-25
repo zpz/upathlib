@@ -611,7 +611,8 @@ class GcsBlobUpath(BlobUpath):
             timeout = 120  # seconds
 
         retry = DEFAULT_RETRY.with_timeout(timeout).with_predicate(
-            lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
+            lambda exc: DEFAULT_RETRY._predicate(exc)
+            or isinstance(exc, FileExistsError)
         )
 
         t0 = time.perf_counter()
