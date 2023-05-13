@@ -19,8 +19,6 @@ import filelock
 #
 # Other options to look into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
-from deprecation import deprecated
-
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 # End user may want to do this:
