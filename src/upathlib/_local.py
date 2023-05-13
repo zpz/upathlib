@@ -19,8 +19,6 @@ import filelock
 #
 # Other options to look into include
 # `oslo.concurrency`, `pylocker`, `portalocker`.
-from deprecation import deprecated
-
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 
 # End user may want to do this:
@@ -76,13 +74,6 @@ class LocalUpath(Upath, os.PathLike):
         of the path.
         """
         return pathlib.Path(self._path)
-
-    @property
-    @deprecated(
-        deprecated_in="0.6.9", removed_in="0.8.0", details="Use `path` instead."
-    )
-    def localpath(self):
-        return self.path
 
     def as_uri(self) -> str:
         """
