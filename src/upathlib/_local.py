@@ -77,13 +77,6 @@ class LocalUpath(Upath, os.PathLike):
         """
         return pathlib.Path(self._path)
 
-    @property
-    @deprecated(
-        deprecated_in="0.6.9", removed_in="0.8.0", details="Use `path` instead."
-    )
-    def localpath(self):
-        return self.path
-
     def as_uri(self) -> str:
         """
         Represent the path as a file URI.

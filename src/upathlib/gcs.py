@@ -8,6 +8,7 @@ import contextlib
 import logging
 import os
 import time
+import warnings
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
@@ -44,6 +45,15 @@ MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 
 # DEFAULT_RETRY has default timeout 120 seconds.
+
+# Workaround:
+# The availability of `Retry.with_timeout` is in a messy state
+# between versions of `google-api-core`.
+if not hasattr(DEFAULT_RETRY, 'with_timeout'):
+    if hasattr(DEFAULT_RETRY, 'with_deadline'):
+        DEFAULT_RETRY.with_timeout = DEFAULT_RETRY.with_deadline
+    else:
+        raise ImportError('Retry has neither `with_timeout` nor `with_deadline`; please look into the version of `google-api-core`')
 
 
 def get_google_auth(
