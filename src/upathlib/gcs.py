@@ -688,7 +688,9 @@ class GcsBlobUpath(BlobUpath):
                     )
                 except Exception as e:
                     t1 = time.perf_counter()
-                    raise LockReleaseError(f"failed to delete lock file {self} after trying for {t1 - t0:.2f} seconds") from e
+                    raise LockReleaseError(
+                        f"failed to delete lock file {self} after trying for {t1 - t0:.2f} seconds"
+                    ) from e
 
     def open(self, mode="r", **kwargs):
         """
