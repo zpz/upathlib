@@ -681,13 +681,14 @@ class GcsBlobUpath(BlobUpath):
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
+                t0 = time.perf_counter()
                 try:
                     self._blob().delete(
                         if_generation_match=self._generation,  # TODO: should we remove this condition?
                     )
-
                 except Exception as e:
-                    raise LockReleaseError(f"failed to delete lock file {self}") from e
+                    t1 = time.perf_counter()
+                    raise LockReleaseError(f"failed to delete lock file {self} after trying for {t1 - t0:.2f} seconds") from e
 
     def open(self, mode="r", **kwargs):
         """
