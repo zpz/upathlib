@@ -32,8 +32,6 @@ from typing import (
     Callable,
 )
 
-from mpservice.concurrent.futures import get_shared_thread_pool
-from mpservice.threading import MAX_THREADS
 from tqdm.auto import tqdm
 from typing_extensions import Self
 
@@ -42,6 +40,7 @@ from .serializer import (
     PickleSerializer,
     ZPickleSerializer,
 )
+from ._util import MAX_THREADS, get_shared_thread_pool
 
 try:
     from .serializer import ZstdPickleSerializer

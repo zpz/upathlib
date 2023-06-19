@@ -22,12 +22,11 @@ from google.cloud import storage
 # that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
 # `google.cloud` is repo python-cloud-core.
 from google.cloud.storage.retry import DEFAULT_RETRY
-from mpservice.concurrent.futures import get_shared_thread_pool
-from mpservice.threading import MAX_THREADS
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
+from ._util import get_shared_thread_pool, MAX_THREADS
 
 # To see retry info, uncomment the following. The printout is typically not overwhelming.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
