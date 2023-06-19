@@ -1,9 +1,8 @@
-import threading
 import os
-from concurrent.futures import ThreadPoolExecutor
-import weakref
+import threading
 import warnings
-
+import weakref
+from concurrent.futures import ThreadPoolExecutor
 
 MAX_THREADS = min(32, (os.cpu_count() or 1) + 4)
 """
@@ -41,11 +40,10 @@ def get_shared_thread_pool(
     return executor
 
 
-
 if hasattr(os, 'register_at_fork'):  # not available on Windows
 
     def _clear_global_state():
-        for box in (_global_thread_pools_, ):
+        for box in (_global_thread_pools_,):
             for name in list(box.keys()):
                 pool = box.get(name)
                 if pool is not None:

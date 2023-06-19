@@ -26,7 +26,7 @@ from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
-from ._util import get_shared_thread_pool, MAX_THREADS
+from ._util import MAX_THREADS, get_shared_thread_pool
 
 # To see retry info, uncomment the following. The printout is typically not overwhelming.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
