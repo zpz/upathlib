@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.8.1] - in progress
+## [0.8.1] - 2023-06-18
 
 - ``google_api_core.Retry.timeout`` workaround
+- Remove dependency on ``mpservice``; the new module ``_util.py`` is copied from ``mpservice``.
 
 
 ## [0.8.0] - 2024-04-25
