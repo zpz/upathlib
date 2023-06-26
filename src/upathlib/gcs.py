@@ -14,7 +14,7 @@ from io import BufferedReader, BytesIO, UnsupportedOperation
 
 import google.auth
 from google import resumable_media
-from google.api_core import exceptions, if_exception_type, retry
+from google.api_core import exceptions, retry
 from google.cloud import storage
 
 # 60 seconds; this is the "connection timeout" to server.
@@ -79,7 +79,7 @@ def get_google_auth(
         or (credentials.expiry - datetime.utcnow()).total_seconds() < valid_for_seconds
     ):
         retry.Retry(
-            predicate=if_exception_type(
+            predicate=retry.if_exception_type(
                 google.auth.exceptions.RefreshError,
                 google.auth.exceptions.TransportError,
             ),
