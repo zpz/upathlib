@@ -614,7 +614,13 @@ class GcsBlobUpath(BlobUpath):
             obj = self / p.name[k:]
             yield obj
 
-    def _acquire_lease(self, *, timeout: int = None, retry_initial_delay: float = None, retry_max_delay: float = None):
+    def _acquire_lease(
+        self,
+        *,
+        timeout: int = None,
+        retry_initial_delay: float = None,
+        retry_max_delay: float = None,
+    ):
         # Note: `timeout = None` does not mean infinite wait.
         # It means a default wait time. If user wants longer wait,
         # just pass in a large number. Because user often associate
@@ -625,10 +631,14 @@ class GcsBlobUpath(BlobUpath):
         if timeout is None:
             timeout = 120  # seconds
 
-        retry = DEFAULT_RETRY.with_timeout(timeout).with_predicate(
-            lambda exc: DEFAULT_RETRY._predicate(exc)
-            or isinstance(exc, FileExistsError)
-        ).with_delay(retry_initial_delay or 0.1, retry_max_delay or 30.0)
+        retry = (
+            DEFAULT_RETRY.with_timeout(timeout)
+            .with_predicate(
+                lambda exc: DEFAULT_RETRY._predicate(exc)
+                or isinstance(exc, FileExistsError)
+            )
+            .with_delay(retry_initial_delay or 0.1, retry_max_delay or 30.0)
+        )
         # One typical case that triggers this retry is that multiple workers need to
         # lock the same file and read/write it. The default delay, (1, 60), is a bit too long
         # for this use case.
@@ -653,7 +663,11 @@ class GcsBlobUpath(BlobUpath):
                 self._blob().delete(client=self._client())
                 # If this fails, the exception will propagate, which is not LockAcquireError.
                 # After deleting the file, try it again:
-                self._acquire_lease(timeout=timeout, retry_initial_delay=retry_initial_delay, retry_max_delay=retry_max_delay)
+                self._acquire_lease(
+                    timeout=timeout,
+                    retry_initial_delay=retry_initial_delay,
+                    retry_max_delay=retry_max_delay,
+                )
             else:
                 raise LockAcquireError(
                     f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
@@ -681,7 +695,11 @@ class GcsBlobUpath(BlobUpath):
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
 
         if self._lock_count == 0:
-            self._acquire_lease(timeout=timeout, retry_initial_delay=retry_initial_delay, retry_max_delay=retry_max_delay)
+            self._acquire_lease(
+                timeout=timeout,
+                retry_initial_delay=retry_initial_delay,
+                retry_max_delay=retry_max_delay,
+            )
         self._lock_count += 1
         try:
             yield
