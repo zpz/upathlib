@@ -55,10 +55,10 @@ class AzureBlobUpath(BlobUpath):
         container_name: str = None,
     ):
         if container_name is None:
-            assert len(paths) == 1
+            assert len(paths) == 1, paths
             path = paths[0]
             account_url = self.get_account_info()["account_url"]
-            assert path.startswith(account_url)
+            assert path.startswith(account_url), path
             path = path[len(account_url) :]
             k = path.find("/")
             if k < 0:
@@ -146,7 +146,7 @@ class AzureBlobUpath(BlobUpath):
                     source._blob_client.url,
                     requires_sync=True,
                 )
-                assert copy["copy_status"] == "success"
+                assert copy["copy_status"] == "success", copy['copy_status']
 
     def _copy_file(self, target: Upath, *, overwrite=False):
         if isinstance(target, AzureBlobUpath):

@@ -16,7 +16,7 @@ def _resolve_local_path(p: LocalPathType):
     if isinstance(p, pathlib.Path):
         p = LocalUpath(str(p.resolve().absolute()))
     else:
-        assert isinstance(p, LocalUpath)
+        assert isinstance(p, LocalUpath), type(p)
     return p
 
 

@@ -189,7 +189,7 @@ class GcsBlobUpath(BlobUpath):
             #   'gs://bucket-name/path...'
 
             p0 = paths[0]
-            assert p0.startswith("gs://")
+            assert p0.startswith("gs://"), p0
             p0 = p0[5:]
             k = p0.find("/")
             if k < 0:
@@ -201,7 +201,7 @@ class GcsBlobUpath(BlobUpath):
                 paths = (p0, *paths[1:])
 
         super().__init__(*paths)
-        assert bucket_name
+        assert bucket_name, bucket_name
         self.bucket_name = bucket_name
         self._bucket_ = None
         self._lock_count: int = 0
@@ -587,7 +587,7 @@ class GcsBlobUpath(BlobUpath):
         z = super().remove_dir(**kwargs)
         prefix = self.blob_name + "/"
         for p in self._client().list_blobs(self._bucket(), prefix=prefix):
-            assert p.name.endswith("/")
+            assert p.name.endswith("/"), p.name
             p.delete()
         return z
 
@@ -614,7 +614,7 @@ class GcsBlobUpath(BlobUpath):
             obj = self / p.name[k:]
             yield obj
 
-    def _acquire_lease(self, *, timeout: int = None):
+    def _acquire_lease(self, *, timeout: int = None, retry_initial_delay: float = None, retry_max_delay: float = None):
         # Note: `timeout = None` does not mean infinite wait.
         # It means a default wait time. If user wants longer wait,
         # just pass in a large number. Because user often associate
@@ -628,7 +628,10 @@ class GcsBlobUpath(BlobUpath):
         retry = DEFAULT_RETRY.with_timeout(timeout).with_predicate(
             lambda exc: DEFAULT_RETRY._predicate(exc)
             or isinstance(exc, FileExistsError)
-        )
+        ).with_delay(retry_initial_delay or 0.1, retry_max_delay or 30.0)
+        # One typical case that triggers this retry is that multiple workers need to
+        # lock the same file and read/write it. The default delay, (1, 60), is a bit too long
+        # for this use case.
 
         t0 = time.perf_counter()
         try:
@@ -650,7 +653,7 @@ class GcsBlobUpath(BlobUpath):
                 self._blob().delete(client=self._client())
                 # If this fails, the exception will propagate, which is not LockAcquireError.
                 # After deleting the file, try it again:
-                self._acquire_lease(timeout=timeout)
+                self._acquire_lease(timeout=timeout, retry_initial_delay=retry_initial_delay, retry_max_delay=retry_max_delay)
             else:
                 raise LockAcquireError(
                     f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
@@ -661,7 +664,7 @@ class GcsBlobUpath(BlobUpath):
             ) from e
 
     @contextlib.contextmanager
-    def lock(self, *, timeout=None):
+    def lock(self, *, timeout=None, retry_initial_delay=None, retry_max_delay=None):
         """
         This implementation does not prevent the file from being deleted
         by other workers that does not use the 'if-generation-match' condition.
@@ -678,7 +681,7 @@ class GcsBlobUpath(BlobUpath):
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
 
         if self._lock_count == 0:
-            self._acquire_lease(timeout=timeout)
+            self._acquire_lease(timeout=timeout, retry_initial_delay=retry_initial_delay, retry_max_delay=retry_max_delay)
         self._lock_count += 1
         try:
             yield
