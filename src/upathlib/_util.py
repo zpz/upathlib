@@ -34,7 +34,7 @@ def get_shared_thread_pool(
                     max_workers = None
             else:
                 if max_workers is not None:
-                    assert 1 <= max_workers <= 64
+                    assert 1 <= max_workers <= 64, max_workers
             executor = ThreadPoolExecutor(max_workers)
             _global_thread_pools_[name] = executor
     return executor

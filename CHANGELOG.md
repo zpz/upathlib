@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.8.2] - in progress
+## [0.8.2] - 2023-08-06
 
 - Add certain retries on Google authentication.
+- Adjust retry delays in GCS locking.
 
 
 ## [0.8.1] - 2023-06-18
