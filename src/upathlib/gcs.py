@@ -11,19 +11,20 @@ import time
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
-import warnings
 
 import google.auth
 from google import resumable_media
 from google.api_core import exceptions, retry
 from google.cloud import storage
-import requests
 
 # 60 seconds; this is the "connection timeout" to server.
 # From my reading, it's the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
 # that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
 # `google.cloud` is repo python-cloud-core.
-from google.cloud.storage.retry import DEFAULT_RETRY, DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+from google.cloud.storage.retry import (
+    DEFAULT_RETRY,
+    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+)
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -61,17 +62,15 @@ if not hasattr(DEFAULT_RETRY, 'with_timeout'):
 DEFAULT_RETRY_ACQUIRE_LOCK = (
     DEFAULT_RETRY.with_timeout(300.0)
     .with_predicate(
-        lambda exc: DEFAULT_RETRY._predicate(exc)
-        or isinstance(exc, FileExistsError)
+        lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
     )
     .with_delay(0.1, 30.0)
 )
 
 
-DEFAULT_RETRY_RELEASE_LOCK = (
-    DEFAULT_RETRY_IF_GENERATION_SPECIFIED.with_timeout(300.0)
-    .with_delay(0.1, 30.0)
-)
+DEFAULT_RETRY_RELEASE_LOCK = DEFAULT_RETRY_IF_GENERATION_SPECIFIED.with_timeout(
+    300.0
+).with_delay(0.1, 30.0)
 
 
 DEFAULT_RETRY_ON_RATE_LIMIT = (
@@ -360,7 +359,9 @@ class GcsBlobUpath(BlobUpath):
                 size=size,
                 client=self._client(),
                 if_generation_match=None if overwrite else 0,
-                retry=DEFAULT_RETRY_ON_RATE_LIMIT if overwrite else DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+                retry=DEFAULT_RETRY_ON_RATE_LIMIT
+                if overwrite
+                else DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
             )
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
@@ -702,7 +703,13 @@ class GcsBlobUpath(BlobUpath):
             ) from e
 
     @contextlib.contextmanager
-    def lock(self, *, timeout=None, acquire_retry=DEFAULT_RETRY_ACQUIRE_LOCK, release_retry=DEFAULT_RETRY_RELEASE_LOCK):
+    def lock(
+        self,
+        *,
+        timeout=None,
+        acquire_retry=DEFAULT_RETRY_ACQUIRE_LOCK,
+        release_retry=DEFAULT_RETRY_RELEASE_LOCK,
+    ):
         """
         This implementation does not prevent the file from being deleted
         by other workers that does not use the 'if-generation-match' condition.
