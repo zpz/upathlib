@@ -11,17 +11,19 @@ import time
 from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
+import warnings
 
 import google.auth
 from google import resumable_media
 from google.api_core import exceptions, retry
 from google.cloud import storage
+import requests
 
 # 60 seconds; this is the "connection timeout" to server.
 # From my reading, it's the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
 # that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
 # `google.cloud` is repo python-cloud-core.
-from google.cloud.storage.retry import DEFAULT_RETRY
+from google.cloud.storage.retry import DEFAULT_RETRY, DEFAULT_RETRY_IF_GENERATION_SPECIFIED
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
@@ -54,6 +56,29 @@ if not hasattr(DEFAULT_RETRY, 'with_timeout'):
         raise ImportError(
             'Retry has neither `with_timeout` nor `with_deadline`; please look into the version of `google-api-core`'
         )
+
+
+DEFAULT_RETRY_ACQUIRE_LOCK = (
+    DEFAULT_RETRY.with_timeout(300.0)
+    .with_predicate(
+        lambda exc: DEFAULT_RETRY._predicate(exc)
+        or isinstance(exc, FileExistsError)
+    )
+    .with_delay(0.1, 30.0)
+)
+
+
+DEFAULT_RETRY_RELEASE_LOCK = (
+    DEFAULT_RETRY_IF_GENERATION_SPECIFIED.with_timeout(300.0)
+    .with_delay(0.1, 30.0)
+)
+
+
+DEFAULT_RETRY_ON_RATE_LIMIT = (
+    DEFAULT_RETRY.with_timeout(300.0)
+    .with_predicate(retry.if_exception_type(exceptions.TooManyRequests))
+    .with_delay(0.1, 30.0)
+)
 
 
 def get_google_auth(
@@ -335,6 +360,7 @@ class GcsBlobUpath(BlobUpath):
                 size=size,
                 client=self._client(),
                 if_generation_match=None if overwrite else 0,
+                retry=DEFAULT_RETRY_ON_RATE_LIMIT if overwrite else DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
             )
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
@@ -617,9 +643,7 @@ class GcsBlobUpath(BlobUpath):
     def _acquire_lease(
         self,
         *,
-        timeout: int = None,
-        retry_initial_delay: float = None,
-        retry_max_delay: float = None,
+        retry=DEFAULT_RETRY_ACQUIRE_LOCK,
     ):
         # Note: `timeout = None` does not mean infinite wait.
         # It means a default wait time. If user wants longer wait,
@@ -628,20 +652,7 @@ class GcsBlobUpath(BlobUpath):
         # is a long period.
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
-        if timeout is None:
-            timeout = 120  # seconds
-
-        retry = (
-            DEFAULT_RETRY.with_timeout(timeout)
-            .with_predicate(
-                lambda exc: DEFAULT_RETRY._predicate(exc)
-                or isinstance(exc, FileExistsError)
-            )
-            .with_delay(retry_initial_delay or 0.1, retry_max_delay or 30.0)
-        )
-        # One typical case that triggers this retry is that multiple workers need to
-        # lock the same file and read/write it. The default delay, (1, 60), is a bit too long
-        # for this use case.
+        timeout = retry.timeout
 
         t0 = time.perf_counter()
         try:
@@ -663,22 +674,35 @@ class GcsBlobUpath(BlobUpath):
                 self._blob().delete(client=self._client())
                 # If this fails, the exception will propagate, which is not LockAcquireError.
                 # After deleting the file, try it again:
-                self._acquire_lease(
-                    timeout=timeout,
-                    retry_initial_delay=retry_initial_delay,
-                    retry_max_delay=retry_max_delay,
-                )
+                self._acquire_lease(retry=retry)
             else:
                 raise LockAcquireError(
-                    f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
+                    f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
                 ) from e
         except Exception as e:
             raise LockAcquireError(
-                f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
+                f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
+            ) from e
+
+    def _release_lease(self, *, retry=DEFAULT_RETRY_RELEASE_LOCK):
+        # TODO:
+        # once got "RemoteDisconnected" error after 0.01 seconds, which should have triggered retry
+        # according to GCP code. I don't understand why retry apparently did not happen.
+        t0 = time.perf_counter()
+        try:
+            self._blob().delete(
+                client=self._client(),
+                if_generation_match=self._generation,  # TODO: should we remove this condition?
+                retry=retry,
+            )
+        except Exception as e:
+            t1 = time.perf_counter()
+            raise LockReleaseError(
+                f"failed to delete lock file {self} after trying for {t1 - t0:.2f} seconds; gave up on {e!r}"
             ) from e
 
     @contextlib.contextmanager
-    def lock(self, *, timeout=None, retry_initial_delay=None, retry_max_delay=None):
+    def lock(self, *, timeout=None, acquire_retry=DEFAULT_RETRY_ACQUIRE_LOCK, release_retry=DEFAULT_RETRY_RELEASE_LOCK):
         """
         This implementation does not prevent the file from being deleted
         by other workers that does not use the 'if-generation-match' condition.
@@ -693,29 +717,18 @@ class GcsBlobUpath(BlobUpath):
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
+        if timeout is not None:
+            acquire_retry = acquire_retry.with_timeout(timeout)
 
         if self._lock_count == 0:
-            self._acquire_lease(
-                timeout=timeout,
-                retry_initial_delay=retry_initial_delay,
-                retry_max_delay=retry_max_delay,
-            )
+            self._acquire_lease(retry=acquire_retry)
         self._lock_count += 1
         try:
             yield
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:
-                t0 = time.perf_counter()
-                try:
-                    self._blob().delete(
-                        if_generation_match=self._generation,  # TODO: should we remove this condition?
-                    )
-                except Exception as e:
-                    t1 = time.perf_counter()
-                    raise LockReleaseError(
-                        f"failed to delete lock file {self} after trying for {t1 - t0:.2f} seconds"
-                    ) from e
+                self._release_lease(retry=release_retry)
 
     def open(self, mode="r", **kwargs):
         """
