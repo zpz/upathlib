@@ -14,7 +14,8 @@ from io import BufferedReader, BytesIO, UnsupportedOperation
 
 import google.auth
 from google import resumable_media
-from google.api_core import exceptions as api_exceptions, retry
+from google.api_core import exceptions as api_exceptions
+from google.api_core import retry
 from google.cloud import storage
 
 # 60 seconds; this is the "connection timeout" to server.
@@ -71,7 +72,8 @@ DEFAULT_RETRY_ACQUIRE_LOCK = (
 
 DEFAULT_RETRY_RELEASE_LOCK = ConditionalRetryPolicy(
     DEFAULT_RETRY.with_timeout(300.0).with_delay(0.1, 30.0),
-    storage.retry.is_generation_specified, ['query_params'],
+    storage.retry.is_generation_specified,
+    ['query_params'],
 )
 
 
