@@ -5,9 +5,9 @@ from uuid import uuid4
 
 import pytest
 import upathlib._tests
-from upathlib.gcs import GcsBlobUpath, exceptions
+from upathlib.gcs import GcsBlobUpath, api_exceptions
 
-NotFound = exceptions.NotFound
+NotFound = api_exceptions.NotFound
 
 
 class Blob:
