@@ -14,7 +14,7 @@ from io import BufferedReader, BytesIO, UnsupportedOperation
 
 import google.auth
 from google import resumable_media
-from google.api_core import exceptions, retry
+from google.api_core import exceptions as api_exceptions, retry
 from google.cloud import storage
 
 # 60 seconds; this is the "connection timeout" to server.
@@ -24,6 +24,7 @@ from google.cloud import storage
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
     DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+    ConditionalRetryPolicy,
 )
 from typing_extensions import Self
 
@@ -68,14 +69,15 @@ DEFAULT_RETRY_ACQUIRE_LOCK = (
 )
 
 
-DEFAULT_RETRY_RELEASE_LOCK = DEFAULT_RETRY_IF_GENERATION_SPECIFIED.with_timeout(
-    300.0
-).with_delay(0.1, 30.0)
+DEFAULT_RETRY_RELEASE_LOCK = ConditionalRetryPolicy(
+    DEFAULT_RETRY.with_timeout(300.0).with_delay(0.1, 30.0),
+    storage.retry.is_generation_specified, ['query_params'],
+)
 
 
 DEFAULT_RETRY_ON_RATE_LIMIT = (
     DEFAULT_RETRY.with_timeout(300.0)
-    .with_predicate(retry.if_exception_type(exceptions.TooManyRequests))
+    .with_predicate(retry.if_exception_type(api_exceptions.TooManyRequests))
     .with_delay(0.1, 30.0)
 )
 
@@ -316,7 +318,7 @@ class GcsBlobUpath(BlobUpath):
                 timeout=request_timeout,
                 retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)),
             )
-        except exceptions.NotFound:
+        except api_exceptions.NotFound:
             return None
         return FileInfo(
             ctime=b.time_created.timestamp(),
@@ -367,7 +369,7 @@ class GcsBlobUpath(BlobUpath):
             # as the source local file?
             # Blob objects has methods `_set_properties`, `_patch_property`,
             # `patch`.
-        except exceptions.PreconditionFailed:
+        except api_exceptions.PreconditionFailed:
             raise FileExistsError(self)
 
     def _write_bytes(self, data, **kwargs):
@@ -413,7 +415,7 @@ class GcsBlobUpath(BlobUpath):
                     )
                     # "checksum mismatch" errors were encountered when downloading Parquet files.
                     # `raw_download=True` seems to prevent that error.
-                except exceptions.NotFound:
+                except api_exceptions.NotFound:
                     raise FileNotFoundError(blob.name)
                 current_size = buffer.tell()
                 if current_size >= target_size:
@@ -466,7 +468,7 @@ class GcsBlobUpath(BlobUpath):
                 # "checksum mismatch" errors were encountered when downloading Parquet files.
                 # `raw_download=True` seems to prevent that error.
                 return
-            except exceptions.NotFound:
+            except api_exceptions.NotFound:
                 raise FileNotFoundError(self)
         else:
             self._multipart_download(file_size, file_obj)
@@ -494,9 +496,9 @@ class GcsBlobUpath(BlobUpath):
                     client=self._client(),
                     if_generation_match=None if overwrite else 0,
                 )
-            except exceptions.NotFound:
+            except api_exceptions.NotFound:
                 raise FileNotFoundError(self)
-            except exceptions.PreconditionFailed:
+            except api_exceptions.PreconditionFailed:
                 raise FileExistsError(target)
         else:
             super()._copy_file(target, overwrite=overwrite)
@@ -624,7 +626,7 @@ class GcsBlobUpath(BlobUpath):
         """
         try:
             self._blob().delete(client=self._client())
-        except exceptions.NotFound:
+        except api_exceptions.NotFound:
             raise FileNotFoundError(self)
 
     def riterdir(self) -> Iterator[Self]:
