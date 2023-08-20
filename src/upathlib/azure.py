@@ -1,6 +1,6 @@
 # WARNING
 # This module is likely buggy as I stopped using Azure Blob Store and testing against it
-# since sometime in 2021 I guess. 
+# since sometime in 2021 I guess.
 
 from __future__ import annotations
 
