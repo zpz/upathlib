@@ -29,4 +29,4 @@ Python version
 Development and testing were conducted in Python 3.8 until version 0.7.3.
 Starting with 0.7.4, development and testing happen in Python 3.10.
 Code continues to NOT intentionally use features beyond Python 3.8.
-I intend to test agsint versions 3.8, 3.9, 3.10, 3.11 once I find time to set that up.
+I think 3.10 may be required sometime in 2024.

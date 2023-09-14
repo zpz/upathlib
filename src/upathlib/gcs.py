@@ -63,15 +63,15 @@ if not hasattr(DEFAULT_RETRY, 'with_timeout'):
 
 DEFAULT_RETRY_ACQUIRE_LOCK = (
     DEFAULT_RETRY.with_timeout(300.0)
+    .with_delay(1.0, 10.0)  # see `google.api_core.retry.exponential_sleep_generator`
     .with_predicate(
         lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
     )
-    .with_delay(0.1, 30.0)
 )
 
 
 DEFAULT_RETRY_RELEASE_LOCK = ConditionalRetryPolicy(
-    DEFAULT_RETRY.with_timeout(300.0).with_delay(0.1, 30.0),
+    DEFAULT_RETRY.with_timeout(300.0).with_delay(1.0, 10.0),
     storage.retry.is_generation_specified,
     ['query_params'],
 )
@@ -80,7 +80,7 @@ DEFAULT_RETRY_RELEASE_LOCK = ConditionalRetryPolicy(
 DEFAULT_RETRY_ON_RATE_LIMIT = (
     DEFAULT_RETRY.with_timeout(300.0)
     .with_predicate(retry.if_exception_type(api_exceptions.TooManyRequests))
-    .with_delay(0.1, 30.0)
+    .with_delay(1.0, 10.0)
 )
 
 
@@ -721,7 +721,7 @@ class GcsBlobUpath(BlobUpath):
         is used *cooperatively* solely in this locking logic.
 
         ``timeout`` is the wait time for acquiring the lease.
-        If ``None``, the default value 100 seconds is used.
+        If ``None``, the default value 300 seconds is used.
         If ``0``, exactly one attempt is made to acquire a lock.
         """
         # References:
