@@ -62,7 +62,8 @@ if not hasattr(DEFAULT_RETRY, 'with_timeout'):
 
 
 DEFAULT_RETRY_ACQUIRE_LOCK = (
-    DEFAULT_RETRY.with_timeout(300.0).with_delay(1.0, 10.0)  # see `google.api_core.retry.exponential_sleep_generator`
+    DEFAULT_RETRY.with_timeout(300.0)
+    .with_delay(1.0, 10.0)  # see `google.api_core.retry.exponential_sleep_generator`
     .with_predicate(
         lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
     )
