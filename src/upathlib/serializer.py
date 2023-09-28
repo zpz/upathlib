@@ -5,11 +5,14 @@ import pickle
 import zlib
 from typing import TypeVar
 
+import zstandard
+
 # zstandard has good compression ratio and also quite fast.
 # It is very "balanced".
 # lz4 has lower compression ratio than zstandard but is much faster.
 #
 # See:
+#   https://gregoryszorc.com/blog/2017/03/07/better-compression-with-zstandard/
 #   https://stackoverflow.com/questions/67537111/how-do-i-decide-between-lz4-and-snappy-compression
 #   https://gist.github.com/oldcai/7230548
 
@@ -102,28 +105,45 @@ class ZPickleSerializer(PickleSerializer):
         return super().deserialize(y)
 
 
-try:
-    import zstandard
-except ImportError:
-    pass
-else:
+def zstd_compress(x: bytes, level=ZSTD_LEVEL) -> bytes:
+    return zstandard.compress(x, level=level)
 
-    def zstd_compress(x: bytes, level=ZSTD_LEVEL) -> bytes:
-        return zstandard.compress(x, level=level)
+def zstd_decompress(x: bytes) -> bytes:
+    return zstandard.decompress(x)
 
-    def zstd_decompress(x: bytes) -> bytes:
-        return zstandard.decompress(x)
+class ZstdPickleSerializer(PickleSerializer):
+    _level: int = None
+    _threads: int = None
+    _compressor: zstandard.ZstdCompressor = None
+    _decompressor: zstandard.ZstdDecompressor = None
+    # See doc on `ZstdCompressor` and `ZstdDecompressor` in
+    # (github python-zstandard) `zstandard / backend_cffi.py`.
 
-    class ZstdPickleSerializer(PickleSerializer):
-        @classmethod
-        def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None):
-            y = super().serialize(x, protocol=protocol)
-            return zstd_compress(y, level=level)
+    # The `ZstdCompressor` and `ZstdDecompressor` objects can't be pickled.
+    # This there are issues related to forking, check out ``os.register_at_fork``.
 
-        @classmethod
-        def deserialize(cls, y):
-            y = zstd_decompress(y)
-            return super().deserialize(y)
+    @classmethod
+    def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None, threads=0):
+        '''
+        Parameters
+        ----------
+        threads
+            Number of threads to use to compress data concurrently. When set,
+            compression operations are performed on multiple threads. The default
+            value (0) disables multi-threaded compression. A value of ``-1`` means
+            to set the number of threads to the number of detected logical CPUs.
+        '''
+        y = super().serialize(x, protocol=protocol)
+        if cls._compressor is None or level != cls._level or threads != cls._threads:
+            cls._compressor = zstandard.ZstdCompressor(level=level, threads=threads)
+        return cls._compressor.compress(y)
+
+    @classmethod
+    def deserialize(cls, y):
+        if cls._decompressor is None:
+            cls._decompressor = zstandard.ZstdDecompressor()
+        y = cls._decompressor.decompress(y)
+        return super().deserialize(y)
 
 
 try:
