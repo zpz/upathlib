@@ -13,6 +13,7 @@ dependencies = [
     "deprecation",
     "tqdm",
     "typing-extensions",
+    "zstandard",
 ]
 requires-python = ">=3.8"
 readme = "README.rst"
@@ -39,7 +40,7 @@ gcs = [
     "google-cloud-storage >=2.0,<3.0",
     "requests",
 ]
-zstandard = ["zstandard"]
+zstandard = []
 lz4 = ["lz4"]
 doc = [
     "sphinx",

@@ -40,12 +40,9 @@ from .serializer import (
     JsonSerializer,
     PickleSerializer,
     ZPickleSerializer,
+    ZstdPickleSerializer,
 )
 
-try:
-    from .serializer import ZstdPickleSerializer
-except ImportError:
-    ZstdPickleSerializer = None
 try:
     from .serializer import Lz4PickleSerializer
 except ImportError:
@@ -640,23 +637,21 @@ class Upath(abc.ABC):
         """
         return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
-    if ZstdPickleSerializer is not None:
+    def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
+        """
+        ``overwrite`` is passed to :meth:`write_bytes`.
 
-        def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
-            """
-            ``overwrite`` is passed to :meth:`write_bytes`.
+        ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.serialize`.
+        """
+        self.write_bytes(
+            ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
+        )
 
-            ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.serialize`.
-            """
-            self.write_bytes(
-                ZstdPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
-            )
-
-        def read_pickle_zstd(self, **kwargs) -> Any:
-            """
-            ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.deserialize`.
-            """
-            return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
+    def read_pickle_zstd(self, **kwargs) -> Any:
+        """
+        ``**kwargs`` are passed to :meth:`serializer.ZstdPickleSerializer.deserialize`.
+        """
+        return ZstdPickleSerializer.deserialize(self.read_bytes(), **kwargs)
 
     if Lz4PickleSerializer is not None:
 
