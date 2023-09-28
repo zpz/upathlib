@@ -108,8 +108,10 @@ class ZPickleSerializer(PickleSerializer):
 def zstd_compress(x: bytes, level=ZSTD_LEVEL) -> bytes:
     return zstandard.compress(x, level=level)
 
+
 def zstd_decompress(x: bytes) -> bytes:
     return zstandard.decompress(x)
+
 
 class ZstdPickleSerializer(PickleSerializer):
     _level: int = None
