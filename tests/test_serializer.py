@@ -25,7 +25,6 @@ def test_all():
         assert z == data
 
 
-
 def test_mylocal():
     me = _MyLocal()
     assert len(me.compressor) == 0
@@ -39,7 +38,7 @@ def test_mylocal():
         me.compressor[(3, 4)] = 5
         me.decompressor = 'a'
         return True
-    
+
     with ThreadPoolExecutor() as pool:
         t = pool.submit(_check)
         assert t.result()
