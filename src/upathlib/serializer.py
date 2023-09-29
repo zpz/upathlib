@@ -2,6 +2,7 @@ import abc
 import gc
 import json
 import pickle
+import threading
 import zlib
 from typing import TypeVar
 
@@ -113,16 +114,22 @@ def zstd_decompress(x: bytes) -> bytes:
     return zstandard.decompress(x)
 
 
+class _MyLocal(threading.local):
+    # See doc string in ``cpython / Lib / _threading_local.py``.
+
+    def __init__(self):
+        self.compressor: dict[tuple[int, int], zstandard.ZstdCompressor] = {}
+        self.decompressor: zstandard.ZstdDecompressor = None
+
+
 class ZstdPickleSerializer(PickleSerializer):
-    _level: int = None
-    _threads: int = None
-    _compressor: zstandard.ZstdCompressor = None
-    _decompressor: zstandard.ZstdDecompressor = None
+    _cache = _MyLocal()
+
     # See doc on `ZstdCompressor` and `ZstdDecompressor` in
     # (github python-zstandard) `zstandard / backend_cffi.py`.
 
     # The `ZstdCompressor` and `ZstdDecompressor` objects can't be pickled.
-    # This there are issues related to forking, check out ``os.register_at_fork``.
+    # If there are issues related to forking, check out ``os.register_at_fork``.
 
     @classmethod
     def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None, threads=0):
@@ -136,15 +143,17 @@ class ZstdPickleSerializer(PickleSerializer):
             to set the number of threads to the number of detected logical CPUs.
         '''
         y = super().serialize(x, protocol=protocol)
-        if cls._compressor is None or level != cls._level or threads != cls._threads:
-            cls._compressor = zstandard.ZstdCompressor(level=level, threads=threads)
-        return cls._compressor.compress(y)
+        c = cls._cache.compressor.get((level, threads))
+        if c is None:
+            c = zstandard.ZstdCompressor(level=level, threads=threads)
+            cls._cache.compressor[(level, threads)] = c
+        return c.compress(y)
 
     @classmethod
     def deserialize(cls, y):
-        if cls._decompressor is None:
-            cls._decompressor = zstandard.ZstdDecompressor()
-        y = cls._decompressor.decompress(y)
+        if cls._cache.decompressor is None:
+            cls._cache.decompressor = zstandard.ZstdDecompressor()
+        y = cls._cache.decompressor.decompress(y)
         return super().deserialize(y)
 
 
