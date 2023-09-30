@@ -241,7 +241,7 @@ class Upath(abc.ABC):
 
         In the subclass :class:`LocalUpath`, this property is overriden to return a
         `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_,
-        which is a subclass of 
+        which is a subclass of
         `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_.
 
         In subclasses for cloud blob stores, this implementation stays in effect.

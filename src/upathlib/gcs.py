@@ -126,7 +126,7 @@ def get_google_auth(
 class GcsBlobUpath(BlobUpath):
     """
     GcsBlobUpath implements the :class:`~upathlib.Upath` API for
-    Google Cloud Storage using the package 
+    Google Cloud Storage using the package
     `google-cloud-storage <https://github.com/googleapis/python-storage/tree/main>`_.
     """
 
@@ -366,9 +366,11 @@ class GcsBlobUpath(BlobUpath):
                 size=size,
                 client=self._client(),
                 if_generation_match=None if overwrite else 0,
-                retry=(DEFAULT_RETRY_ON_RATE_LIMIT
-                if overwrite
-                else DEFAULT_RETRY_IF_GENERATION_SPECIFIED),
+                retry=(
+                    DEFAULT_RETRY_ON_RATE_LIMIT
+                    if overwrite
+                    else DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+                ),
             )
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
@@ -387,7 +389,7 @@ class GcsBlobUpath(BlobUpath):
         Write bytes ``data`` to the current blob.
 
         In the usual case, ``data`` is bytes.
-        The case where ``data`` is a 
+        The case where ``data`` is a
         `io.BufferedReader <https://docs.python.org/3/library/io.html#io.BufferedReader>`_ object, such as an open file,
         is not well tested.
         """
