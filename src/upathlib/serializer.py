@@ -142,6 +142,7 @@ class ZstdPickleSerializer(PickleSerializer):
 
 
 try:
+    # To use this, just install the Python package `lz4`.
     import lz4.frame
 except ImportError:
     pass

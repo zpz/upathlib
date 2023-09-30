@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.8.7] - in progress
+
+- Removed optional depencency ``lz4``. User can install it if they need to use it.
+
+
 ## [0.8.6] - 2023-09-30
 - Make ``ZstdPickleSerializer`` thread safe.
 - Remove functions ``z_compress``, ``z_decompress``, ``zstd_compress``, ``zstd_decompress``, ``lz4_compress``, ``lz4_decompress``.

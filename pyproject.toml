@@ -41,7 +41,7 @@ gcs = [
     "requests",
 ]
 zstandard = []
-lz4 = ["lz4"]
+lz4 = []
 doc = [
     "sphinx",
     "numpydoc",
@@ -53,6 +53,7 @@ test = [
     "numpy",
     "pytest-mock",
     "ruff",
+    "lz4",
 ]
 
 
