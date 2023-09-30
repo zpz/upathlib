@@ -36,6 +36,8 @@ from ._util import MAX_THREADS, get_shared_thread_pool
 # To see retry info, uncomment the following. The printout is typically not overwhelming.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
 
+__all__ = ['GcsBlobUpath', 'get_google_auth']
+
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +126,8 @@ def get_google_auth(
 class GcsBlobUpath(BlobUpath):
     """
     GcsBlobUpath implements the :class:`~upathlib.Upath` API for
-    Google Cloud Storage.
+    Google Cloud Storage using the package
+    `google-cloud-storage <https://github.com/googleapis/python-storage/tree/main>`_.
     """
 
     _PROJECT_ID: str = None
@@ -311,7 +314,7 @@ class GcsBlobUpath(BlobUpath):
         otherwise return ``None``.
 
         ``request_timeout`` is the http request timeout, not "retry" timeout.
-        The default is 60 (``google.cloud.storage.constants._DEFAULT_TIMEOUT``).
+        The default is 60 (which is the value ``google.cloud.storage.constants._DEFAULT_TIMEOUT``).
         """
         b = self._blob()
         try:
@@ -363,16 +366,18 @@ class GcsBlobUpath(BlobUpath):
                 size=size,
                 client=self._client(),
                 if_generation_match=None if overwrite else 0,
-                retry=DEFAULT_RETRY_ON_RATE_LIMIT
-                if overwrite
-                else DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+                retry=(
+                    DEFAULT_RETRY_ON_RATE_LIMIT
+                    if overwrite
+                    else DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+                ),
             )
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
             # Blob objects has methods `_set_properties`, `_patch_property`,
             # `patch`.
-        except api_exceptions.PreconditionFailed:
-            raise FileExistsError(self)
+        except api_exceptions.PreconditionFailed as e:
+            raise FileExistsError(self) from e
 
     def _write_bytes(self, data, **kwargs):
         b = BytesIO(data)
@@ -384,7 +389,8 @@ class GcsBlobUpath(BlobUpath):
         Write bytes ``data`` to the current blob.
 
         In the usual case, ``data`` is bytes.
-        The case where ``data`` is a ``BufferedReader`` object, such as an open file,
+        The case where ``data`` is a
+        `io.BufferedReader <https://docs.python.org/3/library/io.html#io.BufferedReader>`_ object, such as an open file,
         is not well tested.
         """
         try:
@@ -417,8 +423,8 @@ class GcsBlobUpath(BlobUpath):
                     )
                     # "checksum mismatch" errors were encountered when downloading Parquet files.
                     # `raw_download=True` seems to prevent that error.
-                except api_exceptions.NotFound:
-                    raise FileNotFoundError(blob.name)
+                except api_exceptions.NotFound as e:
+                    raise FileNotFoundError(blob.name) from e
                 current_size = buffer.tell()
                 if current_size >= target_size:
                     break
@@ -470,8 +476,8 @@ class GcsBlobUpath(BlobUpath):
                 # "checksum mismatch" errors were encountered when downloading Parquet files.
                 # `raw_download=True` seems to prevent that error.
                 return
-            except api_exceptions.NotFound:
-                raise FileNotFoundError(self)
+            except api_exceptions.NotFound as e:
+                raise FileNotFoundError(self) from e
         else:
             self._multipart_download(file_size, file_obj)
 
@@ -498,10 +504,10 @@ class GcsBlobUpath(BlobUpath):
                     client=self._client(),
                     if_generation_match=None if overwrite else 0,
                 )
-            except api_exceptions.NotFound:
-                raise FileNotFoundError(self)
-            except api_exceptions.PreconditionFailed:
-                raise FileExistsError(target)
+            except api_exceptions.NotFound as e:
+                raise FileNotFoundError(self) from e
+            except api_exceptions.PreconditionFailed as e:
+                raise FileExistsError(target) from e
         else:
             super()._copy_file(target, overwrite=overwrite)
 
@@ -628,8 +634,8 @@ class GcsBlobUpath(BlobUpath):
         """
         try:
             self._blob().delete(client=self._client())
-        except api_exceptions.NotFound:
-            raise FileNotFoundError(self)
+        except api_exceptions.NotFound as e:
+            raise FileNotFoundError(self) from e
 
     def riterdir(self) -> Iterator[Self]:
         """

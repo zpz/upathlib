@@ -36,6 +36,8 @@ from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 # logging.getLogger("azure.storage").setLevel(logging.WARNING)
 # logging.getLogger("azure.core.pipeline.policies").setLevel(logging.WARNING)
 
+__all__ = ['AzureBlobUpath']
+
 
 class AzureBlobUpath(BlobUpath):
     _ACCOUNT_NAME = None

@@ -298,7 +298,7 @@ class LocalUpath(Upath, os.PathLike):
         This uses the package `filelock <https://github.com/tox-dev/py-filelock>`_ to implement
         a file lock for inter-process communication.
 
-        ..note.. At the end, this file is not deleted. If it is purely a dummy file to implement locking
+        .. note:: At the end, this file is not deleted. If it is purely a dummy file to implement locking
           for other things, user may want to delete this file after use.
         """
         if timeout is None:

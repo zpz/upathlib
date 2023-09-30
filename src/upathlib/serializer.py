@@ -86,32 +86,16 @@ class PickleSerializer(ByteSerializer):
         return _loads(pickle.loads, y)
 
 
-def z_compress(x: bytes, level=ZLIB_LEVEL) -> bytes:
-    return zlib.compress(x, level=level)
-
-
-def z_decompress(x: bytes) -> bytes:
-    return zlib.decompress(x)
-
-
 class ZPickleSerializer(PickleSerializer):
     @classmethod
     def serialize(cls, x, *, level=ZLIB_LEVEL, protocol=None):
         y = super().serialize(x, protocol=protocol)
-        return z_compress(y, level=level)
+        return zlib.compress(y, level=level)
 
     @classmethod
     def deserialize(cls, y):
-        y = z_decompress(y)
+        y = zlib.decompress(y)
         return super().deserialize(y)
-
-
-def zstd_compress(x: bytes, level=ZSTD_LEVEL) -> bytes:
-    return zstandard.compress(x, level=level)
-
-
-def zstd_decompress(x: bytes) -> bytes:
-    return zstandard.decompress(x)
 
 
 class _MyLocal(threading.local):
@@ -163,19 +147,13 @@ except ImportError:
     pass
 else:
 
-    def lz4_compress(x: bytes, level=LZ4_LEVEL) -> bytes:
-        return lz4.frame.compress(x, compression_level=level)
-
-    def lz4_decompress(x: bytes) -> bytes:
-        return lz4.frame.decompress(x)
-
     class Lz4PickleSerializer(PickleSerializer):
         @classmethod
         def serialize(cls, x, *, level=LZ4_LEVEL, protocol=None):
             y = super().serialize(x, protocol=protocol)
-            return lz4_compress(y, level=level)
+            return lz4.frame.comress(y, compression_level=level)
 
         @classmethod
         def deserialize(cls, y):
-            y = lz4_decompress(y)
+            y = lz4.frame.decompress(y)
             return super().deserialize(y)

@@ -23,7 +23,7 @@ def _resolve_local_path(p: LocalPathType):
 class BlobUpath(Upath):
     """
     BlobUpath is a base class for paths in a *cloud* storage, aka "blob store".
-    This is in contrast to a *local* disk storage, which is implemnted by :class:`LocalUpath`.
+    This is in contrast to a *local* disk storage, which is implemnted by :class:`~upathlib.LocalUpath`.
     """
 
     @property
