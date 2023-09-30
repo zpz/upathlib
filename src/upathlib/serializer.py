@@ -151,7 +151,7 @@ else:
         @classmethod
         def serialize(cls, x, *, level=LZ4_LEVEL, protocol=None):
             y = super().serialize(x, protocol=protocol)
-            return lz4.frame.comress(y, compression_level=level)
+            return lz4.frame.compress(y, compression_level=level)
 
         @classmethod
         def deserialize(cls, y):
