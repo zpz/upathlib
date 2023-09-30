@@ -241,7 +241,8 @@ class Upath(abc.ABC):
 
         In the subclass :class:`LocalUpath`, this property is overriden to return a
         `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_,
-        which is a subclass of ``pathlib.PurePath``.
+        which is a subclass of 
+        `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_.
 
         In subclasses for cloud blob stores, this implementation stays in effect.
         """
@@ -382,7 +383,7 @@ class Upath(abc.ABC):
         In a local file system, there can be empty directories.
         However, it is recommended to not have empty directories.
 
-        There is no method for "creating an tempty dir" (like ``mkdir``).
+        There is no method for "creating an tempty dir" (like the Linux command ``mkdir``).
         Simply create a file under the dir, and the dir will come into being.
         This is analogous to we create files all the time---we don't "create" an empty file
         in advance; we simply write to the would-be path of the file to be created.

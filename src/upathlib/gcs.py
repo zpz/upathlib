@@ -126,7 +126,8 @@ def get_google_auth(
 class GcsBlobUpath(BlobUpath):
     """
     GcsBlobUpath implements the :class:`~upathlib.Upath` API for
-    Google Cloud Storage.
+    Google Cloud Storage using the package 
+    `google-cloud-storage <https://github.com/googleapis/python-storage/tree/main>`_.
     """
 
     _PROJECT_ID: str = None
@@ -313,7 +314,7 @@ class GcsBlobUpath(BlobUpath):
         otherwise return ``None``.
 
         ``request_timeout`` is the http request timeout, not "retry" timeout.
-        The default is 60 (``google.cloud.storage.constants._DEFAULT_TIMEOUT``).
+        The default is 60 (which is the value ``google.cloud.storage.constants._DEFAULT_TIMEOUT``).
         """
         b = self._blob()
         try:
@@ -386,7 +387,8 @@ class GcsBlobUpath(BlobUpath):
         Write bytes ``data`` to the current blob.
 
         In the usual case, ``data`` is bytes.
-        The case where ``data`` is a ``BufferedReader`` object, such as an open file,
+        The case where ``data`` is a 
+        `io.BufferedReader <https://docs.python.org/3/library/io.html#io.BufferedReader>`_ object, such as an open file,
         is not well tested.
         """
         try:

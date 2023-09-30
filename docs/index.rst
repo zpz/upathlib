@@ -98,7 +98,10 @@ We can as easily read a file, like
 'second'
 
 Several common file formats are provided out of the box, including
-text, bytes, json, and pickle, as well as compressed versions by ``zlib`` and ``Zstandard``.
+text, bytes, json, and pickle, as well as compressed versions by 
+`zlib <https://www.zlib.net/>`_ and 
+`Zstandard <http://facebook.github.io/zstd/>`_.
+
 Let's do some JSON:
 
 >>> pp = p / 'e/f/g/data.json'
@@ -118,7 +121,7 @@ But usually we prefer to get back the Python object directly:
 <class 'dict'>
 
 We can go "down" the directory tree using ``/``.
-Conversely, we can go "up" using ``parent``:
+Conversely, we can go "up" using :meth:`~upathlib.Upath.parent`:
 
 >>> pp.path
 PosixPath('/tmp/abc/e/f/g/data.json')
@@ -162,7 +165,8 @@ Suppose we have set up the environment to use Google Cloud Storage, then we coul
 >>> from upathlib import GcsBlobUpath
 >>> p = GcsBlobUpath('gs://my-bucket/tmp/abc')
 
-Everything after this would work unchanged. (The printouts would be different at some places, e.g. ``LocalUpath`` would be replaced by ``GcsBlobUpath``.)
+Everything after this would work unchanged. (The printouts would be different at some places, 
+e.g. :class:`LocalUpath` would be replaced by :class:`GcsBlobUpath`.)
 
 
 Upath
