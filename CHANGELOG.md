@@ -5,9 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.8.7] - in progress
+## [0.8.7] - 2023-10-19
 
 - Removed optional depencency ``lz4``. User can install it if they need to use it.
+- Fix: the parameter `timeout` for `GcsBlobUpath.lock` should be applied to the `release_retry`
+  in addition to `acquire_retry`.
 
 
 ## [0.8.6] - 2023-09-30
