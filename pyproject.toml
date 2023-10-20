@@ -41,7 +41,7 @@ gcs = [
     "requests",
 ]
 zstandard = []
-lz4 = ["lz4"]
+lz4 = []
 doc = [
     "sphinx",
     "numpydoc",
@@ -53,7 +53,10 @@ test = [
     "numpy",
     "pytest-mock",
     "ruff",
+    "lz4",
 ]
+
+# lz4 and zstandard are removed as of 10/19/2023.
 
 
 [tool.flit.module]

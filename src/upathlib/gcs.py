@@ -717,8 +717,8 @@ class GcsBlobUpath(BlobUpath):
         self,
         *,
         timeout=None,
-        acquire_retry=DEFAULT_RETRY_ACQUIRE_LOCK,
-        release_retry=DEFAULT_RETRY_RELEASE_LOCK,
+        acquire_retry=None,
+        release_retry=None,
     ):
         """
         This implementation does not prevent the file from being deleted
@@ -726,7 +726,7 @@ class GcsBlobUpath(BlobUpath):
         It relies on the assumption that this blob
         is used *cooperatively* solely in this locking logic.
 
-        ``timeout`` is the wait time for acquiring the lease.
+        ``timeout`` is the wait time for acquiring or releasing the lease.
         If ``None``, the default value 300 seconds is used.
         If ``0``, exactly one attempt is made to acquire a lock.
         """
@@ -734,8 +734,14 @@ class GcsBlobUpath(BlobUpath):
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
-        if timeout is not None:
-            acquire_retry = acquire_retry.with_timeout(timeout)
+        if acquire_retry is None:
+            acquire_retry = DEFAULT_RETRY_ACQUIRE_LOCK
+            if timeout is not None:
+                acquire_retry = acquire_retry.with_timeout(timeout)
+        if release_retry is None:
+            release_retry = DEFAULT_RETRY_RELEASE_LOCK
+            if timeout is not None:
+                release_retry = release_retry.with_timeout(timeout)
 
         if self._lock_count == 0:
             self._acquire_lease(retry=acquire_retry)
