@@ -56,6 +56,8 @@ test = [
     "lz4",
 ]
 
+# lz4 and zstandard are removed as of 10/19/2023.
+
 
 [tool.flit.module]
 name = "upathlib"
