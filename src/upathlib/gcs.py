@@ -59,14 +59,11 @@ assert hasattr(DEFAULT_RETRY, 'with_timeout')
 
 # DEFAULT_RETRY has default timeout 120 seconds.
 DEFAULT_RETRY = DEFAULT_RETRY.with_timeout(300.0).with_delay(1.0, 10.0)
- # see `google.api_core.retry.exponential_sleep_generator`
+# see `google.api_core.retry.exponential_sleep_generator`
 
 
-DEFAULT_RETRY_ACQUIRE_LOCK = (
-    DEFAULT_RETRY
-    .with_predicate(
-        lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
-    )
+DEFAULT_RETRY_ACQUIRE_LOCK = DEFAULT_RETRY.with_predicate(
+    lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
 )
 
 
@@ -84,11 +81,9 @@ DEFAULT_RETRY_RELEASE_LOCK = ConditionalRetryPolicy(
 )
 
 
-DEFAULT_RETRY_ON_RATE_LIMIT = (
-    DEFAULT_RETRY
-    .with_predicate(
-        lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, api_exceptions.TooManyRequests)
-    )
+DEFAULT_RETRY_ON_RATE_LIMIT = DEFAULT_RETRY.with_predicate(
+    lambda exc: DEFAULT_RETRY._predicate(exc)
+    or isinstance(exc, api_exceptions.TooManyRequests)
 )
 
 
@@ -401,7 +396,9 @@ class GcsBlobUpath(BlobUpath):
         b.seek(0)
         self._write_from_buffer(b, content_type="text/plain", size=len(data), **kwargs)
 
-    def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False, timeout=None):
+    def write_bytes(
+        self, data: bytes | BufferedReader, *, overwrite=False, timeout=None
+    ):
         """
         Write bytes ``data`` to the current blob.
 
@@ -414,7 +411,10 @@ class GcsBlobUpath(BlobUpath):
             memoryview(data)
         except TypeError:  # file-like data
             self._write_from_buffer(
-                data, content_type="text/plain", overwrite=overwrite, timeout=timeout,
+                data,
+                content_type="text/plain",
+                overwrite=overwrite,
+                timeout=timeout,
             )
         else:  # bytes-like data
             self._write_bytes(data, overwrite=overwrite, timeout=timeout)
@@ -556,7 +556,9 @@ class GcsBlobUpath(BlobUpath):
             target.remove_file()
             raise
 
-    def upload_file(self, source: LocalPathType, *, overwrite=False, timeout=None) -> None:
+    def upload_file(
+        self, source: LocalPathType, *, overwrite=False, timeout=None
+    ) -> None:
         """
         Upload the content of ``source`` to the current blob.
         """
