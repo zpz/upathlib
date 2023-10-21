@@ -71,7 +71,9 @@ DEFAULT_RETRY_IF_GENERATION_SPECIFIED = ConditionalRetryPolicy(
 
 DEFAULT_RETRY_ACQUIRE_LOCK = ConditionalRetryPolicy(
     DEFAULT_RETRY.with_predicate(
-        lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, (FileExistsError, api_exceptions.PreconditionFailed))),
+        lambda exc: DEFAULT_RETRY._predicate(exc)
+        or isinstance(exc, (FileExistsError, api_exceptions.PreconditionFailed))
+    ),
     is_generation_specified,
     ['query_params'],
 )
@@ -762,9 +764,12 @@ class GcsBlobUpath(BlobUpath):
                 acquire_retry = DEFAULT_RETRY_ACQUIRE_LOCK
             else:
                 acquire_retry = ConditionalRetryPolicy(
-                    DEFAULT_RETRY
-                        .with_predicate(lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, (FileExistsError, api_exceptions.PreconditionFailed)))
-                        .with_timeout(timeout),
+                    DEFAULT_RETRY.with_predicate(
+                        lambda exc: DEFAULT_RETRY._predicate(exc)
+                        or isinstance(
+                            exc, (FileExistsError, api_exceptions.PreconditionFailed)
+                        )
+                    ).with_timeout(timeout),
                     is_generation_specified,
                     ['query_params'],
                 )
