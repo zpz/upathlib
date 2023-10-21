@@ -15,7 +15,7 @@ from io import BufferedReader, BytesIO, UnsupportedOperation
 import google.auth
 from google import resumable_media
 from google.api_core import exceptions as api_exceptions
-from google.api_core import retry
+from google.api_core import retry as api_retry
 from google.cloud import storage
 
 # 60 seconds; this is the "connection timeout" to server.
@@ -24,8 +24,8 @@ from google.cloud import storage
 # `google.cloud` is repo python-cloud-core.
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
-    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
     ConditionalRetryPolicy,
+    is_generation_specified,
 )
 from typing_extensions import Self
 
@@ -49,40 +49,46 @@ MEGABYTES32 = 33554432
 MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 
-# DEFAULT_RETRY has default timeout 120 seconds.
 
 # Workaround:
 # The availability of `Retry.with_timeout` is in a messy state
 # between versions of `google-api-core`.
-if not hasattr(DEFAULT_RETRY, 'with_timeout'):
-    if hasattr(DEFAULT_RETRY, 'with_deadline'):
-        DEFAULT_RETRY.with_timeout = DEFAULT_RETRY.with_deadline
-    else:
-        raise ImportError(
-            'Retry has neither `with_timeout` nor `with_deadline`; please look into the version of `google-api-core`'
-        )
+# `upathlib` requires a recent version which should be fine.
+assert hasattr(DEFAULT_RETRY, 'with_timeout')
+
+
+# DEFAULT_RETRY has default timeout 120 seconds.
+DEFAULT_RETRY = DEFAULT_RETRY.with_timeout(300.0).with_delay(1.0, 10.0)
+ # see `google.api_core.retry.exponential_sleep_generator`
 
 
 DEFAULT_RETRY_ACQUIRE_LOCK = (
-    DEFAULT_RETRY.with_timeout(300.0)
-    .with_delay(1.0, 10.0)  # see `google.api_core.retry.exponential_sleep_generator`
+    DEFAULT_RETRY
     .with_predicate(
         lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
     )
 )
 
 
+DEFAULT_RETRY_IF_GENERATION_SPECIFIED = ConditionalRetryPolicy(
+    DEFAULT_RETRY,
+    is_generation_specified,
+    ['query_params'],
+)
+
+
 DEFAULT_RETRY_RELEASE_LOCK = ConditionalRetryPolicy(
-    DEFAULT_RETRY.with_timeout(300.0).with_delay(1.0, 10.0),
-    storage.retry.is_generation_specified,
+    DEFAULT_RETRY,
+    is_generation_specified,
     ['query_params'],
 )
 
 
 DEFAULT_RETRY_ON_RATE_LIMIT = (
-    DEFAULT_RETRY.with_timeout(300.0)
-    .with_predicate(retry.if_exception_type(api_exceptions.TooManyRequests))
-    .with_delay(1.0, 10.0)
+    DEFAULT_RETRY
+    .with_predicate(
+        lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, api_exceptions.TooManyRequests)
+    )
 )
 
 
@@ -108,8 +114,8 @@ def get_google_auth(
         not credentials.token
         or (credentials.expiry - datetime.utcnow()).total_seconds() < valid_for_seconds
     ):
-        retry.Retry(
-            predicate=retry.if_exception_type(
+        api_retry.Retry(
+            predicate=api_retry.if_exception_type(
                 google.auth.exceptions.RefreshError,
                 google.auth.exceptions.TransportError,
             ),
@@ -355,22 +361,33 @@ class GcsBlobUpath(BlobUpath):
         overwrite=False,
         content_type=None,
         size=None,
+        timeout: float | None = None,
     ):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         try:
+            if overwrite:
+                if timeout is None:
+                    retry = DEFAULT_RETRY_ON_RATE_LIMIT
+                else:
+                    retry = DEFAULT_RETRY_ON_RATE_LIMIT.with_timeout(timeout)
+            else:
+                if timeout is None:
+                    retry = DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+                else:
+                    retry = ConditionalRetryPolicy(
+                        DEFAULT_RETRY.with_timeout(timeout),
+                        is_generation_specified,
+                        ['query_params'],
+                    )
             self._blob().upload_from_file(
                 file_obj,
                 content_type=content_type,
                 size=size,
                 client=self._client(),
                 if_generation_match=None if overwrite else 0,
-                retry=(
-                    DEFAULT_RETRY_ON_RATE_LIMIT
-                    if overwrite
-                    else DEFAULT_RETRY_IF_GENERATION_SPECIFIED
-                ),
+                retry=retry,
             )
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
@@ -384,7 +401,7 @@ class GcsBlobUpath(BlobUpath):
         b.seek(0)
         self._write_from_buffer(b, content_type="text/plain", size=len(data), **kwargs)
 
-    def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False):
+    def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False, timeout=None):
         """
         Write bytes ``data`` to the current blob.
 
@@ -397,10 +414,10 @@ class GcsBlobUpath(BlobUpath):
             memoryview(data)
         except TypeError:  # file-like data
             self._write_from_buffer(
-                data, content_type="text/plain", overwrite=overwrite
+                data, content_type="text/plain", overwrite=overwrite, timeout=timeout,
             )
         else:  # bytes-like data
-            self._write_bytes(data, overwrite=overwrite)
+            self._write_bytes(data, overwrite=overwrite, timeout=timeout)
 
     def _multipart_download(self, blob_size, file_obj):
         client = self._client()
@@ -539,7 +556,7 @@ class GcsBlobUpath(BlobUpath):
             target.remove_file()
             raise
 
-    def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
+    def upload_file(self, source: LocalPathType, *, overwrite=False, timeout=None) -> None:
         """
         Upload the content of ``source`` to the current blob.
         """
@@ -559,6 +576,7 @@ class GcsBlobUpath(BlobUpath):
                 size=total_bytes,
                 content_type=content_type,
                 overwrite=overwrite,
+                timeout=timeout,
             )
 
     def iterdir(self) -> Iterator[Self]:
@@ -668,6 +686,8 @@ class GcsBlobUpath(BlobUpath):
         t0 = time.perf_counter()
         try:
             retry(self._write_bytes)(b'0')
+            # TODO: `self._write_bytes` itself has "retry", then it is "retried" again.
+            # This seems to be wrong.
             self._generation = self._blob().generation
         except FileExistsError as e:
             finfo = self.file_info(request_timeout=timeout)
@@ -717,8 +737,6 @@ class GcsBlobUpath(BlobUpath):
         self,
         *,
         timeout=None,
-        acquire_retry=None,
-        release_retry=None,
     ):
         """
         This implementation does not prevent the file from being deleted
@@ -734,14 +752,18 @@ class GcsBlobUpath(BlobUpath):
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
-        if acquire_retry is None:
+        if timeout is None:
             acquire_retry = DEFAULT_RETRY_ACQUIRE_LOCK
-            if timeout is not None:
-                acquire_retry = acquire_retry.with_timeout(timeout)
-        if release_retry is None:
+        else:
+            acquire_retry = DEFAULT_RETRY_ACQUIRE_LOCK.with_timeout(timeout)
+        if timeout is None:
             release_retry = DEFAULT_RETRY_RELEASE_LOCK
-            if timeout is not None:
-                release_retry = release_retry.with_timeout(timeout)
+        else:
+            release_retry = ConditionalRetryPolicy(
+                DEFAULT_RETRY.with_timeout(timeout),
+                is_generation_specified,
+                ['query_params'],
+            )
 
         if self._lock_count == 0:
             self._acquire_lease(retry=acquire_retry)
