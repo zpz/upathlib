@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.8.8] - in progress
+
+- Fixes and finetuning on GCS "retry" logic.
+
+
 ## [0.8.7] - 2023-10-19
 
 - Removed optional depencency ``lz4``. User can install it if they need to use it.
