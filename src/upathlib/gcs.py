@@ -24,8 +24,6 @@ from google.cloud import storage
 # `google.cloud` is the repo python-cloud-core.
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
-    ConditionalRetryPolicy,
-    is_generation_specified,
 )
 from typing_extensions import Self
 
@@ -380,7 +378,10 @@ class GcsBlobUpath(BlobUpath):
         self._write_from_buffer(b, content_type="text/plain", size=len(data), **kwargs)
 
     def write_bytes(
-        self, data: bytes | BufferedReader, *, overwrite=False,
+        self,
+        data: bytes | BufferedReader,
+        *,
+        overwrite=False,
     ):
         """
         Write bytes ``data`` to the current blob.
@@ -538,9 +539,7 @@ class GcsBlobUpath(BlobUpath):
             target.remove_file()
             raise
 
-    def upload_file(
-        self, source: LocalPathType, *, overwrite=False
-    ) -> None:
+    def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
         Upload the content of ``source`` to the current blob.
         """
@@ -667,8 +666,13 @@ class GcsBlobUpath(BlobUpath):
 
         t0 = time.perf_counter()
         try:
-            retry = DEFAULT_RETRY.with_timeout(timeout).with_delay(1.0, 10.0).with_predicate(
-                lambda exc: DEFAULT_RETRY._predicate(exc) or isinstance(exc, FileExistsError)
+            retry = (
+                DEFAULT_RETRY.with_timeout(timeout)
+                .with_delay(1.0, 10.0)
+                .with_predicate(
+                    lambda exc: DEFAULT_RETRY._predicate(exc)
+                    or isinstance(exc, FileExistsError)
+                )
             )
             retry(self._write_bytes)(b'0', overwrite=False)
             self._generation = self._blob().generation
