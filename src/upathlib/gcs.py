@@ -12,13 +12,13 @@ from collections.abc import Iterator
 from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
 
-from typing_extensions import Self
 import google.auth
 from google import resumable_media
 from google.api_core import exceptions as api_exceptions
 from google.api_core import retry as api_retry
 from google.cloud import storage
 from google.cloud.storage.retry import DEFAULT_RETRY
+from typing_extensions import Self
 
 # Many blob methods have a parameter `timeout`.
 # The default value, 60 seconds, is defined as ``google.cloud.storage.constants._DEFAULT_TIMEOUT``.
@@ -27,12 +27,10 @@ from google.cloud.storage.retry import DEFAULT_RETRY
 # In other words, this is the http request "connection timeout" to server.
 # It is not a "retry" timeout.
 # `google.cloud` is the repo python-cloud-core.
-
 # `DEFAULT_RETRY` is used in `google.cloud.storage` extensively.
 # If you want to increase the timeout (default to 120) across the board,
 # you may hack certain attributes of this object.
 # See `google.api_core.retry.exponential_sleep_generator`.
-
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool
