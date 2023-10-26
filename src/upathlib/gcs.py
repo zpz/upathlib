@@ -286,7 +286,7 @@ class GcsBlobUpath(BlobUpath):
         )
         return len(list(blobs)) > 0
 
-    def file_info(self, *, timeout=60) -> FileInfo | None:
+    def file_info(self, *, timeout=None) -> FileInfo | None:
         """
         Return file info if the current path is a file;
         otherwise return ``None``.
@@ -295,7 +295,7 @@ class GcsBlobUpath(BlobUpath):
         try:
             b.reload(
                 client=self._client(),
-                timeout=timeout,  # TODO: is this necessary?
+                timeout=timeout or 60,  # TODO: is this necessary?
                 # retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)),
             )
         except api_exceptions.NotFound:
