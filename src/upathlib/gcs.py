@@ -17,21 +17,26 @@ from google import resumable_media
 from google.api_core import exceptions as api_exceptions
 from google.api_core import retry as api_retry
 from google.cloud import storage
-
-# 60 seconds; this is the "connection timeout" to server.
-# From my reading, it's the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
-# that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
-# `google.cloud` is the repo python-cloud-core.
-from google.cloud.storage.retry import (
-    DEFAULT_RETRY,
-)
+from google.cloud.storage.retry import DEFAULT_RETRY
 from typing_extensions import Self
 
+# Many blob methods have a parameter `timeout`.
+# The default value, 60 seconds, is defined as ``google.cloud.storage.constants._DEFAULT_TIMEOUT``.
+# From my reading, this is the `timeout` parameter to `google.cloud.storage.client._connection.api_request`,
+# that is, the `timeout` parameter to `google.cloud._http.JSONConnection.api_request`.
+# In other words, this is the http request "connection timeout" to server.
+# It is not a "retry" timeout.
+# `google.cloud` is the repo python-cloud-core.
+# `DEFAULT_RETRY` is used in `google.cloud.storage` extensively.
+# If you want to increase the timeout (default to 120) across the board,
+# you may hack certain attributes of this object.
+# See `google.api_core.retry.exponential_sleep_generator`.
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool
 
 # To see retry info, uncomment the following. The printout is typically not overwhelming.
+# There is one message per retry.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
 
 __all__ = ['GcsBlobUpath', 'get_google_auth']
@@ -48,15 +53,10 @@ MEGABYTES64 = 67108864
 LARGE_FILE_SIZE = MEGABYTES64
 NOTSET = object()
 
-# Workaround:
 # The availability of `Retry.with_timeout` is in a messy state
 # between versions of `google-api-core`.
 # `upathlib` requires a recent version which should be fine.
 assert hasattr(DEFAULT_RETRY, 'with_timeout')
-
-
-# DEFAULT_RETRY has default timeout 120 seconds.
-# see `google.api_core.retry.exponential_sleep_generator`
 
 
 def get_google_auth(
@@ -81,13 +81,16 @@ def get_google_auth(
         not credentials.token
         or (credentials.expiry - datetime.utcnow()).total_seconds() < valid_for_seconds
     ):
-        api_retry.Retry(
-            predicate=api_retry.if_exception_type(
-                google.auth.exceptions.RefreshError,
-                google.auth.exceptions.TransportError,
-            ),
-        )(credentials.refresh)(google.auth.transport.requests.Request())
-        # One check shows that this token expires in one hour.
+        try:
+            api_retry.Retry(
+                predicate=api_retry.if_exception_type(
+                    google.auth.exceptions.RefreshError,
+                    google.auth.exceptions.TransportError,
+                ),
+            )(credentials.refresh)(google.auth.transport.requests.Request())
+            # One check shows that this token expires in one hour.
+        except api_exceptions.RetryError as e:
+            raise e.cause
         renewed = True
 
     if renewed:
@@ -281,19 +284,16 @@ class GcsBlobUpath(BlobUpath):
         )
         return len(list(blobs)) > 0
 
-    def file_info(self, *, request_timeout=60) -> FileInfo | None:
+    def file_info(self, *, timeout=None) -> FileInfo | None:
         """
         Return file info if the current path is a file;
         otherwise return ``None``.
-
-        ``request_timeout`` is the http request timeout, not "retry" timeout.
-        The default is 60 (which is the value ``google.cloud.storage.constants._DEFAULT_TIMEOUT``).
         """
         b = self._blob()
         try:
             b.reload(
                 client=self._client(),
-                timeout=request_timeout,  # TODO: is this necessary?
+                timeout=timeout or 60,  # TODO: is this necessary?
                 # retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)),
             )
         except api_exceptions.NotFound:
@@ -333,7 +333,7 @@ class GcsBlobUpath(BlobUpath):
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         try:
-            DEFAULT_RETRY(self._blob().upload_from_file)(
+            self._blob().upload_from_file(
                 file_obj,
                 content_type=content_type,
                 size=size,
@@ -360,6 +360,15 @@ class GcsBlobUpath(BlobUpath):
             #
             # These are the same codes in `google.cloud.storage.retry.DEFAULT_RETRY`.
             # The latter adds a few exception types.
+            #
+            # I've concluded that passing in a custom `retry` into `upload_from_file`
+            # may not be very useful.
+
+            # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
+            # uploading. `resumable_media` has its own retry facilities. When a retriable exception
+            # happens but time is up, the original exception is raised.
+            # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
+            # raise `RetryError` with the original exception as its `.cause` attribute.
 
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
@@ -666,16 +675,22 @@ class GcsBlobUpath(BlobUpath):
 
         t0 = time.perf_counter()
         try:
-            retry = (
-                DEFAULT_RETRY.with_timeout(timeout)
-                .with_delay(1.0, 10.0)
-                .with_predicate(
-                    lambda exc: DEFAULT_RETRY._predicate(exc)
-                    or isinstance(exc, FileExistsError)
+            try:
+                retry = (
+                    DEFAULT_RETRY.with_timeout(timeout)
+                    .with_delay(1.0, 10.0)
+                    .with_predicate(
+                        lambda exc: DEFAULT_RETRY._predicate(exc)
+                        or isinstance(exc, FileExistsError)
+                    )
                 )
-            )
-            retry(self._write_bytes)(b'0', overwrite=False)
-            self._generation = self._blob().generation
+                retry(self._write_bytes)(b'0', overwrite=False)
+                self._generation = self._blob().generation
+            except api_exceptions.RetryError as e:
+                # `RetryError` originates from only one place, in `google.cloud.api_core.retry.retry_target`.
+                # The message is "Deadline of ...s exceeded while calling target function, last exception: ...".
+                # We are not losing much info by raising `e.cause` directly. That may ease downstream exception handling.
+                raise e.cause
         except FileExistsError as e:
             finfo = self.file_info()
             now = datetime.utcnow().replace(tzinfo=timezone.utc)
@@ -704,18 +719,20 @@ class GcsBlobUpath(BlobUpath):
 
     def _release_lease(self, *, timeout):
         # TODO:
-        # once got "RemoteDisconnected" error after 0.01 seconds, which should have triggered retry
-        # according to GCP code. I don't understand why retry apparently did not happen.
+        # once got "RemoteDisconnected" error after 0.01 seconds.
         t0 = time.perf_counter()
         try:
-            retry = DEFAULT_RETRY.with_timeout(timeout).with_delay(1.0, 10.0)
-            # `retry` is intentionally not a `ConditionalRetryPolicy`.
-            # But, is this correct?
-            self._blob().delete(
-                client=self._client(),
-                if_generation_match=self._generation,  # TODO: should we remove this condition?
-                retry=retry,
-            )
+            try:
+                retry = DEFAULT_RETRY.with_timeout(timeout).with_delay(1.0, 10.0)
+                # `retry` is intentionally not a `ConditionalRetryPolicy`.
+                # But, is this appropriate?
+                self._blob().delete(
+                    client=self._client(),
+                    if_generation_match=self._generation,  # TODO: should we remove this condition?
+                    retry=retry,
+                )
+            except api_exceptions.RetryError as e:
+                raise e.cause
         except Exception as e:
             t1 = time.perf_counter()
             raise LockReleaseError(
