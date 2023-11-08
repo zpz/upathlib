@@ -370,6 +370,8 @@ class GcsBlobUpath(BlobUpath):
             # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
             # raise `RetryError` with the original exception as its `.cause` attribute.
 
+            # If `file_obj` is large, this will sequentially upload chunks.
+
             # TODO: set "create_time", 'update_time" to be the same
             # as the source local file?
             # Blob objects has methods `_set_properties`, `_patch_property`,
@@ -408,6 +410,7 @@ class GcsBlobUpath(BlobUpath):
                 content_type="text/plain",
                 overwrite=overwrite,
             )
+            # TODO: how to provide `size`?
         else:  # bytes-like data
             self._write_bytes(data, overwrite=overwrite)
 
@@ -445,6 +448,13 @@ class GcsBlobUpath(BlobUpath):
             if current_size > target_size:
                 buffer.truncate(target_size)
             return buffer
+            # TODO:
+            # Some speedup might be possible if we do not write into `buffer`, but rather
+            # return the response (which is written into `buffer` here) and later write it into
+            # `file_obj` directly in correct order. But that hack would be somewhat involved.
+            # See `google.cloud.storage.blob.Blob.download_to_file`,
+            # `google.cloud.storage.blob.Blob._do_download`, and its use of
+            # `google.resumable_media.requests.RawDownload` (passing `stream=None` to it).
 
         executor = get_shared_thread_pool("upathlib-gcs", MAX_THREADS - 2)
         k = 0
@@ -569,6 +579,9 @@ class GcsBlobUpath(BlobUpath):
                 content_type=content_type,
                 overwrite=overwrite,
             )
+            # TODO:
+            # If the file is large, current implementation uploads chunks sequentially.
+            # To upload chunks concurrently, check out `Blob.compose`.
 
     def iterdir(self) -> Iterator[Self]:
         """
