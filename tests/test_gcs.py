@@ -29,37 +29,37 @@ class Blob:
             raise NotFound(self.name)
 
     def _get_content_type(self, content_type, filename):
-        return 'ok'
+        return "ok"
 
     def upload_from_file(self, data, *, if_generation_match=None, **ignore):
         if if_generation_match == 0 and self.name in self._bucket._blobs:
             raise FileExistsError(self.name)
         data = data.read()
         self._bucket._blobs[self.name] = {
-            'data': data,
-            'time_created': datetime.now(),
-            'time_updated': datetime.now(),
-            'size': len(data),
+            "data": data,
+            "time_created": datetime.now(),
+            "time_updated": datetime.now(),
+            "size": len(data),
         }
 
     def download_to_file(self, file_obj, client=None, raw_download=None):
         try:
             z = self._bucket._blobs[self.name]
-            file_obj.write(z['data'])
+            file_obj.write(z["data"])
         except KeyError:
             raise NotFound(self.name)
 
     @property
     def time_created(self):
-        return self._bucket._blobs[self.name]['time_created']
+        return self._bucket._blobs[self.name]["time_created"]
 
     @property
     def updated(self):
-        return self._bucket._blobs[self.name]['time_updated']
+        return self._bucket._blobs[self.name]["time_updated"]
 
     @property
     def size(self):
-        return self._bucket._blobs[self.name]['size']
+        return self._bucket._blobs[self.name]["size"]
 
     @property
     def _properties(self):
@@ -162,20 +162,21 @@ class Client:
 @pytest.fixture()
 def gcp(mocker):
     # mocker.patch('upathlib.gcp.service_account')
-    mocker.patch('upathlib.gcs.storage.Client', Client)
-    mocker.patch('upathlib.gcs.GcsBlobUpath._PROJECT_ID', 'abc')
+    mocker.patch("upathlib.gcs.storage.Client", Client)
+    mocker.patch("upathlib.gcs.GcsBlobUpath._PROJECT_ID", "abc")
     mocker.patch(
-        'upathlib.gcs.GcsBlobUpath._CREDENTIALS',
+        "upathlib.gcs.GcsBlobUpath._CREDENTIALS",
         SimpleNamespace(
-            token='x', expiry=datetime.utcnow() + timedelta(days=1)  # noqa: S106
+            token="x",
+            expiry=datetime.utcnow() + timedelta(days=1),  # noqa: S106
         ),  # noqa: S106
     )  # noqa: S106
-    mocker.patch('upathlib.gcs.GcsBlobUpath._CLIENT', Client())
+    mocker.patch("upathlib.gcs.GcsBlobUpath._CLIENT", Client())
     c = GcsBlobUpath(
-        '/tmp/test',
-        bucket_name='test',
+        "/tmp/test",
+        bucket_name="test",
     ) / str(uuid4())
-    print('c._bucket', c._bucket)
+    print("c._bucket", c._bucket)
     c.rmrf()
     try:
         yield c
@@ -184,7 +185,7 @@ def gcp(mocker):
 
 
 def test_all(gcp):
-    print('gcp._bucket:', gcp._bucket)
+    print("gcp._bucket:", gcp._bucket)
 
     upathlib._tests.test_all(gcp)
 

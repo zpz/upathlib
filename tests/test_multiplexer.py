@@ -8,10 +8,10 @@ def mult_worker(mux_id, q):
     worker_id = multiprocessing.current_process().name
     total = 0
     for x in Multiplexer(mux_id, worker_id):
-        print(worker_id, 'got', x)
+        print(worker_id, "got", x)
         total += x * x
         sleep(0.1)
-    print(worker_id, 'finishing with total', total)
+    print(worker_id, "finishing with total", total)
     q.put(total)
 
 
@@ -20,11 +20,9 @@ def test_multiplexer(tmp_path):
     mux = Multiplexer.new(range(1, 1 + N), tmp_path)
     mux_id = mux.start()
 
-    ctx = multiprocessing.get_context('spawn')
+    ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
-    workers = [
-        ctx.Process(target=mult_worker, args=(mux_id, q)) for _ in range(5)
-    ]
+    workers = [ctx.Process(target=mult_worker, args=(mux_id, q)) for _ in range(5)]
     for w in workers:
         w.start()
     for w in workers:

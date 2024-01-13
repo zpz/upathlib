@@ -55,8 +55,6 @@ except ImportError:
 # to suppress the "urllib3 connection lost" warning.
 
 
-
-
 class LockAcquireError(TimeoutError):
     pass
 
@@ -118,9 +116,7 @@ class Upath(abc.ABC):
                 Google Cloud Storage. Please see subclasses for specifics.
         """
 
-        self._path = os.path.normpath(
-            os.path.join("/", *pathsegments)
-        )  # pylint: disable=no-value-for-parameter
+        self._path = os.path.normpath(os.path.join("/", *pathsegments))  # pylint: disable=no-value-for-parameter
         # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
         # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.

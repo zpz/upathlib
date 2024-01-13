@@ -26,8 +26,8 @@ from typing import Union
 
 from ._blob import BlobUpath
 from ._local import LocalPathType, LocalUpath
-from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath, PathType
 from ._multiplexer import Multiplexer
+from ._upath import FileInfo, LockAcquireError, LockReleaseError, PathType, Upath
 
 try:
     from .gcs import GcsBlobUpath
@@ -37,7 +37,6 @@ try:
     from .azure import AzureBlobUpath
 except ImportError:
     pass
-
 
 
 def resolve_path(path: PathType):

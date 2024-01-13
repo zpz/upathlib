@@ -19,16 +19,16 @@ class ResourceExistsError(Exception):
 
 
 class FakeBlobStore:
-    '''A in-memory blobstore for illustration purposes'''
+    """A in-memory blobstore for illustration purposes"""
 
     def __init__(self):
         self._data = {
-            'bucket_a': {},
-            'bucket_b': {},
+            "bucket_a": {},
+            "bucket_b": {},
         }
         self._meta = {
-            'bucket_a': {},
-            'bucket_b': {},
+            "bucket_a": {},
+            "bucket_b": {},
         }
 
     def write_bytes(self, bucket: str, name: str, data: bytes, overwrite: bool = False):
@@ -89,11 +89,11 @@ _store = FakeBlobStore()
 
 
 class FakeBlobUpath(BlobUpath):
-    '''This Upath implementation for the FakeBlobstore
+    """This Upath implementation for the FakeBlobstore
     can be used for testing basic functionalities.
 
     This also showcases the essential methods that
-    a concrete subclass of BlobUpath needs to implement.'''
+    a concrete subclass of BlobUpath needs to implement."""
 
     def __init__(self, *parts: str, bucket: str):
         super().__init__(*parts)
@@ -129,8 +129,8 @@ class FakeBlobUpath(BlobUpath):
 
     def riterdir(self) -> Iterator[Self]:
         p = self._path
-        if not p.endswith('/'):
-            p += '/'
+        if not p.endswith("/"):
+            p += "/"
         for pp in _store.list_blobs(self._bucket, p):
             yield self / pp[len(p) :]
 
@@ -142,7 +142,7 @@ class FakeBlobUpath(BlobUpath):
 
     @property
     def root(self) -> Self:
-        return self.__class__('/', bucket=self._bucket)
+        return self.__class__("/", bucket=self._bucket)
 
     def write_bytes(self, data, *, overwrite=False):
         try:
@@ -152,7 +152,7 @@ class FakeBlobUpath(BlobUpath):
 
 
 def test_all():
-    p = FakeBlobUpath('/tmp/test', bucket='bucket_a') / str(uuid4())
+    p = FakeBlobUpath("/tmp/test", bucket="bucket_a") / str(uuid4())
     try:
         p.rmrf()
         upathlib._tests.test_all(p)

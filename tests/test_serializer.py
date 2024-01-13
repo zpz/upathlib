@@ -9,7 +9,7 @@ from upathlib.serializer import (
     _MyLocal,
 )
 
-data = [12, 23.8, {'a': [9, 'xyz'], 'b': {'first': 3, 'second': 2.3}}, None]
+data = [12, 23.8, {"a": [9, "xyz"], "b": {"first": 3, "second": 2.3}}, None]
 
 
 def test_all():
@@ -36,7 +36,7 @@ def test_mylocal():
         assert len(me.compressor) == 0
         assert me.decompressor is None
         me.compressor[(3, 4)] = 5
-        me.decompressor = 'a'
+        me.decompressor = "a"
         return True
 
     with ThreadPoolExecutor() as pool:

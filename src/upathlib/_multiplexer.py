@@ -1,44 +1,43 @@
 from __future__ import annotations
 
 import base64
-import pickle
 import logging
 import multiprocessing
+import pickle
 import threading
 from collections.abc import Iterable, Iterator, Sized
+from contextlib import contextmanager
 from datetime import datetime
 from typing import TypeVar
-from contextlib import contextmanager
 
-from ._upath import Upath, PathType
-
+from ._upath import PathType, Upath
 
 logger = logging.getLogger(__name__)
 
 
 @contextmanager
 def lock_to_use(file: Upath, timeout=300):
-    f = file.with_suffix(file.suffix + '.lock')
+    f = file.with_suffix(file.suffix + ".lock")
     with f.lock(timeout=timeout):
         yield file
 
 
 def encode(x) -> str:
-    '''
+    """
     Encode an pickle-able object to a string w/o space and special characters,
     safe to be passed via network.
-    '''
+    """
     return base64.standard_b64encode(pickle.dumps(x)).decode()
 
 
 def decode(y: str):
-    '''
+    """
     Convert the output of ``encode`` back to the original Python object.
-    '''
+    """
     return pickle.loads(base64.standard_b64decode(y.encode()))
 
 
-Element = TypeVar('Element')
+Element = TypeVar("Element")
 
 
 class Multiplexer(Iterable[Element], Sized):
@@ -87,10 +86,11 @@ class Multiplexer(Iterable[Element], Sized):
             this path points to a location in a cloud storage that is supported by ``upathlib``.
         """
         from upathlib import resolve_path
+
         path = resolve_path(path)
         data = list(data)
         assert len(data) > 0
-        (path / 'data.pickle').write_pickle(data)
+        (path / "data.pickle").write_pickle(data)
         mux_id = encode((path, None))
         return cls(mux_id)
 
@@ -123,7 +123,7 @@ class Multiplexer(Iterable[Element], Sized):
         Return the data elements stored in this ``Multiplexer``.
         """
         if self._data is None:
-            self._data = (self.path / 'data.pickle').read_pickle()
+            self._data = (self.path / "data.pickle").read_pickle()
         return self._data
 
     def __len__(self) -> int:
@@ -136,7 +136,7 @@ class Multiplexer(Iterable[Element], Sized):
         """
         `session_id`: returned by :meth:`start`.
         """
-        return self.path / '.mux' / session_id / 'info.json'
+        return self.path / ".mux" / session_id / "info.json"
 
     def start(self) -> str:
         """
@@ -163,17 +163,17 @@ class Multiplexer(Iterable[Element], Sized):
         it holds the session ID just like the other workers. However, the coordinator code
         does not have to *participate* in reading.
 
-        The returned value (the "ID") identifies this Multiplexer as well as this particular reading session. 
-        All workers that use the same ID participate in the same reading session, i.e. 
+        The returned value (the "ID") identifies this Multiplexer as well as this particular reading session.
+        All workers that use the same ID participate in the same reading session, i.e.
         the data elements will be split between them.
         There can be multiple, independent reading sessions going on at the same time.
         """
         session_id = datetime.utcnow().isoformat()
         self._mux_info_file(session_id).write_json(
             {
-                'total': len(self.data),
-                'next': 0,
-                'time': datetime.utcnow().isoformat(),
+                "total": len(self.data),
+                "next": 0,
+                "time": datetime.utcnow().isoformat(),
             },
             overwrite=False,
         )
@@ -193,7 +193,7 @@ class Multiplexer(Iterable[Element], Sized):
         """
         assert self._session_id
         if not self._worker_id:
-            self._worker_id = '{} {}'.format(
+            self._worker_id = "{} {}".format(
                 multiprocessing.current_process().name,
                 threading.current_thread().name,
             )
@@ -210,15 +210,15 @@ class Multiplexer(Iterable[Element], Sized):
                 # `FileNotFoundError` here. User may want
                 # to do retry here.
 
-                n = ss['next']
-                if n == ss['total']:
+                n = ss["next"]
+                if n == ss["total"]:
                     return
                 ff.write_json(
                     {
-                        'next': n + 1,
-                        'worker_id': worker_id,
-                        'time': datetime.utcnow().isoformat(),
-                        'total': ss['total'],
+                        "next": n + 1,
+                        "worker_id": worker_id,
+                        "time": datetime.utcnow().isoformat(),
+                        "total": ss["total"],
                     },
                     overwrite=True,
                 )
@@ -243,7 +243,7 @@ class Multiplexer(Iterable[Element], Sized):
         that has had its :meth:`start` called.
         """
         ss = self.stat()
-        return ss['next'] == ss['total']
+        return ss["next"] == ss["total"]
 
     def destroy(self) -> None:
         """
