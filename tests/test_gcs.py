@@ -167,7 +167,7 @@ def gcp(mocker):
     mocker.patch(
         "upathlib.gcs.GcsBlobUpath._CREDENTIALS",
         SimpleNamespace(
-            token="x",
+            token="x",  # noqa: S106
             expiry=datetime.utcnow() + timedelta(days=1),  # noqa: S106
         ),  # noqa: S106
     )  # noqa: S106
