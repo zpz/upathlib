@@ -18,7 +18,7 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.8.8"
+__version__ = "0.8.9b1"
 
 
 from pathlib import Path
@@ -26,7 +26,8 @@ from typing import Union
 
 from ._blob import BlobUpath
 from ._local import LocalPathType, LocalUpath
-from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
+from ._multiplexer import Multiplexer
+from ._upath import FileInfo, LockAcquireError, LockReleaseError, PathType, Upath
 
 try:
     from .gcs import GcsBlobUpath
@@ -36,9 +37,6 @@ try:
     from .azure import AzureBlobUpath
 except ImportError:
     pass
-
-
-PathType = Union[str, Path, Upath]
 
 
 def resolve_path(path: PathType):

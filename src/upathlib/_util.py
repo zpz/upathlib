@@ -40,7 +40,7 @@ def get_shared_thread_pool(
     return executor
 
 
-if hasattr(os, 'register_at_fork'):  # not available on Windows
+if hasattr(os, "register_at_fork"):  # not available on Windows
 
     def _clear_global_state():
         for box in (_global_thread_pools_,):

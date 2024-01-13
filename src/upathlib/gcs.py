@@ -39,7 +39,7 @@ from ._util import MAX_THREADS, get_shared_thread_pool
 # There is one message per retry.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
 
-__all__ = ['GcsBlobUpath', 'get_google_auth']
+__all__ = ["GcsBlobUpath", "get_google_auth"]
 
 
 logger = logging.getLogger(__name__)
@@ -56,7 +56,7 @@ NOTSET = object()
 # The availability of `Retry.with_timeout` is in a messy state
 # between versions of `google-api-core`.
 # `upathlib` requires a recent version which should be fine.
-assert hasattr(DEFAULT_RETRY, 'with_timeout')
+assert hasattr(DEFAULT_RETRY, "with_timeout")
 
 
 def get_google_auth(
@@ -697,7 +697,7 @@ class GcsBlobUpath(BlobUpath):
                         or isinstance(exc, FileExistsError)
                     )
                 )
-                retry(self._write_bytes)(b'0', overwrite=False)
+                retry(self._write_bytes)(b"0", overwrite=False)
                 self._generation = self._blob().generation
             except api_exceptions.RetryError as e:
                 # `RetryError` originates from only one place, in `google.cloud.api_core.retry.retry_target`.

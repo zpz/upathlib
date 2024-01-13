@@ -30,6 +30,7 @@ from io import BufferedReader, UnsupportedOperation
 from typing import (
     Any,
     Callable,
+    Union,
 )
 
 from tqdm.auto import tqdm
@@ -115,9 +116,7 @@ class Upath(abc.ABC):
                 Google Cloud Storage. Please see subclasses for specifics.
         """
 
-        self._path = os.path.normpath(
-            os.path.join("/", *pathsegments)
-        )  # pylint: disable=no-value-for-parameter
+        self._path = os.path.normpath(os.path.join("/", *pathsegments))  # pylint: disable=no-value-for-parameter
         # For LocalUpath on Windows, this is like 'C:\\Users\\username\\path'.
         # For LocalUpath on Linux, and BlobUpath, this is always absolute starting with '/'.
         # It does not have a trailing `/` unless the path is just `/` itself.
@@ -983,3 +982,6 @@ class Upath(abc.ABC):
         this lock.
         """
         raise NotImplementedError
+
+
+PathType = Union[str, pathlib.Path, Upath]

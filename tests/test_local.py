@@ -9,10 +9,10 @@ from upathlib import LocalUpath
 
 @pytest.fixture
 def test_path():
-    if os.name == 'posix':
-        p = LocalUpath('/tmp/upathlib_local_test') / str(uuid4())
+    if os.name == "posix":
+        p = LocalUpath("/tmp/upathlib_local_test") / str(uuid4())
     else:
-        p = LocalUpath(str(pathlib.Path.home() / 'tmp/upathlib_local_test')) / str(
+        p = LocalUpath(str(pathlib.Path.home() / "tmp/upathlib_local_test")) / str(
             uuid4()
         )
     try:
@@ -25,8 +25,8 @@ def test_path():
 def test_localupath_init():
     p = LocalUpath()
     assert p._path == str(pathlib.Path.cwd())
-    p = LocalUpath('a', 'b', 'c', 'd')
-    assert str(p.path) == str(pathlib.Path(pathlib.Path.cwd(), 'a', 'b', 'c', 'd'))
+    p = LocalUpath("a", "b", "c", "d")
+    assert str(p.path) == str(pathlib.Path(pathlib.Path.cwd(), "a", "b", "c", "d"))
 
 
 def test_all(test_path):
@@ -34,7 +34,7 @@ def test_all(test_path):
 
 
 def test_lock():
-    test_path = LocalUpath('/tmp/upathlib_local_test') / 'test-lock'
+    test_path = LocalUpath("/tmp/upathlib_local_test") / "test-lock"
     # Use a fix path to see whether there are issues, because
     # the implementation leaves the lock file around.
     upathlib._tests.test_lock(test_path)
@@ -64,17 +64,17 @@ def test_rename(test_path):
 
 def test_pathlike(test_path):
     p = test_path
-    p.write_text('abc')
+    p.write_text("abc")
     with open(p) as file:
-        assert file.read() == 'abc'
+        assert file.read() == "abc"
 
 
 def test_pickle(test_path):
     p = test_path
     p.rmrf()
-    pp = p / 'data.dat'
+    pp = p / "data.dat"
 
-    data = [1, 2, {'a': 3, 'b': [1, 'c']}]
+    data = [1, 2, {"a": 3, "b": [1, "c"]}]
     pp.write_pickle(data, overwrite=True)
     assert pp.read_pickle() == data
     pp.write_pickle_z(data, overwrite=True)

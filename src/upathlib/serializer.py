@@ -117,7 +117,7 @@ class ZstdPickleSerializer(PickleSerializer):
 
     @classmethod
     def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None, threads=0):
-        '''
+        """
         Parameters
         ----------
         threads
@@ -125,7 +125,7 @@ class ZstdPickleSerializer(PickleSerializer):
             compression operations are performed on multiple threads. The default
             value (0) disables multi-threaded compression. A value of ``-1`` means
             to set the number of threads to the number of detected logical CPUs.
-        '''
+        """
         y = super().serialize(x, protocol=protocol)
         c = cls._cache.compressor.get((level, threads))
         if c is None:
