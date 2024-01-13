@@ -30,6 +30,7 @@ from io import BufferedReader, UnsupportedOperation
 from typing import (
     Any,
     Callable,
+    Union,
 )
 
 from tqdm.auto import tqdm
@@ -52,6 +53,8 @@ except ImportError:
 # End user may want to do this:
 #  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
 # to suppress the "urllib3 connection lost" warning.
+
+
 
 
 class LockAcquireError(TimeoutError):
@@ -983,3 +986,6 @@ class Upath(abc.ABC):
         this lock.
         """
         raise NotImplementedError
+
+
+PathType = Union[str, pathlib.Path, Upath]

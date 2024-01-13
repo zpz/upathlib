@@ -41,8 +41,6 @@ gcs = [
     "google-api-core >= 2.12.0",
     "requests",
 ]
-zstandard = []
-lz4 = []
 doc = [
     "sphinx",
     "numpydoc",
