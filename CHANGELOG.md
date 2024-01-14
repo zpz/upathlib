@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.8.9] - in progress
 
 - New class ``Multiplexer``.
+- Finetune in GCS ratelimit handling in ``write_bytes``.
 
 
 ## [0.8.8] - 2023-10-26

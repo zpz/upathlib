@@ -7,10 +7,8 @@ import pickle
 import threading
 from collections.abc import Iterable, Iterator, Sized
 from contextlib import contextmanager
-from datetime import datetime
-from typing import TypeVar
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
+from typing import TypeVar
 
 from ._upath import PathType, Upath
 
@@ -40,19 +38,19 @@ def decode(y: str):
 
 
 def make_version(tag: str = None):
-    '''
+    """
     Make a version string based on current UTC time in this format::
 
         '20240113-073825-tag'
 
     where `'-tag'` is omitted if ``tag`` is falsy.
-    '''
-    version = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')
+    """
+    version = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     if tag:
-        tag = tag.strip(' _-')
+        tag = tag.strip(" _-")
         # TODO: this does not strip all possible combinations.
         if tag:
-            version = version + '-' + tag
+            version = version + "-" + tag
     return version
 
 
@@ -252,7 +250,7 @@ class Multiplexer(Iterable[Element], Sized):
     def stat(self, mux_id: str = None) -> dict:
         """
         Return status info of an ongoing read session.
-        
+
         This is often called in the "coordinator" code on the object
         that has had its :meth:`create_read_session` called.
         ``mux_id`` is the return of :meth:`create_read_session`.
