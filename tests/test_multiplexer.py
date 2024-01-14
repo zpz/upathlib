@@ -18,7 +18,7 @@ def mult_worker(mux_id, q):
 def test_multiplexer(tmp_path):
     N = 30
     mux = Multiplexer.new(range(1, 1 + N), tmp_path)
-    mux_id = mux.start()
+    mux_id = mux.create_read_session()
 
     ctx = multiprocessing.get_context("spawn")
     q = ctx.Queue()
@@ -33,6 +33,6 @@ def test_multiplexer(tmp_path):
         total += q.get()
     assert total == sum(x * x for x in range(1, 1 + N))
 
-    s = mux.stat()
+    s = mux.stat(mux_id)
     print(s)
-    assert mux.done()
+    assert mux.done(mux_id)
