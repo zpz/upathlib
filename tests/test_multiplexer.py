@@ -2,12 +2,18 @@ import multiprocessing
 from time import sleep
 
 from upathlib import Multiplexer
-from upathlib._multiplexer import encode, decode
+from upathlib._multiplexer import decode, encode
 
 
 def test_encoding():
-    print('')
-    x = ('tom', {'tag': 'adfoiqewr', 'data': [23, 56, 0.81, ('a', 'b', 22), 'so you like it\n ehr?']})
+    print("")
+    x = (
+        "tom",
+        {
+            "tag": "adfoiqewr",
+            "data": [23, 56, 0.81, ("a", "b", 22), "so you like it\n ehr?"],
+        },
+    )
     print(x)
     y = encode(x)
     z = decode(y)
