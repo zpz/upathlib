@@ -332,56 +332,64 @@ class GcsBlobUpath(BlobUpath):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
 
-        try:
-            self._blob().upload_from_file(
+        if overwrite:
+            retry = api_retry.Retry(
+                predicate=lambda exc: isinstance(exc, api_exceptions.TooManyRequests)
+            )
+            retry(self._blob().upload_from_file)(
                 file_obj,
                 content_type=content_type,
                 size=size,
                 client=self._client(),
-                if_generation_match=None if overwrite else 0,
             )
-            # For the parameter `retry` of `Blob.upload_from_file`,
-            # custom predicates in `retry` will not be passed through into `Blob.upload_from_file`; only the time/delay
-            # settings are used. See `google.cloud.storage._helpers._api_core_retry_to_resumable_media_retry`,
-            # with is applied on `retry` in `google.cloud.storage.blob.Blob._do_multipart_upload` and
-            # `google.cloud.storage.blob.Blob._do_resumable_upload`.
-            #
-            # The retriable status codes are defined in `google.resumable_media.common.RETRYABLE`.
-            # As of 10/24/2023, they are
-            #
-            # RETRYABLE = (
-            #     http.client.TOO_MANY_REQUESTS,  # 429
-            #     http.client.REQUEST_TIMEOUT,  # 408
-            #     http.client.INTERNAL_SERVER_ERROR,  # 500
-            #     http.client.BAD_GATEWAY,  # 502
-            #     http.client.SERVICE_UNAVAILABLE,  # 503
-            #     http.client.GATEWAY_TIMEOUT,  # 504
-            # )
-            #
-            # These are the same codes in `google.cloud.storage.retry.DEFAULT_RETRY`.
-            # The latter adds a few exception types.
-            #
-            # I've concluded that passing in a custom `retry` into `upload_from_file`
-            # may not be very useful.
+        else:
+            try:
+                self._blob().upload_from_file(
+                    file_obj,
+                    content_type=content_type,
+                    size=size,
+                    client=self._client(),
+                    if_generation_match=0,
+                )
+                # For the parameter `retry` of `Blob.upload_from_file`,
+                # custom predicates in `retry` will not be passed through into `Blob.upload_from_file`; only the time/delay
+                # settings are used. See `google.cloud.storage._helpers._api_core_retry_to_resumable_media_retry`,
+                # which is applied on `retry` in `google.cloud.storage.blob.Blob._do_multipart_upload` and
+                # `google.cloud.storage.blob.Blob._do_resumable_upload`.
+                #
+                # The retriable status codes are defined in `google.resumable_media.common.RETRYABLE`.
+                # As of 10/24/2023, they are
+                #
+                # RETRYABLE = (
+                #     http.client.TOO_MANY_REQUESTS,  # 429
+                #     http.client.REQUEST_TIMEOUT,  # 408
+                #     http.client.INTERNAL_SERVER_ERROR,  # 500
+                #     http.client.BAD_GATEWAY,  # 502
+                #     http.client.SERVICE_UNAVAILABLE,  # 503
+                #     http.client.GATEWAY_TIMEOUT,  # 504
+                # )
+                #
+                # These are the same codes in `google.cloud.storage.retry.DEFAULT_RETRY`.
+                # The latter adds a few exception types.
+                #
+                # I've concluded that passing in a custom `retry` into `upload_from_file`
+                # may not be very useful.
 
-            # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
-            # uploading. `resumable_media` has its own retry facilities. When a retriable exception
-            # happens but time is up, the original exception is raised.
-            # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
-            # raise `RetryError` with the original exception as its `.cause` attribute.
+                # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
+                # uploading. `resumable_media` has its own retry facilities. When a retriable exception
+                # happens but time is up, the original exception is raised.
+                # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
+                # raise `RetryError` with the original exception as its `.cause` attribute.
 
-            # If `file_obj` is large, this will sequentially upload chunks.
+                # If `file_obj` is large, this will sequentially upload chunks.
 
-            # TODO: set "create_time", 'update_time" to be the same
-            # as the source local file?
-            # Blob objects has methods `_set_properties`, `_patch_property`,
-            # `patch`.
-
-        except api_exceptions.PreconditionFailed as e:
-            if not overwrite:
+            except api_exceptions.PreconditionFailed as e:
                 raise FileExistsError(self) from e
-            else:
-                raise
+
+        # TODO: set "create_time", 'update_time" to be the same
+        # as the source local file?
+        # Blob objects has methods `_set_properties`, `_patch_property`,
+        # `patch`.
 
     def _write_bytes(self, data, **kwargs):
         b = BytesIO(data)
