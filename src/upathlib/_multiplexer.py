@@ -204,7 +204,7 @@ class Multiplexer(Iterable[Element], Sized):
         (even after :meth:`create_read_session` is called on it subsequently). On the other hand, an object
         created by ``Multiplexer(mux_id, ...)`` is participating in the read session that is identified by ``mux_id``.
         """
-        session_id = datetime.utcnow().isoformat()
+        session_id = datetime.now(timezone.utc).isoformat()
         self._mux_info_file(session_id).write_json(
             {
                 "total": len(self.data),
