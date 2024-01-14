@@ -86,7 +86,7 @@ True
 
 We can navigate in the directory. For example,
 
->>> for v in p.iterdir():
+>>> for v in sorted(p.iterdir()):  # the sort merely makes the result stable
 ...     print(v)
 /tmp/abc/d
 /tmp/abc/x.txt
@@ -94,7 +94,7 @@ We can navigate in the directory. For example,
 This is only the first level, or "direct children". We can also use "recursive iterdir"
 to get all files under the directory, descending into subdirectories recursively:
 
->>> for v in p.riterdir():
+>>> for v in sorted(p.riterdir()):  # the sort merely makes the result stable
 ...     print(v)
 /tmp/abc/d/y.data
 /tmp/abc/x.txt
@@ -264,7 +264,7 @@ Next, design an interesting worker function:
 
 Back in the main process,
 
->>> mux_id = hyper.start()
+>>> mux_id = hyper.create_read_session()
 >>> tasks = [multiprocessing.Process(target=worker, args=(mux_id,)) for _ in range(5)]
 >>> for t in tasks:
 ...     t.start()
@@ -292,7 +292,7 @@ Back in the main process,
 >>>
 >>> for t in tasks:
 ...     t.join()
->>> hyper.done()
+>>> hyper.done(mux_id)
 True
 >>> hyper.destroy()
 >>>
