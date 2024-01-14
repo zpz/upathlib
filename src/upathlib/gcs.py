@@ -333,7 +333,9 @@ class GcsBlobUpath(BlobUpath):
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         if overwrite:
-            retry = api_retry.Retry(predicate=lambda exc: isinstance(exc, api_exceptions.TooManyRequests))
+            retry = api_retry.Retry(
+                predicate=lambda exc: isinstance(exc, api_exceptions.TooManyRequests)
+            )
             retry(self._blob().upload_from_file)(
                 file_obj,
                 content_type=content_type,
