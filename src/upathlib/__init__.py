@@ -18,11 +18,10 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.8.9b2"
+__version__ = "0.9.0b1"
 
 
 from pathlib import Path
-from typing import Union
 
 from ._blob import BlobUpath
 from ._local import LocalPathType, LocalUpath

@@ -64,7 +64,7 @@ def get_google_auth(
     credentials=None,
     *,
     scopes: list[str] = None,
-    valid_for_seconds: int = 300,
+    valid_for_seconds: int = 600,
 ):
     renewed = False
     if project_id is None or credentials is None:
@@ -332,15 +332,20 @@ class GcsBlobUpath(BlobUpath):
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
 
+        # `Blob.upload_from_file` gets the data by `file.obj.read()` and uses the data
+        # going forward, including during retry, hence we don't need to worry about
+        # rewinding `file_obj` for retry.
+
         if overwrite:
-            retry = api_retry.Retry(
-                predicate=lambda exc: isinstance(exc, api_exceptions.TooManyRequests)
-            )
-            retry(self._blob().upload_from_file)(
+            self._blob().upload_from_file(
                 file_obj,
                 content_type=content_type,
                 size=size,
                 client=self._client(),
+                retry=DEFAULT_RETRY.with_predicate(
+                    lambda exc: isinstance(exc, api_exceptions.TooManyRequests)
+                ),
+                # default retry is None w/o `if_generation_match=0`.
             )
         else:
             try:
@@ -351,6 +356,8 @@ class GcsBlobUpath(BlobUpath):
                     client=self._client(),
                     if_generation_match=0,
                 )
+                # using the default retry
+
                 # For the parameter `retry` of `Blob.upload_from_file`,
                 # custom predicates in `retry` will not be passed through into `Blob.upload_from_file`; only the time/delay
                 # settings are used. See `google.cloud.storage._helpers._api_core_retry_to_resumable_media_retry`,
@@ -391,11 +398,6 @@ class GcsBlobUpath(BlobUpath):
         # Blob objects has methods `_set_properties`, `_patch_property`,
         # `patch`.
 
-    def _write_bytes(self, data, **kwargs):
-        b = BytesIO(data)
-        b.seek(0)
-        self._write_from_buffer(b, content_type="text/plain", size=len(data), **kwargs)
-
     def write_bytes(
         self,
         data: bytes | BufferedReader,
@@ -413,14 +415,16 @@ class GcsBlobUpath(BlobUpath):
         try:
             memoryview(data)
         except TypeError:  # file-like data
-            self._write_from_buffer(
-                data,
-                content_type="text/plain",
-                overwrite=overwrite,
-            )
-            # TODO: how to provide `size`?
+            pass
         else:  # bytes-like data
-            self._write_bytes(data, overwrite=overwrite)
+            data = BytesIO(data)
+            data.seek(0)
+
+        self._write_from_buffer(
+            data,
+            overwrite=overwrite,
+        )
+        # prev versions used `content_type='text/plain'` and worked; I don't remember why that choice was made
 
     def _multipart_download(self, blob_size, file_obj):
         client = self._client()
@@ -705,7 +709,7 @@ class GcsBlobUpath(BlobUpath):
                         or isinstance(exc, FileExistsError)
                     )
                 )
-                retry(self._write_bytes)(b"0", overwrite=False)
+                retry(self.write_bytes)(b"0", overwrite=False)
                 self._generation = self._blob().generation
             except api_exceptions.RetryError as e:
                 # `RetryError` originates from only one place, in `google.cloud.api_core.retry.retry_target`.

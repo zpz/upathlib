@@ -5,7 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.8.9] - in progress
+## [0.9.0] - 2024-01-17
+
+- Bug fix in GCS related to retry.
+
+
+## [0.8.9] - 2024-01-14
 
 - New class ``Multiplexer``.
 - Finetune in GCS ratelimit handling in ``write_bytes``.
