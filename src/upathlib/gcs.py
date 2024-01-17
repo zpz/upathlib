@@ -335,7 +335,7 @@ class GcsBlobUpath(BlobUpath):
         # `Blob.upload_from_file` gets the data by `file.obj.read()` and uses the data
         # going forward, including during retry, hence we don't need to worry about
         # rewinding `file_obj` for retry.
-        
+
         if overwrite:
             self._blob().upload_from_file(
                 file_obj,
