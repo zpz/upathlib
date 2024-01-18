@@ -15,10 +15,18 @@ from typing import Optional
 
 import google.auth
 from google import resumable_media
-from google.api_core.exceptions import RetryError, NotFound, PreconditionFailed, TooManyRequests
+from google.api_core.exceptions import (
+    NotFound,
+    PreconditionFailed,
+    RetryError,
+    TooManyRequests,
+)
 from google.api_core.retry import Retry, if_exception_type
 from google.cloud import storage
-from google.cloud.storage.retry import DEFAULT_RETRY, DEFAULT_RETRY_IF_GENERATION_SPECIFIED
+from google.cloud.storage.retry import (
+    DEFAULT_RETRY,
+    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
+)
 from typing_extensions import Self
 
 # Many blob methods have a parameter `timeout`.
@@ -345,7 +353,8 @@ class GcsBlobUpath(BlobUpath):
                     content_type=content_type,
                     size=size,
                     client=self._client(),
-                    retry=retry or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)),
+                    retry=retry
+                    or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)),
                     # default retry is None w/o `if_generation_match=0`.
                 )
             except RetryError as e:
@@ -396,7 +405,7 @@ class GcsBlobUpath(BlobUpath):
                     # If `file_obj` is large, this will sequentially upload chunks.
 
                 except RetryError as e:
-                    raise e.cause            
+                    raise e.cause
             except PreconditionFailed as e:
                 raise FileExistsError(self) from e
 
@@ -717,11 +726,12 @@ class GcsBlobUpath(BlobUpath):
                     multiplier=1.5,
                     timeout=timeout,
                 )(self.write_bytes)(
-                    b'0',
+                    b"0",
                     overwrite=False,
                     retry=DEFAULT_RETRY.with_predicate(
-                        lambda exc: DEFAULT_RETRY._predicate(exc) and not isinstance(exc, TooManyRequests)
-                    ).with_timeout(timeout)
+                        lambda exc: DEFAULT_RETRY._predicate(exc)
+                        and not isinstance(exc, TooManyRequests)
+                    ).with_timeout(timeout),
                 )
                 # By default, no retry on `FileExistsError`, but here we want to retry on it.
                 # By default, retry on `TooManyRequests`, but we don't want the default potential long waits on it.
