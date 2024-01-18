@@ -5,9 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.9.0] - not yet released
+## [0.9.0] - 2024-01-18
 
-- Bug fix in GCS related to retry.
+- Bug fix in GCS related to retry and locking.
 
 
 ## [0.8.9] - 2024-01-14
