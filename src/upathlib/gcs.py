@@ -701,15 +701,12 @@ class GcsBlobUpath(BlobUpath):
         t0 = time.perf_counter()
         try:
             try:
-                retry = (
-                    DEFAULT_RETRY.with_timeout(timeout)
-                    .with_delay(1.0, 10.0)
-                    .with_predicate(
-                        lambda exc: DEFAULT_RETRY._predicate(exc)
-                        or isinstance(exc, FileExistsError)
-                    )
-                )
-                retry(self.write_bytes)(b"0", overwrite=False)
+                api_retry.Retry(
+                    predicate=lambda exc: isinstance(exc, FileExistsError),
+                    initial=0.5,
+                    maximum=10.0,
+                    timeout=timeout,
+                )(self.write_bytes)(b"0", overwrite=False)
                 self._generation = self._blob().generation
             except api_exceptions.RetryError as e:
                 # `RetryError` originates from only one place, in `google.cloud.api_core.retry.retry_target`.
@@ -718,9 +715,9 @@ class GcsBlobUpath(BlobUpath):
                 raise e.cause
         except FileExistsError as e:
             finfo = self.file_info()
-            now = datetime.utcnow().replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
             file_age = (now - finfo.time_created).total_seconds()
-            if file_age - timeout > self._LOCK_EXPIRE_IN_SECONDS:
+            if file_age > self._LOCK_EXPIRE_IN_SECONDS:
                 # If the file is old,
                 # assume it is a dead file, that is, the last lock operation
                 # somehow failed and did not delete the file.
@@ -785,7 +782,7 @@ class GcsBlobUpath(BlobUpath):
         # https://cloud.google.com/storage/docs/generations-preconditions
         # https://cloud.google.com/storage/docs/gsutil/addlhelp/ObjectVersioningandConcurrencyControl
         if timeout is None:
-            timeout = 300.0
+            timeout = 600.0
 
         if self._lock_count == 0:
             self._acquire_lease(timeout=timeout)
