@@ -708,11 +708,9 @@ class GcsBlobUpath(BlobUpath):
         *,
         timeout,
     ):
-        # Note: `timeout = None` does not mean infinite wait.
-        # It means a default wait time. If user wants longer wait,
-        # just pass in a large number. Because user often associate
-        # `timeout = None` with infinite wait, the default wait
-        # is a long period.
+        # Tweaking on the retry timing considers the particular use case with `upathlib.Multiplexer`.
+        # Similarly in `_release_lease`.
+
         if self._path == "/":
             raise UnsupportedOperation("can not write to root as a blob", self)
 
@@ -802,8 +800,12 @@ class GcsBlobUpath(BlobUpath):
         is used *cooperatively* solely in this locking logic.
 
         ``timeout`` is the wait time for acquiring or releasing the lease.
-        If ``None``, the default value 300 seconds is used.
+        If ``None``, the default value 600 seconds is used.
         If ``0``, exactly one attempt is made to acquire a lock.
+
+        Note: `timeout = None` does not mean infinite wait.
+        It means a default wait time. If user wants longer wait,
+        just pass in a large number.
         """
         # References:
         # https://www.joyfulbikeshedding.com/blog/2021-05-19-robust-distributed-locking-algorithm-based-on-google-cloud-storage.html
