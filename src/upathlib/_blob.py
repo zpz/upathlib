@@ -80,7 +80,7 @@ class BlobUpath(Upath):
         for p in self.riterdir():
             tail = p._path[np0:]
             if tail.startswith("/"):
-                raise Exception(f"malformed blob name '{p._path}'")
+                raise ValueError(f"malformed blob name: '{p._path}'")
             if "/" in tail:
                 tail = tail[: tail.find("/")]
             if tail not in subdirs:

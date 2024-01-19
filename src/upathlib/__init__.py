@@ -18,22 +18,21 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.9.0b3"
+__version__ = "0.9.0"
 
 
 from pathlib import Path
 
 from ._blob import BlobUpath
 from ._local import LocalPathType, LocalUpath
-from ._multiplexer import Multiplexer
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, PathType, Upath
 
 try:
-    from .gcs import GcsBlobUpath
+    from ._gcs import GcsBlobUpath, get_google_auth
 except ImportError:
     pass
 try:
-    from .azure import AzureBlobUpath
+    from ._azure import AzureBlobUpath
 except ImportError:
     pass
 
@@ -50,7 +49,7 @@ def resolve_path(path: PathType):
         if path.startswith("https://"):
             if "blob.core.windows.net" in path:
                 return AzureBlobUpath(path)
-            raise ValueError(path)
+            raise ValueError(f"unrecognized value: '{path}'")
         path = Path(path)
     if isinstance(path, Path):
         return LocalUpath(str(path.resolve().absolute()))

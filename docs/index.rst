@@ -213,12 +213,6 @@ BlobUpath
 GcsBlobUpath
 ============
 
-.. automodule:: upathlib.gcs
-    :no-members:
-    :no-undoc-members:
-    :no-special-members:
-
-
 .. autoclass:: upathlib.GcsBlobUpath
 
 
@@ -232,7 +226,7 @@ Serializers
 Using upathlib to implement a "multiplexer"
 ===========================================
 
-:class:`~upathlib.Multiplexer` is a utility for distributing data elements to multiple concurrent or distributed workers.
+:class:`~upathlib.multiplexer.Multiplexer` is a utility for distributing data elements to multiple concurrent or distributed workers.
 Its implementation relies on the "locking" capability of :class:`~upathlib.Upath`.
 
 Suppose we perform some brute-force search on a cluster of machines;
@@ -245,7 +239,8 @@ Let's show its usage using local data and multiprocessing.
 (For real work, we would use cloud storage and a cluster of machines.)
 First, create a ``Multiplexer`` to hold the values to be distributed:
 
->>> from upathlib import LocalUpath, Multiplexer
+>>> from upathlib import LocalUpath
+>>> from upathlib.multiplexer import Multiplexer
 >>> p = LocalUpath('/tmp/abc/mux')
 >>> p.rmrf()
 0
@@ -298,7 +293,7 @@ True
 >>>
 
 
-.. autoclass:: upathlib.Multiplexer
+.. autoclass:: upathlib.multiplexer.Multiplexer
 
 
 Indices

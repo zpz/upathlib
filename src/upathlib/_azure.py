@@ -164,10 +164,10 @@ class AzureBlobUpath(BlobUpath):
         target = _resolve_local_path(target)
         if target.is_file():
             if not overwrite:
-                raise FileExistsError(str(target))
+                raise FileExistsError(f"File exists: '{target}'")
             target.remove_file()
         elif target.is_dir():
-            raise IsADirectoryError(str(target))
+            raise IsADirectoryError(f"Is a directory: '{target}'")
 
         with self._provide_blob_client():
             # TODO: check behavior of `download_blob` about
@@ -183,7 +183,7 @@ class AzureBlobUpath(BlobUpath):
             if not overwrite:
                 # TODO: check the behavior of `upload_blob` related to
                 # behavior about overwrite.
-                raise FileExistsError(self)
+                raise FileExistsError(f"File exists: '{self}'")
             self.remove_file()
         with self._provide_blob_client():
             with open(str(source), "rb") as data:
@@ -323,7 +323,7 @@ class AzureBlobUpath(BlobUpath):
             try:
                 return self._blob_client.download_blob().readall()
             except ResourceNotFoundError as e:
-                raise FileNotFoundError(self) from e
+                raise FileNotFoundError(f"No such file: '{self}'") from e
 
     def remove_file(self):
         with self._provide_blob_client():
@@ -332,7 +332,7 @@ class AzureBlobUpath(BlobUpath):
                     delete_snapshots="include", lease=self._lease
                 )
             except ResourceNotFoundError:
-                raise FileNotFoundError(self)
+                raise FileNotFoundError(f"No such file: '{self}'")
 
     def riterdir(self) -> Iterator[Self]:
         with self._provide_container_client():
@@ -343,7 +343,7 @@ class AzureBlobUpath(BlobUpath):
 
     def write_bytes(self, data: bytes | BufferedReader, *, overwrite=False) -> None:
         if self._path == "/":
-            raise UnsupportedOperation("can not write to root as a blob", self)
+            raise UnsupportedOperation(f"Can not write to root as a blob: '{self}'")
 
         with self._provide_blob_client():
             try:
@@ -351,4 +351,4 @@ class AzureBlobUpath(BlobUpath):
                     data, overwrite=overwrite, lease=self._lease
                 )
             except ResourceExistsError as e:
-                raise FileExistsError(self) from e
+                raise FileExistsError(f"File eixsts: '{self}'") from e

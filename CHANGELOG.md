@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [0.9.0] - 2024-01-18
 
 - Bug fix in GCS related to retry and locking.
+- Changed `upathlib.azure` to `upathlib._azure`.
+- Changed `upathlib.gcs` to `upathlib._gcs`; added `upathlib._gcs` for back-compat transition.
+- Made `get_google_auth` importable from `upathlib.__init__`.
+- Changed `upathlib._multiplexer` to `upathlib.multiplexer`; removed `Multiplexer` from `upathlib.__init__`.
+- Improvements to error messages.
 
 
 ## [0.8.9] - 2024-01-14
