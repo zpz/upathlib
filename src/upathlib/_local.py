@@ -132,7 +132,7 @@ class LocalUpath(Upath, os.PathLike):
         try:
             return self.path.read_bytes()
         except (IsADirectoryError, FileNotFoundError) as e:
-            raise FileNotFoundError(self) from e
+            raise FileNotFoundError(f"No such file: '{self}'") from e
 
     def write_bytes(
         self, data: bytes | BufferedReader, *, overwrite: bool = False
@@ -142,7 +142,7 @@ class LocalUpath(Upath, os.PathLike):
         """
         if self.is_file():
             if not overwrite:
-                raise FileExistsError(self)
+                raise FileExistsError(f"File exists: '{self}'")
         self.parent.path.mkdir(exist_ok=True, parents=True)
         try:
             memoryview(
@@ -158,7 +158,7 @@ class LocalUpath(Upath, os.PathLike):
     def _copy_file(self, target: Upath, *, overwrite: bool = False):
         if isinstance(target, LocalUpath):
             if not overwrite and target.is_file():
-                raise FileExistsError(target)
+                raise FileExistsError(f"File exists: '{target}'")
             os.makedirs(target.parent, exist_ok=True)
             # If `p` is a file and we try to `os.makedirs(p / 'subdir`)`,
             # on Linux it raises `NotADirectoryError`;
@@ -183,7 +183,7 @@ class LocalUpath(Upath, os.PathLike):
             self.path.unlink()
         except PermissionError as e:  # this happens on Windows if `self` is a dir.
             if self.is_dir():
-                raise IsADirectoryError(self) from e
+                raise IsADirectoryError(f"Is a directory: '{self}'") from e
             else:
                 raise
         # On Linux, if `self` is a dir, `IsADirectoryError` will be raised.
@@ -208,7 +208,7 @@ class LocalUpath(Upath, os.PathLike):
         """
 
         if not self.is_dir():
-            raise FileNotFoundError(str(self))
+            raise FileNotFoundError(f"No such file: '{self}'")
 
         if isinstance(target, LocalUpath):
             target = target._path
@@ -245,7 +245,7 @@ class LocalUpath(Upath, os.PathLike):
     def _rename_file(self, target: str, *, overwrite=False):
         target = self.parent / target
         if not overwrite and target.is_file():
-            raise FileExistsError(target)
+            raise FileExistsError(f"File exists: '{target}'")
         os.makedirs(target.parent, exist_ok=True)
         self.path.rename(target.path)
 
@@ -315,7 +315,7 @@ class LocalUpath(Upath, os.PathLike):
             )
         except Exception as e:
             raise LockAcquireError(
-                f"waited on '{self}' for {time.perf_counter() - t0:.2f} seconds"
+                f"Failed to lock '{self}' trying for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
             ) from e
         try:
             yield
@@ -323,7 +323,9 @@ class LocalUpath(Upath, os.PathLike):
             try:
                 lock.release()  # in a re-entry situation, this may not actually "release" the lock
             except Exception as e:
-                raise LockReleaseError(f"failed to release lock on file {self}") from e
+                raise LockReleaseError(
+                    f"Failed to unlock '{self}'; gave up on {e!r}"
+                ) from e
 
 
 LocalPathType = str | pathlib.Path | LocalUpath

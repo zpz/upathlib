@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 import upathlib._tests
-from upathlib.azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
+from upathlib._azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
 
 CONTAINERS = {}
 
@@ -118,12 +118,12 @@ class BlobLeaseClient:
 
 @pytest.fixture()
 def azure(mocker):
-    mocker.patch("upathlib.azure.ContainerClient", ContainerClient)
-    mocker.patch("upathlib.azure.BlobClient", BlobClient)
-    mocker.patch("upathlib.azure.BlobLeaseClient", BlobLeaseClient)
-    mocker.patch("upathlib.azure.AzureBlobUpath._ACCOUNT_NAME", "abc")
-    mocker.patch("upathlib.azure.AzureBlobUpath._ACCOUNT_KEY", "xyz")
-    mocker.patch("upathlib.azure.AzureBlobUpath._SAS_TOKEN", "1010")
+    mocker.patch("upathlib._azure.ContainerClient", ContainerClient)
+    mocker.patch("upathlib._azure.BlobClient", BlobClient)
+    mocker.patch("upathlib._azure.BlobLeaseClient", BlobLeaseClient)
+    mocker.patch("upathlib._azure.AzureBlobUpath._ACCOUNT_NAME", "abc")
+    mocker.patch("upathlib._azure.AzureBlobUpath._ACCOUNT_KEY", "xyz")
+    mocker.patch("upathlib._azure.AzureBlobUpath._SAS_TOKEN", "1010")
 
     c = AzureBlobUpath(
         "/tmp/test",

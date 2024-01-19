@@ -16,10 +16,12 @@ logger = logging.getLogger(__name__)
 
 
 @contextmanager
-def lock_to_use(file: Upath, timeout=300):
+def lock_to_use(file: Upath, timeout=None):
     f = file.with_suffix(file.suffix + ".lock")
     with f.lock(timeout=timeout):
+        logger.info(f"acquired lock on '{f}'")
         yield file
+        logger.info(f"releasing lock on '{f}'")
 
 
 def encode(x) -> str:
@@ -121,7 +123,7 @@ class Multiplexer(Iterable[Element], Sized):
         self,
         mux_id: str,
         worker_id: str | None = None,
-        timeout: int | float = 300,
+        timeout: int | float | None = None,
     ):
         """
         Create a ``Multiplexer`` object and use it to distribute the data elements that have been
@@ -245,6 +247,11 @@ class Multiplexer(Iterable[Element], Sized):
                     },
                     overwrite=True,
                 )
+
+                # Using GCS, this block with reading and writing the tiny JSON file
+                # (not counting the wrapping acquire/release lock) takes half a second to
+                # a few seconds.
+
             yield self.data[n]
 
     def stat(self, mux_id: str = None) -> dict:

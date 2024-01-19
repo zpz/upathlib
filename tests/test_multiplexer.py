@@ -1,8 +1,7 @@
 import multiprocessing
 from time import sleep
 
-from upathlib import Multiplexer
-from upathlib._multiplexer import decode, encode
+from upathlib.multiplexer import Multiplexer, decode, encode
 
 
 def test_encoding():

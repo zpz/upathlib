@@ -5,7 +5,8 @@ from uuid import uuid4
 
 import pytest
 import upathlib._tests
-from upathlib.gcs import GcsBlobUpath, NotFound
+from google.api_core.exceptions import NotFound
+from upathlib import GcsBlobUpath
 
 
 class Blob:
@@ -160,16 +161,16 @@ class Client:
 @pytest.fixture()
 def gcp(mocker):
     # mocker.patch('upathlib.gcp.service_account')
-    mocker.patch("upathlib.gcs.storage.Client", Client)
-    mocker.patch("upathlib.gcs.GcsBlobUpath._PROJECT_ID", "abc")
+    mocker.patch("upathlib._gcs.storage.Client", Client)
+    mocker.patch("upathlib._gcs.GcsBlobUpath._PROJECT_ID", "abc")
     mocker.patch(
-        "upathlib.gcs.GcsBlobUpath._CREDENTIALS",
+        "upathlib._gcs.GcsBlobUpath._CREDENTIALS",
         SimpleNamespace(
             token="x",  # noqa: S106
             expiry=datetime.utcnow() + timedelta(days=1),  # noqa: S106
         ),  # noqa: S106
     )  # noqa: S106
-    mocker.patch("upathlib.gcs.GcsBlobUpath._CLIENT", Client())
+    mocker.patch("upathlib._gcs.GcsBlobUpath._CLIENT", Client())
     c = GcsBlobUpath(
         "/tmp/test",
         bucket_name="test",
