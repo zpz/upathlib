@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 def lock_to_use(file: Upath, timeout=None):
     f = file.with_suffix(file.suffix + ".lock")
     with f.lock(timeout=timeout):
-        logger.info(f"acquired lock on '{f}'")
+        logger.debug(f"acquired lock on '{f}'")
         yield file
-        logger.info(f"releasing lock on '{f}'")
+        logger.debug(f"releasing lock on '{f}'")
 
 
 def encode(x) -> str:
