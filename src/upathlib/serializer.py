@@ -1,12 +1,14 @@
-import abc
 import gc
 import json
 import pickle
 import threading
 import zlib
-from typing import TypeVar
+from typing import TypeVar, Protocol
+from contextlib import contextmanager
+
 
 import zstandard
+
 
 # zstandard has good compression ratio and also quite fast.
 # It is very "balanced".
@@ -29,85 +31,99 @@ LZ4_LEVEL = (
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 
-def _loads(func, data, **kwargs):
-    if len(data) < MEGABYTE:
-        return func(data, **kwargs)
-    isgc = gc.isenabled()
-    if isgc:
+# def _loads(func, data, **kwargs):
+#     if len(data) < MEGABYTE * 10:
+#         return func(data, **kwargs)
+#     isgc = gc.isenabled()
+#     if isgc:
+#         gc.disable()
+#     try:
+#         return func(data, **kwargs)
+#     finally:
+#         if isgc:
+#             gc.enable()
+
+
+@contextmanager
+def _gc(data):
+    turnedoff = False
+    if len(data) >= MEGABYTE * 10 and gc.isenabled():
         gc.disable()
+        turnedoff = True
     try:
-        return func(data, **kwargs)
+        yield
     finally:
-        if isgc:
+        if turnedoff:
             gc.enable()
 
 
-class TextSerializer(abc.ABC):
+class Serializer(Protocol):
     @classmethod
-    @abc.abstractmethod
-    def serialize(cls, x: T, **kwargs) -> str:
-        raise NotImplementedError
+    def serialize(cls, x: T, **kwargs) -> bytes:
+        ...
 
     @classmethod
-    @abc.abstractmethod
-    def deserialize(cls, y: str, **kwargs) -> T:
-        raise NotImplementedError
+    def deserialize(cls, y: bytes, **kwargs) -> T:
+        ...
 
-
-class JsonSerializer(TextSerializer):
     @classmethod
-    def serialize(cls, x, **kwargs):
-        return json.dumps(x, **kwargs)
+    def dump(cls, x: T, file: 'Upath', *, overwrite: bool = False, **kwargs) -> None:
+        y = cls.serialize(x, **kwargs)
+        file.write_bytes(y, overwrite=overwrite)
+
+    @classmethod
+    def load(cls, file: 'Upath', **kwargs) -> T:
+        y = file.read_bytes()
+        return cls.deserialize(y, **kwargs)
+
+
+
+class JsonSerializer(Serializer):
+    @classmethod
+    def serialize(cls, x, *, encoding=None, errors=None, **kwargs) -> bytes:
+        return json.dumps(x, **kwargs).encode(encoding=encoding or 'utf-8', errors=errors or 'strict')
+
+    @classmethod
+    def deserialize(cls, y, *, encoding=None, errors=None, **kwargs):
+        with _gc(y):
+            return json.loads(y.decode(encoding=encoding or 'utf-8', errors=errors or 'strict'), **kwargs)
+
+
+# TODO: remove
+class ByteSerializer(Serializer, Protocol):
+    ...
+
+
+
+class PickleSerializer(Serializer):
+    @classmethod
+    def serialize(cls, x, *, protocol=None, **kwargs) -> bytes:
+        return pickle.dumps(x, protocol=protocol or PICKLE_PROTOCOL, **kwargs)
 
     @classmethod
     def deserialize(cls, y, **kwargs):
-        return _loads(json.loads, y, **kwargs)
-
-
-class ByteSerializer(abc.ABC):
-    @classmethod
-    @abc.abstractmethod
-    def serialize(cls, x: T, **kwargs) -> bytes:
-        raise NotImplementedError
-
-    @classmethod
-    @abc.abstractmethod
-    def deserialize(cls, y: bytes, **kwargs) -> T:
-        raise NotImplementedError
-
-
-class PickleSerializer(ByteSerializer):
-    @classmethod
-    def serialize(cls, x, *, protocol=None):
-        return pickle.dumps(x, protocol=protocol or PICKLE_PROTOCOL)
-
-    @classmethod
-    def deserialize(cls, y):
-        return _loads(pickle.loads, y)
+        with _gc(y):
+            return pickle.loads(y, **kwargs)
 
 
 class ZPickleSerializer(PickleSerializer):
+    # This is kept for backcompat.
+    # In general, this is not the best choice of compression.
+    # Don't use this. Use `zstandard` or `lz4`.
     @classmethod
-    def serialize(cls, x, *, level=ZLIB_LEVEL, protocol=None):
-        y = super().serialize(x, protocol=protocol)
+    def serialize(cls, x, *, level=ZLIB_LEVEL, **kwargs) -> bytes:
+        y = super().serialize(x, **kwargs)
         return zlib.compress(y, level=level)
 
     @classmethod
-    def deserialize(cls, y):
+    def deserialize(cls, y, **kwargs):
         y = zlib.decompress(y)
-        return super().deserialize(y)
+        return super().deserialize(y, **kwargs)
 
 
-class _MyLocal(threading.local):
+
+class ZstdCompressor(threading.local):
     # See doc string in ``cpython / Lib / _threading_local.py``.
-
-    def __init__(self):
-        self.compressor: dict[tuple[int, int], zstandard.ZstdCompressor] = {}
-        self.decompressor: zstandard.ZstdDecompressor = None
-
-
-class ZstdPickleSerializer(PickleSerializer):
-    _cache = _MyLocal()
 
     # See doc on `ZstdCompressor` and `ZstdDecompressor` in
     # (github python-zstandard) `zstandard / backend_cffi.py`.
@@ -115,8 +131,11 @@ class ZstdPickleSerializer(PickleSerializer):
     # The `ZstdCompressor` and `ZstdDecompressor` objects can't be pickled.
     # If there are issues related to forking, check out ``os.register_at_fork``.
 
-    @classmethod
-    def serialize(cls, x, *, level=ZSTD_LEVEL, protocol=None, threads=0):
+    def __init__(self):
+        self._compressor: dict[tuple[int, int], zstandard.ZstdCompressor] = {}
+        self._decompressor: zstandard.ZstdDecompressor = None
+
+    def compress(self, x, *, level=ZSTD_LEVEL, threads=0):
         """
         Parameters
         ----------
@@ -126,19 +145,30 @@ class ZstdPickleSerializer(PickleSerializer):
             value (0) disables multi-threaded compression. A value of ``-1`` means
             to set the number of threads to the number of detected logical CPUs.
         """
-        y = super().serialize(x, protocol=protocol)
-        c = cls._cache.compressor.get((level, threads))
+        c = self._compressor.get((level, threads))
         if c is None:
             c = zstandard.ZstdCompressor(level=level, threads=threads)
-            cls._cache.compressor[(level, threads)] = c
-        return c.compress(y)
+            self._compressor[(level, threads)] = c
+        return c.compress(x)
+
+    def decompress(self, y):
+        if self._decompressor is None:
+            self._decompressor = zstandard.ZstdDecompressor()
+        return self._decompressor.decompress(y)
+
+
+class ZstdPickleSerializer(PickleSerializer):
+    _compressor = ZstdCompressor()
 
     @classmethod
-    def deserialize(cls, y):
-        if cls._cache.decompressor is None:
-            cls._cache.decompressor = zstandard.ZstdDecompressor()
-        y = cls._cache.decompressor.decompress(y)
-        return super().deserialize(y)
+    def serialize(cls, x, *, level=ZSTD_LEVEL, threads=0, **kwargs) -> bytes:
+        y = super().serialize(x, **kwargs)
+        return cls._compressor.compress(y, level=level, threads=threads)
+    
+    @classmethod
+    def deserialize(cls, y, **kwargs):
+        y = cls._compressor.decompress(y)
+        return super().deserialize(y, **kwargs)
 
 
 try:
@@ -150,11 +180,60 @@ else:
 
     class Lz4PickleSerializer(PickleSerializer):
         @classmethod
-        def serialize(cls, x, *, level=LZ4_LEVEL, protocol=None):
-            y = super().serialize(x, protocol=protocol)
+        def serialize(cls, x, *, level=LZ4_LEVEL, **kwargs) -> bytes:
+            y = super().serialize(x, **kwargs)
             return lz4.frame.compress(y, compression_level=level)
 
         @classmethod
-        def deserialize(cls, y):
+        def deserialize(cls, y, **kwargs):
             y = lz4.frame.decompress(y)
-            return super().deserialize(y)
+            return super().deserialize(y, **kwargs)
+
+
+try:
+    # To use this, just install the Python package `orjson`.
+    import orjson
+except ImportError:
+    pass
+else:
+
+    class OrjsonSerializer(Serializer):
+        @classmethod
+        def serialize(cls, x, **kwargs) -> bytes:
+            return orjson.dumps(x, **kwargs)
+        
+        @classmethod
+        def deserialize(cls, y: bytes, **kwargs):
+            return orjson.loads(y, **kwargs)
+        
+
+    class ZstdOrjsonSerializer(OrjsonSerializer):
+        _compressor = ZstdCompressor()
+
+        @classmethod
+        def serialize(cls, x, *, level=ZSTD_LEVEL, threads=0, **kwargs) -> bytes:
+            y = super().serialize(x, **kwargs)
+            return cls._compressor.compress(y, level=level, threads=threads)
+
+        @classmethod
+        def deserialize(cls, y, **kwargs):
+            y = cls._compressor.decompress(y)
+            return super().deserialize(y, **kwargs)
+
+    try:
+        # To use this, just install the Python package `lz4`.
+        import lz4.frame
+    except ImportError:
+        pass
+    else:
+
+        class Lz4OrjsonSerializer(OrjsonSerializer):
+            @classmethod
+            def serialize(cls, x, *, level=LZ4_LEVEL, **kwargs) -> bytes:
+                y = super().serialize(x, **kwargs)
+                return lz4.frame.compress(y, compression_level=level)
+
+            @classmethod
+            def deserialize(cls, y, **kwargs):
+                y = lz4.frame.decompress(y)
+                return super().deserialize(y, **kwargs)

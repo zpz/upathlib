@@ -77,9 +77,10 @@ def test_pickle(test_path):
     data = [1, 2, {"a": 3, "b": [1, "c"]}]
     pp.write_pickle(data, overwrite=True)
     assert pp.read_pickle() == data
-    pp.write_pickle_z(data, overwrite=True)
-    assert pp.read_pickle_z() == data
     pp.write_pickle_zstd(data, overwrite=True)
     assert pp.read_pickle_zstd() == data
     pp.write_pickle_lz4(data, overwrite=True)
     assert pp.read_pickle_lz4() == data
+    pp.write_json(data, overwrite=True)
+    assert pp.read_json() == data
+

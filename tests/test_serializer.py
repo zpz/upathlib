@@ -2,11 +2,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 from upathlib.serializer import (
     JsonSerializer,
-    Lz4PickleSerializer,
     PickleSerializer,
     ZPickleSerializer,
     ZstdPickleSerializer,
-    _MyLocal,
+    Lz4PickleSerializer,
+    OrjsonSerializer,
+    ZstdOrjsonSerializer,
+    Lz4OrjsonSerializer,
+    ZstdCompressor,
 )
 
 data = [12, 23.8, {"a": [9, "xyz"], "b": {"first": 3, "second": 2.3}}, None]
@@ -19,37 +22,44 @@ def test_all():
         ZPickleSerializer,
         ZstdPickleSerializer,
         Lz4PickleSerializer,
+        OrjsonSerializer,
+        ZstdOrjsonSerializer,
+        Lz4OrjsonSerializer,
     ):
+        print(serde)
         y = serde.serialize(data)
         z = serde.deserialize(y)
         assert z == data
 
 
-def test_mylocal():
-    me = _MyLocal()
-    assert len(me.compressor) == 0
-    assert me.decompressor is None
-    me.compressor[(1, 2)] = 3
-    me.decompressor = 8
+def test_zstdcompressor():
+    me = ZstdCompressor()
+    assert len(me._compressor) == 0
+    assert me._decompressor is None
+    me._compressor[(1, 2)] = 3
+    me._decompressor = 8
 
     def _check():
-        assert len(me.compressor) == 0
-        assert me.decompressor is None
-        me.compressor[(3, 4)] = 5
-        me.decompressor = "a"
+        assert len(me._compressor) == 0
+        assert me._decompressor is None
+        me._compressor[(3, 4)] = 5
+        me._decompressor = "a"
         return True
 
     with ThreadPoolExecutor() as pool:
         t = pool.submit(_check)
         assert t.result()
 
-    assert me.compressor == {(1, 2): 3}
-    assert me.decompressor == 8
+    assert me._compressor == {(1, 2): 3}
+    assert me._decompressor == 8
 
 
 def _check(data):
     y = ZstdPickleSerializer.serialize(data)
     z = ZstdPickleSerializer.deserialize(y)
+    assert z == data
+    y = ZstdOrjsonSerializer.serialize(data)
+    z = ZstdOrjsonSerializer.deserialize(y)
     assert z == data
     return True
 
