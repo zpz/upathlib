@@ -5,11 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.9.2] - 2024-01-24
+## [0.9.2] - 2024-01-25
 
-- Refinements to `upathlib.serializer`.
-- Added `orjson` serializers; removed `TextSerializer`.
-- Removed methods `Upath.write_pickle_z`, `Upath.read_pickle_z`.
+- Refinements to `upathlib.serializer`:
+  - Removed `TextSerializer`.
+  - The base is the new protocol `Serializer`.
+  - Besides `serialize` and `deserialize`, it gets two new classmethods: `dump` and `load`.
+  - Added `orjson` serializers.
+- Removed methods `Upath.write_pickle_z`, `Upath.read_pickle_z`, `Upath.write_pickle_lz4`, `Upath.read_pickle_lz4`.
+- Bumped Python versoin to 3.10, although there's no firm feature requirement that I know of at this time.
 
 
 ## [0.9.1] - 2024-01-22

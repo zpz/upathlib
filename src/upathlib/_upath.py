@@ -43,11 +43,6 @@ from .serializer import (
     ZstdPickleSerializer,
 )
 
-try:
-    from .serializer import Lz4PickleSerializer
-except ImportError:
-    Lz4PickleSerializer = None
-
 
 # End user may want to do this:
 #  logging.getLogger('urllib3.connectionpool').setLevel(logging.ERROR)
@@ -589,35 +584,11 @@ class Upath(abc.ABC):
     def read_pickle(self, **kwargs) -> Any:
         return PickleSerializer.load(self, **kwargs)
 
-    # def write_pickle_z(self, data: Any, *, overwrite=False, **kwargs) -> None:
-    #     """
-    #     ``overwrite`` is passed to :meth:`write_bytes`.
-
-    #     ``**kwargs`` are passed to :meth:`serializer.ZPickleSerializer.serialize`.
-    #     """
-    #     self.write_bytes(
-    #         ZPickleSerializer.serialize(data, **kwargs), overwrite=overwrite
-    #     )
-
-    # def read_pickle_z(self, **kwargs) -> Any:
-    #     """
-    #     ``**kwargs`` are passed to :meth:`serializer.ZPickleSerializer.deserialize`.
-    #     """
-    #     return ZPickleSerializer.deserialize(self.read_bytes(), **kwargs)
-
     def write_pickle_zstd(self, data: Any, *, overwrite=False, **kwargs) -> None:
         return ZstdPickleSerializer.dump(data, self, overwrite=overwrite, **kwargs)
 
     def read_pickle_zstd(self, **kwargs) -> Any:
         return ZstdPickleSerializer.load(self, **kwargs)
-
-    if Lz4PickleSerializer is not None:
-
-        def write_pickle_lz4(self, data: Any, *, overwrite=False, **kwargs) -> None:
-            return Lz4PickleSerializer.dump(data, self, overwrite=overwrite, **kwargs)
-
-        def read_pickle_lz4(self, **kwargs) -> Any:
-            return Lz4PickleSerializer.load(self, **kwargs)
 
     def _copy_dir(
         self,
