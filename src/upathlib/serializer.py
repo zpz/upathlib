@@ -29,7 +29,6 @@ LZ4_LEVEL = (
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 
-
 @contextmanager
 def _gc(data):
     turnedoff = False
@@ -202,7 +201,6 @@ else:
         def deserialize(cls, y, **kwargs):
             y = zlib.decompress(y)
             return super().deserialize(y, **kwargs)
-
 
     class ZstdOrjsonSerializer(OrjsonSerializer):
         _compressor = ZstdCompressor()
