@@ -18,7 +18,7 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.9.0"
+__version__ = "0.9.2b1"
 
 
 from pathlib import Path
@@ -37,7 +37,7 @@ except ImportError:
     pass
 
 
-def resolve_path(path: PathType):
+def resolve_path(path: PathType) -> Upath:
     if isinstance(path, str):
         if path.startswith("gs://"):
             # If you encounter a "gs://..." path but

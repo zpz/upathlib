@@ -53,6 +53,7 @@ test = [
     "pytest-mock",
     "ruff",
     "lz4",
+    "orjson",
 ]
 
 # lz4 and zstandard are removed as of 10/19/2023.

@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.9.2] - 2024-01-24
+
+- Refinements to `upathlib.serializer`.
+- Added `orjson` serializers; removed `TextSerializer`.
+- Removed methods `Upath.write_pickle_z`, `Upath.read_pickle_z`.
+
+
+## [0.9.1] - 2024-01-22
+
+- Lower log level from 'info' to 'debug' for one message.
+
+
 ## [0.9.0] - 2024-01-18
 
 - Bug fix in GCS related to retry and locking.
