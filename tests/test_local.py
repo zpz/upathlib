@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import pytest
 import upathlib._tests
-from upathlib import LocalUpath
+from upathlib import LocalUpath, serializer
 
 
 @pytest.fixture
@@ -75,11 +75,14 @@ def test_pickle(test_path):
     pp = p / "data.dat"
 
     data = [1, 2, {"a": 3, "b": [1, "c"]}]
+
     pp.write_pickle(data, overwrite=True)
     assert pp.read_pickle() == data
     pp.write_pickle_zstd(data, overwrite=True)
     assert pp.read_pickle_zstd() == data
-    pp.write_pickle_lz4(data, overwrite=True)
-    assert pp.read_pickle_lz4() == data
+
     pp.write_json(data, overwrite=True)
     assert pp.read_json() == data
+
+    serializer.Lz4PickleSerializer.dump(data, pp, overwrite=True)
+    assert serializer.Lz4PickleSerializer.load(pp) == data
