@@ -40,7 +40,6 @@ from ._util import MAX_THREADS, get_shared_thread_pool
 from .serializer import (
     JsonSerializer,
     PickleSerializer,
-    ZPickleSerializer,
     ZstdPickleSerializer,
 )
 
@@ -578,9 +577,7 @@ class Upath(abc.ABC):
             encoding=encoding or "utf-8", errors=errors or "strict"
         )
 
-    def write_json(
-        self, data: Any, *, overwrite=False, **kwargs
-    ) -> None:
+    def write_json(self, data: Any, *, overwrite=False, **kwargs) -> None:
         return JsonSerializer.dump(data, self, overwrite=overwrite, **kwargs)
 
     def read_json(self, **kwargs) -> Any:

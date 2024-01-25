@@ -83,4 +83,3 @@ def test_pickle(test_path):
     assert pp.read_pickle_lz4() == data
     pp.write_json(data, overwrite=True)
     assert pp.read_json() == data
-

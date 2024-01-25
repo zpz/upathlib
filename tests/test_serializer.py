@@ -2,14 +2,14 @@ from concurrent.futures import ThreadPoolExecutor
 
 from upathlib.serializer import (
     JsonSerializer,
-    PickleSerializer,
-    ZPickleSerializer,
-    ZstdPickleSerializer,
+    Lz4OrjsonSerializer,
     Lz4PickleSerializer,
     OrjsonSerializer,
-    ZstdOrjsonSerializer,
-    Lz4OrjsonSerializer,
+    PickleSerializer,
+    ZPickleSerializer,
     ZstdCompressor,
+    ZstdOrjsonSerializer,
+    ZstdPickleSerializer,
 )
 
 data = [12, 23.8, {"a": [9, "xyz"], "b": {"first": 3, "second": 2.3}}, None]

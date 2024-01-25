@@ -3,12 +3,10 @@ import json
 import pickle
 import threading
 import zlib
-from typing import TypeVar, Protocol
 from contextlib import contextmanager
-
+from typing import Protocol, TypeVar
 
 import zstandard
-
 
 # zstandard has good compression ratio and also quite fast.
 # It is very "balanced".
@@ -67,32 +65,37 @@ class Serializer(Protocol):
         ...
 
     @classmethod
-    def dump(cls, x: T, file: 'Upath', *, overwrite: bool = False, **kwargs) -> None:
+    def dump(cls, x: T, file, *, overwrite: bool = False, **kwargs) -> None:
+        # `file` is a `Upath` object.
         y = cls.serialize(x, **kwargs)
         file.write_bytes(y, overwrite=overwrite)
 
     @classmethod
-    def load(cls, file: 'Upath', **kwargs) -> T:
+    def load(cls, file, **kwargs) -> T:
+        # `file` is a `Upath` object.
         y = file.read_bytes()
         return cls.deserialize(y, **kwargs)
-
 
 
 class JsonSerializer(Serializer):
     @classmethod
     def serialize(cls, x, *, encoding=None, errors=None, **kwargs) -> bytes:
-        return json.dumps(x, **kwargs).encode(encoding=encoding or 'utf-8', errors=errors or 'strict')
+        return json.dumps(x, **kwargs).encode(
+            encoding=encoding or "utf-8", errors=errors or "strict"
+        )
 
     @classmethod
     def deserialize(cls, y, *, encoding=None, errors=None, **kwargs):
         with _gc(y):
-            return json.loads(y.decode(encoding=encoding or 'utf-8', errors=errors or 'strict'), **kwargs)
+            return json.loads(
+                y.decode(encoding=encoding or "utf-8", errors=errors or "strict"),
+                **kwargs,
+            )
 
 
 # TODO: remove
 class ByteSerializer(Serializer, Protocol):
     ...
-
 
 
 class PickleSerializer(Serializer):
@@ -119,7 +122,6 @@ class ZPickleSerializer(PickleSerializer):
     def deserialize(cls, y, **kwargs):
         y = zlib.decompress(y)
         return super().deserialize(y, **kwargs)
-
 
 
 class ZstdCompressor(threading.local):
@@ -164,7 +166,7 @@ class ZstdPickleSerializer(PickleSerializer):
     def serialize(cls, x, *, level=ZSTD_LEVEL, threads=0, **kwargs) -> bytes:
         y = super().serialize(x, **kwargs)
         return cls._compressor.compress(y, level=level, threads=threads)
-    
+
     @classmethod
     def deserialize(cls, y, **kwargs):
         y = cls._compressor.decompress(y)
@@ -201,11 +203,10 @@ else:
         @classmethod
         def serialize(cls, x, **kwargs) -> bytes:
             return orjson.dumps(x, **kwargs)
-        
+
         @classmethod
         def deserialize(cls, y: bytes, **kwargs):
             return orjson.loads(y, **kwargs)
-        
 
     class ZstdOrjsonSerializer(OrjsonSerializer):
         _compressor = ZstdCompressor()
