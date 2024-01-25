@@ -29,19 +29,6 @@ LZ4_LEVEL = (
 PICKLE_PROTOCOL = pickle.HIGHEST_PROTOCOL
 
 
-# def _loads(func, data, **kwargs):
-#     if len(data) < MEGABYTE * 10:
-#         return func(data, **kwargs)
-#     isgc = gc.isenabled()
-#     if isgc:
-#         gc.disable()
-#     try:
-#         return func(data, **kwargs)
-#     finally:
-#         if isgc:
-#             gc.enable()
-
-
 @contextmanager
 def _gc(data):
     turnedoff = False
@@ -93,11 +80,6 @@ class JsonSerializer(Serializer):
             )
 
 
-# TODO: remove
-class ByteSerializer(Serializer, Protocol):
-    ...
-
-
 class PickleSerializer(Serializer):
     @classmethod
     def serialize(cls, x, *, protocol=None, **kwargs) -> bytes:
@@ -110,9 +92,8 @@ class PickleSerializer(Serializer):
 
 
 class ZPickleSerializer(PickleSerializer):
-    # This is kept for backcompat.
     # In general, this is not the best choice of compression.
-    # Don't use this. Use `zstandard` or `lz4`.
+    # Use `zstandard` or `lz4 instead.
     @classmethod
     def serialize(cls, x, *, level=ZLIB_LEVEL, **kwargs) -> bytes:
         y = super().serialize(x, **kwargs)
@@ -207,6 +188,19 @@ else:
         @classmethod
         def deserialize(cls, y: bytes, **kwargs):
             return orjson.loads(y, **kwargs)
+
+    class ZOrjsonSerializer(OrjsonSerializer):
+        # In general, this is not the best choice of compression.
+        # Use `zstandard` or `lz4 instead.
+        @classmethod
+        def serialize(cls, x, *, level=ZLIB_LEVEL, **kwargs) -> bytes:
+            y = super().serialize(x, **kwargs)
+            return zlib.compress(y, level=level)
+
+        @classmethod
+        def deserialize(cls, y, **kwargs):
+            y = zlib.decompress(y)
+            return super().deserialize(y, **kwargs)
 
     class ZstdOrjsonSerializer(OrjsonSerializer):
         _compressor = ZstdCompressor()

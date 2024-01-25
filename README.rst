@@ -26,7 +26,4 @@ The style of the API is largely stable. The implementations for local file syste
 Python version
 --------------
 
-Development and testing were conducted in Python 3.8 until version 0.7.3.
-Starting with 0.7.4, development and testing happen in Python 3.10.
-Code continues to NOT intentionally use features beyond Python 3.8.
-I think 3.10 may be required sometime in 2024.
+3.10 or newer.
