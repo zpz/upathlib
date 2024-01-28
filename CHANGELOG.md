@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.9.3] - in progress
+
+- `GcsBlobUpath` gets new methods `read_meta` and `write_meta`.
+- Revise the design of `GcsBlobUpath.lock` so that user does not need to lock a "helper file"; instead,
+  user locks the file they want to read/write, and this method internally locks a helper file.
+
+
 ## [0.9.2] - 2024-01-25
 
 - Refinements to `upathlib.serializer`:

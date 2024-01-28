@@ -42,7 +42,7 @@ from typing_extensions import Self
 # See `google.api_core.retry.exponential_sleep_generator`.
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
-from ._util import MAX_THREADS, get_shared_thread_pool
+from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
 
 # To see retry info, add the following in user code.
 # There is one message per retry.
@@ -88,7 +88,7 @@ def get_google_auth(
 
     if (
         not credentials.token
-        or (credentials.expiry - datetime.utcnow()).total_seconds() < valid_for_seconds
+        or (credentials.expiry - utcnow()).total_seconds() < valid_for_seconds
     ):
         try:
             Retry(
@@ -224,7 +224,7 @@ class GcsBlobUpath(BlobUpath):
         self.bucket_name = bucket_name
         self._bucket_ = None
         self._lock_count: int = 0
-        self._generation = -1
+        self._generation = None
         self._quiet_multidownload = True
 
     def __repr__(self) -> str:
@@ -246,7 +246,7 @@ class GcsBlobUpath(BlobUpath):
         (self.bucket_name, self._quiet_multidownload), z1 = data
         self._bucket_ = None
         self._lock_count = 0
-        self._generation = -1
+        self._generation = None
         super().__setstate__(z1)
 
     def _bucket(self) -> storage.Bucket:
@@ -357,9 +357,10 @@ class GcsBlobUpath(BlobUpath):
                     size=size,
                     client=self._client(),
                     retry=retry
-                    or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)),
+                    or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)).with_delay(1.0, 10.0, 1.5),
                     # default retry is None w/o `if_generation_match=0`.
                 )
+                # Blob data rate limit is 1 update per second.
             except RetryError as e:
                 raise e.cause
         else:
@@ -718,6 +719,7 @@ class GcsBlobUpath(BlobUpath):
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         t0 = time.perf_counter()
+        lockfile = self.with_suffix(self.suffix + '.lock')
         try:
             try:
                 Retry(
@@ -726,7 +728,7 @@ class GcsBlobUpath(BlobUpath):
                     maximum=10.0,
                     multiplier=1.5,
                     timeout=timeout,
-                )(self.write_bytes)(
+                )(lockfile.write_bytes)(
                     b"0",
                     overwrite=False,
                     retry=DEFAULT_RETRY.with_predicate(
@@ -736,19 +738,19 @@ class GcsBlobUpath(BlobUpath):
                     .with_timeout(timeout)
                     .with_delay(1.0, 20.0),
                 )
+                self._generation = lockfile._block().generation
                 # By default, no retry on `FileExistsError`, but here we want to retry on it.
                 # By default, retry on `TooManyRequests`, but we don't want the default potential long waits on it.
                 # So we do custom retry on `FileExistsError` and `TooManyRequests`.
                 # The other default retriable types are likely rare and, if they happen, may justify the default long max waits
                 # (60 s), hence use the default retry on them.
-                self._generation = self._blob().generation
             except RetryError as e:
                 # `RetryError` originates from only one place, in `google.cloud.api_core.retry.retry_target`.
                 # The message is "Deadline of ...s exceeded while calling target function, last exception: ...".
                 # We are not losing much info by raising `e.cause` directly. That may ease downstream exception handling.
                 raise e.cause
         except FileExistsError as e:
-            finfo = self.file_info()
+            finfo = lockfile.file_info()
             now = datetime.now(timezone.utc)
             file_age = (now - finfo.time_created).total_seconds()
             if file_age > self._LOCK_EXPIRE_IN_SECONDS:
@@ -760,7 +762,10 @@ class GcsBlobUpath(BlobUpath):
                     self,
                     int(file_age),
                 )
-                self.remove_file()
+                try:
+                    lockfile.remove_file()
+                except FileExistsError:
+                    pass
                 # If this fails, the exception will propagate, which is not LockAcquireError.
                 # After deleting the file, try it again:
                 self._acquire_lease(timeout=timeout)
@@ -777,14 +782,16 @@ class GcsBlobUpath(BlobUpath):
         # TODO:
         # once got "RemoteDisconnected" error after 0.01 seconds.
         t0 = time.perf_counter()
+        lockfile = self.with_suffix(self.suffix + '.lock')
         try:
             try:
                 try:
-                    self._blob().delete(
+                    lockfile._blob().delete(
                         client=self._client(),
                         if_generation_match=self._generation,
                         retry=DEFAULT_RETRY.with_delay(1.0, 10.0),
                     )
+                    self._generation = None
                 except RetryError as e:
                     raise e.cause
             except NotFound:
@@ -803,9 +810,9 @@ class GcsBlobUpath(BlobUpath):
     ):
         """
         This implementation does not prevent the file from being deleted
-        by other workers that does not use the 'if-generation-match' condition.
+        by other workers that does not use this method.
         It relies on the assumption that this blob
-        is used *cooperatively* solely in this locking logic.
+        is used *cooperatively* solely between workers in this locking logic.
 
         ``timeout`` is the wait time for acquiring or releasing the lease.
         If ``None``, the default value 600 seconds is used.
@@ -838,3 +845,22 @@ class GcsBlobUpath(BlobUpath):
         See Google documentation.
         """
         return self._blob().open(mode, **kwargs)
+
+    def read_meta(self) -> dict[str, str]:
+        # "custom metadata", see
+        # https://cloud.google.com/storage/docs/metadata
+        # https://cloud.google.com/storage/docs/viewing-editing-metadata#storage-view-object-metadata-python
+        return self._blob().metadata
+
+    def write_meta(self, data: dict[str, str], retry: Optional[Retry] = None):
+        # The values should be small. There's a size limit: 8 KiB for all
+        # custom keys and values combined.
+        # `data` only needs to include elements you want to update.
+        # To remove a custom key, set its value to `None`.
+        # TODO: check whether this actually removes the key in the blob's metadata.
+        blob = self._blob()
+        blob.metadata = data
+        blob.patch(client=self._client(),
+                   retry=retry or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)).with_delay(1.0, 10.0, 1.5))
+        # Metadata rate limit is 1 update per second.
+        # Default retry is None if there is no precondition on metageneration.

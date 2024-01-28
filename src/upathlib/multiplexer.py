@@ -11,17 +11,9 @@ from datetime import datetime, timezone
 from typing import TypeVar
 
 from ._upath import PathType, Upath
+from ._util import utcnow
 
 logger = logging.getLogger(__name__)
-
-
-@contextmanager
-def lock_to_use(file: Upath, timeout=None):
-    f = file.with_suffix(file.suffix + ".lock")
-    with f.lock(timeout=timeout):
-        logger.debug(f"acquired lock on '{f}'")
-        yield file
-        logger.debug(f"releasing lock on '{f}'")
 
 
 def encode(x) -> str:
@@ -207,14 +199,17 @@ class Multiplexer(Iterable[Element], Sized):
         created by ``Multiplexer(mux_id, ...)`` is participating in the read session that is identified by ``mux_id``.
         """
         session_id = datetime.now(timezone.utc).isoformat()
-        self._mux_info_file(session_id).write_json(
-            {
-                "total": len(self.data),
-                "next": 0,
-                "time": datetime.utcnow().isoformat(),
-            },
-            overwrite=False,
-        )
+        finfo = self._mux_info_file(session_id)
+        data = {
+                    "total": str(len(self.data)),
+                    "next": '0',
+                    "time": utcnow().isoformat(),
+                }
+        if str(finfo).startswith('gs://'):
+            finfo.write_text(f"This is the control file. Created at {data.time}. Actual control info is in the blob's metadata.", overwrite=False)
+            finfo.write_meta(data)
+        else:
+            finfo.write_json(data, overwrite=False)
         return encode((self.path, session_id))
 
     def __iter__(self) -> Iterator[Element]:
@@ -226,31 +221,33 @@ class Multiplexer(Iterable[Element], Sized):
         timeout = self._timeout
         finfo = self._mux_info_file(self._session_id)
         while True:
-            with lock_to_use(finfo, timeout=timeout) as ff:
-                # In concurrent use cases, I've observed
-                # `upathlib.LockAcquireError` raised here.
-                # User may want to do retry here.
-                ss = ff.read_json()
-                # In concurrent use cases, I've observed
-                # `FileNotFoundError` here. User may want
-                # to do retry here.
+            with finfo.lock(timeout=timeout):
+                if str(finfo).startswith('gs://'):
+                    ss = finfo.read_meta()
+                else:
+                    ss = finfo.read_json()
 
                 n = ss["next"]
                 if n == ss["total"]:
                     return
-                ff.write_json(
-                    {
-                        "next": n + 1,
-                        "worker_id": worker_id,
-                        "time": datetime.utcnow().isoformat(),
-                        "total": ss["total"],
-                    },
-                    overwrite=True,
-                )
+                n = int(n)
+                data = {
+                    'total': ss['total'],
+                    'next': str(n + 1),
+                    'worker_id': worker_id,
+                    'time': utcnow().isoformat(),
+                }
 
+                if str(finfo).startswith('gs://'):
+                    finfo.write_meta(data)
+                else:
+                    finfo.write_json(data, overwrite=True)
+
+                # (With the prev version that writes to the blob data:)
                 # Using GCS, this block with reading and writing the tiny JSON file
                 # (not counting the wrapping acquire/release lock) takes half a second to
                 # a few seconds.
+                # TODO: check speed of this version that writes metadata.
 
             yield self.data[n]
 
@@ -267,7 +264,10 @@ class Multiplexer(Iterable[Element], Sized):
         if mux_id:
             return self.__class__(mux_id).stat()
         assert self._session_id
-        return self._mux_info_file(self._session_id).read_json()
+        finfo = self._mux_info_file(self._session_id)
+        if str(finfo).startswith('gs://'):
+            return finfo.read_meta
+        return finfo.read_json()
 
     def done(self, mux_id: str = None) -> bool:
         """

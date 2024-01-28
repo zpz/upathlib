@@ -3,6 +3,8 @@ import threading
 import warnings
 import weakref
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
+
 
 MAX_THREADS = min(32, (os.cpu_count() or 1) + 4)
 """
@@ -10,6 +12,10 @@ This default is suitable for I/O bound operations.
 This value is what is used by `concurrent.futures.ThreadPoolExecutor <https://docs.python.org/3/library/concurrent.futures.html#concurrent.futures.ThreadPoolExecutor>`_.
 For others, you may want to specify a smaller value.
 """
+
+
+def utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 # Copied from ``mpservice.concurrent.futures``.

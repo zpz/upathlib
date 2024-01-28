@@ -7,6 +7,7 @@ import pytest
 import upathlib._tests
 from google.api_core.exceptions import NotFound
 from upathlib import GcsBlobUpath
+from upathlib._util import utcnow
 
 
 class Blob:
@@ -167,7 +168,7 @@ def gcp(mocker):
         "upathlib._gcs.GcsBlobUpath._CREDENTIALS",
         SimpleNamespace(
             token="x",  # noqa: S106
-            expiry=datetime.utcnow() + timedelta(days=1),  # noqa: S106
+            expiry=utcnow() + timedelta(days=1),  # noqa: S106
         ),  # noqa: S106
     )  # noqa: S106
     mocker.patch("upathlib._gcs.GcsBlobUpath._CLIENT", Client())
