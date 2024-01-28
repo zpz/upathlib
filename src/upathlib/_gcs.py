@@ -88,7 +88,7 @@ def get_google_auth(
 
     if (
         not credentials.token
-        or (credentials.expiry - utcnow()).total_seconds() < valid_for_seconds
+        or (credentials.expiry - utcnow().replace(tzinfo=None)).total_seconds() < valid_for_seconds
     ):
         try:
             Retry(
@@ -740,7 +740,7 @@ class GcsBlobUpath(BlobUpath):
                     .with_timeout(timeout)
                     .with_delay(1.0, 20.0),
                 )
-                self._generation = lockfile._block().generation
+                self._generation = lockfile._blob().generation
                 # By default, no retry on `FileExistsError`, but here we want to retry on it.
                 # By default, retry on `TooManyRequests`, but we don't want the default potential long waits on it.
                 # So we do custom retry on `FileExistsError` and `TooManyRequests`.
