@@ -357,7 +357,9 @@ class GcsBlobUpath(BlobUpath):
                     size=size,
                     client=self._client(),
                     retry=retry
-                    or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)).with_delay(1.0, 10.0, 1.5),
+                    or DEFAULT_RETRY.with_predicate(
+                        if_exception_type(TooManyRequests)
+                    ).with_delay(1.0, 10.0, 1.5),
                     # default retry is None w/o `if_generation_match=0`.
                 )
                 # Blob data rate limit is 1 update per second.
@@ -719,7 +721,7 @@ class GcsBlobUpath(BlobUpath):
             raise UnsupportedOperation("can not write to root as a blob", self)
 
         t0 = time.perf_counter()
-        lockfile = self.with_suffix(self.suffix + '.lock')
+        lockfile = self.with_suffix(self.suffix + ".lock")
         try:
             try:
                 Retry(
@@ -782,7 +784,7 @@ class GcsBlobUpath(BlobUpath):
         # TODO:
         # once got "RemoteDisconnected" error after 0.01 seconds.
         t0 = time.perf_counter()
-        lockfile = self.with_suffix(self.suffix + '.lock')
+        lockfile = self.with_suffix(self.suffix + ".lock")
         try:
             try:
                 try:
@@ -860,7 +862,12 @@ class GcsBlobUpath(BlobUpath):
         # TODO: check whether this actually removes the key in the blob's metadata.
         blob = self._blob()
         blob.metadata = data
-        blob.patch(client=self._client(),
-                   retry=retry or DEFAULT_RETRY.with_predicate(if_exception_type(TooManyRequests)).with_delay(1.0, 10.0, 1.5))
+        blob.patch(
+            client=self._client(),
+            retry=retry
+            or DEFAULT_RETRY.with_predicate(
+                if_exception_type(TooManyRequests)
+            ).with_delay(1.0, 10.0, 1.5),
+        )
         # Metadata rate limit is 1 update per second.
         # Default retry is None if there is no precondition on metageneration.

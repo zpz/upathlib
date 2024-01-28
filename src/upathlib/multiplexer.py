@@ -6,7 +6,6 @@ import multiprocessing
 import pickle
 import threading
 from collections.abc import Iterable, Iterator, Sized
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import TypeVar
 
@@ -201,12 +200,15 @@ class Multiplexer(Iterable[Element], Sized):
         session_id = datetime.now(timezone.utc).isoformat()
         finfo = self._mux_info_file(session_id)
         data = {
-                    "total": str(len(self.data)),
-                    "next": '0',
-                    "time": utcnow().isoformat(),
-                }
-        if str(finfo).startswith('gs://'):
-            finfo.write_text(f"This is the control file. Created at {data.time}. Actual control info is in the blob's metadata.", overwrite=False)
+            "total": str(len(self.data)),
+            "next": "0",
+            "time": utcnow().isoformat(),
+        }
+        if str(finfo).startswith("gs://"):
+            finfo.write_text(
+                f"This is the control file. Created at {data.time}. Actual control info is in the blob's metadata.",
+                overwrite=False,
+            )
             finfo.write_meta(data)
         else:
             finfo.write_json(data, overwrite=False)
@@ -222,7 +224,7 @@ class Multiplexer(Iterable[Element], Sized):
         finfo = self._mux_info_file(self._session_id)
         while True:
             with finfo.lock(timeout=timeout):
-                if str(finfo).startswith('gs://'):
+                if str(finfo).startswith("gs://"):
                     ss = finfo.read_meta()
                 else:
                     ss = finfo.read_json()
@@ -232,13 +234,13 @@ class Multiplexer(Iterable[Element], Sized):
                     return
                 n = int(n)
                 data = {
-                    'total': ss['total'],
-                    'next': str(n + 1),
-                    'worker_id': worker_id,
-                    'time': utcnow().isoformat(),
+                    "total": ss["total"],
+                    "next": str(n + 1),
+                    "worker_id": worker_id,
+                    "time": utcnow().isoformat(),
                 }
 
-                if str(finfo).startswith('gs://'):
+                if str(finfo).startswith("gs://"):
                     finfo.write_meta(data)
                 else:
                     finfo.write_json(data, overwrite=True)
@@ -265,7 +267,7 @@ class Multiplexer(Iterable[Element], Sized):
             return self.__class__(mux_id).stat()
         assert self._session_id
         finfo = self._mux_info_file(self._session_id)
-        if str(finfo).startswith('gs://'):
+        if str(finfo).startswith("gs://"):
             return finfo.read_meta
         return finfo.read_json()
 

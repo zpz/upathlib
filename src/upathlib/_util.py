@@ -5,7 +5,6 @@ import weakref
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
-
 MAX_THREADS = min(32, (os.cpu_count() or 1) + 4)
 """
 This default is suitable for I/O bound operations.
