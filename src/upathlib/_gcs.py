@@ -793,6 +793,8 @@ class GcsBlobUpath(BlobUpath):
                         if_generation_match=self._generation,
                         retry=DEFAULT_RETRY.with_delay(1.0, 10.0),
                     )
+                    # The current worker (whose has created this lock file) should be the only one
+                    # that does this deletion.
                     self._generation = None
                 except RetryError as e:
                     raise e.cause
