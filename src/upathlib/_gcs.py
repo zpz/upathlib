@@ -88,7 +88,8 @@ def get_google_auth(
 
     if (
         not credentials.token
-        or (credentials.expiry - utcnow().replace(tzinfo=None)).total_seconds() < valid_for_seconds
+        or (credentials.expiry - utcnow().replace(tzinfo=None)).total_seconds()
+        < valid_for_seconds
     ):
         try:
             Retry(
