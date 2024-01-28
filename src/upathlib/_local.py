@@ -304,7 +304,7 @@ class LocalUpath(Upath, os.PathLike):
         if timeout is None:
             timeout = 60
         os.makedirs(self.parent, exist_ok=True)
-        lockfile = self.with_suffix(self.suffix + '.lock')
+        lockfile = self.with_suffix(self.suffix + ".lock")
         lock = filelock.FileLock(str(lockfile))  # this object manages re-entry itself
         t0 = time.perf_counter()
         try:
@@ -320,7 +320,7 @@ class LocalUpath(Upath, os.PathLike):
         finally:
             try:
                 # if lock.lock_counter == 1:
-                    # lockfile.remove_file()
+                # lockfile.remove_file()
                 lock.release()  # in a re-entry situation, this may not actually "release" the lock
                 # NOTE: the file is not deleted.
                 # The reason to not delete it is that at this moment the file could have been locked
