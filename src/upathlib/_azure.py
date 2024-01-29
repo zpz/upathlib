@@ -244,7 +244,7 @@ class AzureBlobUpath(BlobUpath):
             else:
                 self._lock_count += 1
             try:
-                yield
+                yield self
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:

@@ -316,7 +316,7 @@ class LocalUpath(Upath, os.PathLike):
                 f"Failed to lock '{self}' trying for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
             ) from e
         try:
-            yield
+            yield self
         finally:
             try:
                 # if lock.lock_counter == 1:

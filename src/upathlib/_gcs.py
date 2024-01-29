@@ -838,7 +838,7 @@ class GcsBlobUpath(BlobUpath):
             self._acquire_lease(timeout=timeout)
         self._lock_count += 1
         try:
-            yield
+            yield self
         finally:
             self._lock_count -= 1
             if self._lock_count == 0:

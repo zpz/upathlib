@@ -206,7 +206,7 @@ class Multiplexer(Iterable[Element], Sized):
         }
         if str(finfo).startswith("gs://"):
             finfo.write_text(
-                f"This is the control file. Created at {data.time}. Actual control info is in the blob's metadata.",
+                f"This is the control file. Created at {data['time']}. Actual control info is in the blob's metadata.",
                 overwrite=False,
             )
             finfo.write_meta(data)
