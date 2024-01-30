@@ -13,7 +13,6 @@ import random
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime
 from io import BufferedReader, UnsupportedOperation
 
 # from azure.storage.blob.aio import (
@@ -31,6 +30,7 @@ from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
+from ._util import utcnow
 
 # End user may want to do this:
 # logging.getLogger("azure.storage").setLevel(logging.WARNING)
@@ -202,7 +202,7 @@ class AzureBlobUpath(BlobUpath):
         t0 = time.perf_counter()
         while True:
             try:
-                self.write_text(datetime.utcnow().isoformat(), overwrite=True)
+                self.write_text(utcnow().isoformat(), overwrite=True)
                 try:
                     self._lease = self._blob_client.acquire_lease(
                         lease_duration=-1, timeout=10
@@ -244,15 +244,15 @@ class AzureBlobUpath(BlobUpath):
             else:
                 self._lock_count += 1
             try:
-                yield
+                yield self
             finally:
                 self._lock_count -= 1
                 if self._lock_count <= 0:
                     try:
-                        try:
-                            self.remove_file()
-                        except FileNotFoundError:
-                            pass
+                        # try:
+                        #     self.remove_file()
+                        # except FileNotFoundError:
+                        #     pass
                         self._lease.release()
                         self._lease = None
                         self._lock_count = 0

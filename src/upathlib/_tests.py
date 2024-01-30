@@ -236,7 +236,7 @@ def _inc_in_mp(counter, idx):
     t0 = time.perf_counter()
     n = 0
     while time.perf_counter() - t0 < 5:
-        with counter.with_suffix(".lock").lock():
+        with counter.lock():
             x = counter.read_text()
             print("x:", x, "worker", idx, flush=True)
             time.sleep(random.random() * 0.1)

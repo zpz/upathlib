@@ -844,7 +844,7 @@ class Upath(abc.ABC):
 
     @contextlib.contextmanager
     @abc.abstractmethod
-    def lock(self, *, timeout: int = None):
+    def lock(self, *, timeout: int = None) -> Self:
         """Lock the current file (i.e. ``self``), in order to have exclusive access to the code block
         that has possesion of the lock.
 
@@ -864,37 +864,20 @@ class Upath(abc.ABC):
 
         As this abstract method is to be used as a context manager,
         a subclass should use ``yield`` in its implementation.
-        The ``yield`` statement is not required to yield anything,
-        that is, it may be simply
-
-        ::
-
-            yield
-
-        rather than, say,
-
-        ::
-
-            yield self
+        The ``yield`` statement should yield `self`.
 
         One way to achive cooperative locking on a file via this
         lock is like this::
 
             f = Upath('abc.txt')
-            with f.with_suffix('.txt.lock').lock():
+            with f.lock():
                 ...
-                # Now write to `f` with exclusive access,
-                # because any other (cooperative) code block
-                # will not be able to get hold of `abc.txt.lock`
-                # in order to write to `f` using this same code block
-                # (or in another block that deliberately uses the same file lock).
-                # Reading can be made exclusive by this same lock mechanism.
+                # Now read from or write to `f` with exclusive access.
 
-        .. note:: This method should always be called on an "auxiliary file" (like in the example above),
-          whose sole purpose is to implement the lock; the file being locked should not be used for any other purpose.
-
-        .. note:: It's up to a specific subclass to decide whether it should delete the lock file
-          just before exiting the context manager.
+        Depending on the capabilities of the specific storage system,
+        the lock may be on the current file itself or on another, helper file
+        as an implementation detail. In the latter case, this method should delete
+        the helper file upon release of the lock, if possible.
 
         Some storage engines may not provide the capability to implement
         this lock.

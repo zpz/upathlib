@@ -7,12 +7,17 @@ import pytest
 import upathlib._tests
 from google.api_core.exceptions import NotFound
 from upathlib import GcsBlobUpath
+from upathlib._util import utcnow
 
 
 class Blob:
     def __init__(self, name, bucket):
         self.name = name
         self._bucket = bucket
+        self._updated = None
+        self._generation = None
+        self._time_created = None
+        self._size = None
 
     def delete(self, client=None, if_generation_match=None):
         try:
@@ -26,6 +31,11 @@ class Blob:
     def reload(self, client=None, timeout=None, retry=None):
         if not self.exists(client):
             raise NotFound(self.name)
+        meta = self._bucket._blobs[self.name]
+        self._updated = meta["time_updated"]
+        self._generation = meta["generation"]
+        self._time_created = meta["time_created"]
+        self._size = meta["size"]
 
     def _get_content_type(self, content_type, filename):
         return "ok"
@@ -34,11 +44,13 @@ class Blob:
         if if_generation_match == 0 and self.name in self._bucket._blobs:
             raise FileExistsError(self.name)
         data = data.read()
+        gen = self._bucket._blobs.get(self.name, {"generation": 0})["generation"]
         self._bucket._blobs[self.name] = {
             "data": data,
             "time_created": datetime.now(),
             "time_updated": datetime.now(),
             "size": len(data),
+            "generation": gen + 1,
         }
 
     def download_to_file(self, file_obj, client=None, raw_download=None):
@@ -50,15 +62,15 @@ class Blob:
 
     @property
     def time_created(self):
-        return self._bucket._blobs[self.name]["time_created"]
+        return self._time_created
 
     @property
     def updated(self):
-        return self._bucket._blobs[self.name]["time_updated"]
+        return self._updated
 
     @property
     def size(self):
-        return self._bucket._blobs[self.name]["size"]
+        return self._size
 
     @property
     def _properties(self):
@@ -66,20 +78,20 @@ class Blob:
 
     @property
     def generation(self):
-        return 0
+        return self._generation
+
+
+bucket_blobs = {}
 
 
 class Bucket:
     def __init__(self, name):
         self._name = name
-        self._blobs = {}
+        bucket_blobs.setdefault(name, {})
+        self._blobs = bucket_blobs[name]
 
     def blob(self, name):
         return Blob(name, self)
-
-    def get_blob(self, name):
-        if name in self._blobs:
-            return self.blob(name)
 
     def copy_blob(
         self,
@@ -143,7 +155,7 @@ class Client:
     def __init__(self, *args, **kwargs):
         pass
 
-    def bucket(self, name):
+    def bucket(self, name, user_project):
         return Bucket(name)
 
     def list_blobs(
@@ -160,6 +172,7 @@ class Client:
 
 @pytest.fixture()
 def gcp(mocker):
+    print()
     # mocker.patch('upathlib.gcp.service_account')
     mocker.patch("upathlib._gcs.storage.Client", Client)
     mocker.patch("upathlib._gcs.GcsBlobUpath._PROJECT_ID", "abc")
@@ -167,7 +180,7 @@ def gcp(mocker):
         "upathlib._gcs.GcsBlobUpath._CREDENTIALS",
         SimpleNamespace(
             token="x",  # noqa: S106
-            expiry=datetime.utcnow() + timedelta(days=1),  # noqa: S106
+            expiry=(utcnow() + timedelta(days=1)).replace(tzinfo=None),  # noqa: S106
         ),  # noqa: S106
     )  # noqa: S106
     mocker.patch("upathlib._gcs.GcsBlobUpath._CLIENT", Client())
@@ -175,7 +188,7 @@ def gcp(mocker):
         "/tmp/test",
         bucket_name="test",
     ) / str(uuid4())
-    print("c._bucket", c._bucket)
+    print("c._bucket", c._bucket())
     c.rmrf()
     try:
         yield c
@@ -184,8 +197,6 @@ def gcp(mocker):
 
 
 def test_all(gcp):
-    print("gcp._bucket:", gcp._bucket)
-
     upathlib._tests.test_all(gcp)
 
 
