@@ -33,7 +33,7 @@ class Blob:
             raise NotFound(self.name)
         meta = self._bucket._blobs[self.name]
         self._updated = meta["time_updated"]
-        self._generation = meta['generation']
+        self._generation = meta["generation"]
         self._time_created = meta["time_created"]
         self._size = meta["size"]
 
@@ -44,7 +44,7 @@ class Blob:
         if if_generation_match == 0 and self.name in self._bucket._blobs:
             raise FileExistsError(self.name)
         data = data.read()
-        gen = self._bucket._blobs.get(self.name, {'generation': 0})['generation']
+        gen = self._bucket._blobs.get(self.name, {"generation": 0})["generation"]
         self._bucket._blobs[self.name] = {
             "data": data,
             "time_created": datetime.now(),
@@ -79,7 +79,6 @@ class Blob:
     @property
     def generation(self):
         return self._generation
-    
 
 
 bucket_blobs = {}

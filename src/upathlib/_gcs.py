@@ -68,7 +68,6 @@ NOTSET = object()
 assert hasattr(DEFAULT_RETRY, "with_timeout")
 
 
-
 def get_google_auth(
     project_id=None,
     credentials=None,
@@ -266,7 +265,7 @@ class GcsBlobUpath(BlobUpath):
         """
         Return a Bucket object, via :meth:`_client`.
         """
-        cl = self._client()  
+        cl = self._client()
         # This will make HTTP calls only if needed.
         return cl.bucket(self.bucket_name, user_project=self._PROJECT_ID)
         # This does not make HTTP calls.
