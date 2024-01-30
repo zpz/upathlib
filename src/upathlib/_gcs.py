@@ -68,6 +68,7 @@ NOTSET = object()
 assert hasattr(DEFAULT_RETRY, "with_timeout")
 
 
+
 def get_google_auth(
     project_id=None,
     credentials=None,
@@ -75,6 +76,39 @@ def get_google_auth(
     scopes: list[str] = None,
     valid_for_seconds: int = 600,
 ):
+    """
+    If you have GCP account_info in a dict with these elements
+    (not sure everything here is required)::
+
+        'type': 'service_account',
+        'project_id':
+        'private_key_id':
+        'private_key':
+            '-----BEGIN PRIVATE KEY-----\\n'
+            + private_key.encode('latin1').decode('unicode_escape')
+            + '\\n-----END PRIVATE KEY-----\\n',
+        'client_email':
+        'client_id':
+        'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
+        'token_uri': 'https://oauth2.googleapis.com/token',
+        'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
+        'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
+
+    then ``credentials`` are obtained by
+
+    ::
+
+        google.oauth2.service_account.Credentials.from_service_account_info(
+            account_info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
+
+    Code that runs on a GCP machine may be able to infer ``credentials`` and ``project_id``
+    via `google.auth.default() <https://googleapis.dev/python/google-auth/latest/user-guide.html#application-default-credentials>`_.
+
+    If you have `project_id` and `credentials` obtained from this function
+    with a different value of `scopes`, I believe you should NOT provide them
+    (at least `credentials`) in a new call, so that `google.auth.default` is
+    guaranteed to be called with a new value for `scopes`.
+    """
     renewed = False
     if project_id is None or credentials is None:
         cred, pid = google.auth.default(
@@ -98,8 +132,8 @@ def get_google_auth(
                     google.auth.exceptions.TransportError,
                 ),
                 initial=1.0,
-                maximum=20.0,
-                timeout=180.0,
+                maximum=10.0,
+                timeout=300.0,
             )(credentials.refresh)(google.auth.transport.requests.Request())
             # One check shows that this token expires in one hour.
         except RetryError as e:
@@ -110,6 +144,9 @@ def get_google_auth(
         logger.debug("Google credentials refreshed")
 
     return project_id, credentials, renewed
+    # User should keep the `project_id` and `credentials` and pass them into
+    # the next call to this function. That can avoid unncessary HTTP calls
+    # if the credential is still valid.
 
 
 class GcsBlobUpath(BlobUpath):
@@ -141,32 +178,7 @@ class GcsBlobUpath(BlobUpath):
         """
         Return a client to the GCS service.
 
-        If you have GCP account_info in a dict with these elements
-        (not sure everything here is required)::
-
-            'type': 'service_account',
-            'project_id':
-            'private_key_id':
-            'private_key':
-                '-----BEGIN PRIVATE KEY-----\\n'
-                + private_key.encode('latin1').decode('unicode_escape')
-                + '\\n-----END PRIVATE KEY-----\\n',
-            'client_email':
-            'client_id':
-            'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
-            'token_uri': 'https://oauth2.googleapis.com/token',
-            'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
-            'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
-
-        then ``credentials`` are obtained by
-
-        ::
-
-            google.oauth2.service_account.Credentials.from_service_account_info(
-                account_info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
-
-        Code that runs on a GCP machine may be able to infer ``credentials`` and ``project_id``
-        via `google.auth.default() <https://googleapis.dev/python/google-auth/latest/user-guide.html#application-default-credentials>`_.
+        This does not make HTTP calls if things in cache are still valid.
         """
         cls._PROJECT_ID, cls._CREDENTIALS, renewed = get_google_auth(
             cls._PROJECT_ID, cls._CREDENTIALS
@@ -223,10 +235,10 @@ class GcsBlobUpath(BlobUpath):
         super().__init__(*paths)
         assert bucket_name, bucket_name
         self.bucket_name = bucket_name
-        self._bucket_ = None
         self._lock_count: int = 0
         self._generation = None
         self._quiet_multidownload = True
+        self._blob_ = None
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}('{self.as_uri()}')"
@@ -235,9 +247,9 @@ class GcsBlobUpath(BlobUpath):
         return self.as_uri()
 
     def __getstate__(self):
-        # Customize pickle because `self._bucket_`
-        # (when not None) can't be pickled.
-        # the `service_account.Credentials` class object can be pickled.
+        # `Bucket` objects can't be pickled.
+        # I believe `Blob` objects can't be either.
+        # The `service_account.Credentials` class object can be pickled.
         return (
             self.bucket_name,
             self._quiet_multidownload,
@@ -245,25 +257,38 @@ class GcsBlobUpath(BlobUpath):
 
     def __setstate__(self, data):
         (self.bucket_name, self._quiet_multidownload), z1 = data
-        self._bucket_ = None
+        self._blob_ = None
         self._lock_count = 0
         self._generation = None
         super().__setstate__(z1)
 
     def _bucket(self) -> storage.Bucket:
         """
-        Return a Bucket object, via :meth:`client`.
+        Return a Bucket object, via :meth:`_client`.
         """
-        if self._bucket_ is None:
-            self._bucket_ = self._client().bucket(self.bucket_name)
-        return self._bucket_
+        cl = self._client()  
+        # This will make HTTP calls only if needed.
+        return cl.bucket(self.bucket_name, user_project=self._PROJECT_ID)
+        # This does not make HTTP calls.
 
-    def _blob(self) -> storage.Blob:
-        """
-        This constructs a Blob object irrespective of whether the blob
-        exists in GCS.
-        """
-        return self._bucket().blob(self.blob_name)
+    def _blob(self, *, reload=False) -> storage.Blob:
+        self._blob_ = self._bucket().blob(self.blob_name)
+        # This constructs a Blob object irrespective of whether the blob
+        # exists in GCS. This does not call the storage
+        # server to get up-to-date info of the blob.
+        #
+        # This object is suitable for making read/write calls that
+        # talk to the storage. It's not suitable for accessing "properties" that
+        # simply returns whatever is in the Blob object (which may be extirely
+        # disconnected from the actual blob in the cloud), for example, `metadata`.
+
+        if reload:
+            self._blob_.reload(client=self._client())
+            # Equivalent to `self._bucket().get_blob(self.blob_name)`
+
+        return self._blob_
+        # This object, after making calls to the cloud storage, may contain some useful info.
+        # This cache is for internal use.
 
     def as_uri(self) -> str:
         """
@@ -302,13 +327,8 @@ class GcsBlobUpath(BlobUpath):
         Return file info if the current path is a file;
         otherwise return ``None``.
         """
-        b = self._blob()
         try:
-            b.reload(
-                client=self._client(),
-                timeout=timeout or 60,  # TODO: is this necessary?
-                # retry=DEFAULT_RETRY.with_timeout(max(120, request_timeout * 2)),
-            )
+            b = self._blob(reload=True)
         except NotFound:
             return None
         return FileInfo(
@@ -331,7 +351,6 @@ class GcsBlobUpath(BlobUpath):
         obj = self.__class__(
             bucket_name=self.bucket_name,
         )
-        obj._bucket_ = self._bucket()
         return obj
 
     def _write_from_buffer(
@@ -587,7 +606,7 @@ class GcsBlobUpath(BlobUpath):
                 # If `target` is an existing directory,
                 # will raise `IsADirectoryError`.
                 self._read_into_buffer(file_obj, concurrent=concurrent)
-            updated = self._blob().updated
+            updated = self._blob_.updated
             if updated is not None:
                 mtime = updated.timestamp()
                 os.utime(target, (mtime, mtime))
@@ -741,7 +760,7 @@ class GcsBlobUpath(BlobUpath):
                     .with_timeout(timeout)
                     .with_delay(1.0, 20.0),
                 )
-                self._generation = lockfile._blob().generation
+                self._generation = lockfile._blob_.generation
                 # By default, no retry on `FileExistsError`, but here we want to retry on it.
                 # By default, retry on `TooManyRequests`, but we don't want the default potential long waits on it.
                 # So we do custom retry on `FileExistsError` and `TooManyRequests`.
@@ -855,7 +874,10 @@ class GcsBlobUpath(BlobUpath):
         # "custom metadata", see
         # https://cloud.google.com/storage/docs/metadata
         # https://cloud.google.com/storage/docs/viewing-editing-metadata#storage-view-object-metadata-python
-        return self._blob().metadata
+        #
+        # Metadata read/write can only be performed on a blob that already exists, that is,
+        # something has to be written as the blob data so that the blob exists.
+        return self._blob(reload=True).metadata
 
     def write_meta(self, data: dict[str, str], retry: Optional[Retry] = None):
         # The values should be small. There's a size limit: 8 KiB for all
@@ -872,5 +894,8 @@ class GcsBlobUpath(BlobUpath):
                 if_exception_type(TooManyRequests)
             ).with_delay(1.0, 10.0, 1.5),
         )
+        # `blob.metadata` (`self._blob_.metadata`) now contains the updated metadata,
+        # not just the input `data`, but the current updated metadata of the blob.
+
         # Metadata rate limit is 1 update per second.
         # Default retry is None if there is no precondition on metageneration.
