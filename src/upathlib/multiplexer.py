@@ -130,17 +130,8 @@ class Multiplexer(Iterable[Element], Sized):
         """
         self.path, self._session_id = decode(mux_id)
         self._worker_id = worker_id
-        self._data = None
+        self._data = (self.path / "data.pickle").read_pickle()
         self._timeout = timeout
-
-    @property
-    def data(self) -> list[Element]:
-        """
-        Return the data elements stored in this ``Multiplexer``.
-        """
-        if self._data is None:
-            self._data = (self.path / "data.pickle").read_pickle()
-        return self._data
 
     @property
     def worker_id(self) -> str:
@@ -158,7 +149,7 @@ class Multiplexer(Iterable[Element], Sized):
         """
         Return the number of data elements stored in this Multiplexer.
         """
-        return len(self.data)
+        return len(self._data)
 
     def _mux_info_file(self, session_id: str) -> Upath:
         return self.path / ".mux" / session_id / "info.json"
@@ -200,7 +191,7 @@ class Multiplexer(Iterable[Element], Sized):
         session_id = datetime.now(timezone.utc).isoformat()
         finfo = self._mux_info_file(session_id)
         data = {
-            "total": str(len(self.data)),
+            "total": str(len(self)),
             "next": "0",
             "time": utcnow().isoformat(),
         }
@@ -251,7 +242,14 @@ class Multiplexer(Iterable[Element], Sized):
                 # a few seconds.
                 # TODO: check speed of this version that writes metadata.
 
-            yield self.data[n]
+            z = self._data[n]
+            self._data[n] = None
+            # Although the data elements are supposed to be small,
+            # Nothing forbids them from being custom class objects that grow in size
+            # during their use (e.g. it loads up some data and keeps them as instance
+            # attributes). We remove the element from the current object before yielding it
+            # hence there are no concerns about such scenarios.
+            yield z
 
     def stat(self, mux_id: str = None) -> dict:
         """

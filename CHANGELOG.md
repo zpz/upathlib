@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.9.4] - 2024-02-07
+
+- Finetune `Multiplexer`: removing a data element from internal data list before yielding it.
+
+
 ## [0.9.3] - 2024-01-31
 
 - `GcsBlobUpath` gets new methods `read_meta` and `write_meta`.
