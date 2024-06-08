@@ -19,8 +19,8 @@ from google.api_core.exceptions import (
     NotFound,
     PreconditionFailed,
     RetryError,
-    TooManyRequests,
     ServiceUnavailable,
+    TooManyRequests,
 )
 from google.api_core.retry import Retry, if_exception_type
 from google.cloud import storage
@@ -745,7 +745,9 @@ class GcsBlobUpath(BlobUpath):
         try:
             try:
                 Retry(
-                    predicate=if_exception_type(TooManyRequests, FileExistsError, ServiceUnavailable),
+                    predicate=if_exception_type(
+                        TooManyRequests, FileExistsError, ServiceUnavailable
+                    ),
                     initial=1.0,
                     maximum=10.0,
                     multiplier=1.5,
