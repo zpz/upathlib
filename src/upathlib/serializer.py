@@ -44,12 +44,10 @@ def _gc(data):
 
 class Serializer(Protocol):
     @classmethod
-    def serialize(cls, x: T, **kwargs) -> bytes:
-        ...
+    def serialize(cls, x: T, **kwargs) -> bytes: ...
 
     @classmethod
-    def deserialize(cls, y: bytes, **kwargs) -> T:
-        ...
+    def deserialize(cls, y: bytes, **kwargs) -> T: ...
 
     @classmethod
     def dump(cls, x: T, file, *, overwrite: bool = False, **kwargs) -> None:

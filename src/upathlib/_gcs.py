@@ -19,6 +19,7 @@ from google.api_core.exceptions import (
     NotFound,
     PreconditionFailed,
     RetryError,
+    ServiceUnavailable,
     TooManyRequests,
 )
 from google.api_core.retry import Retry, if_exception_type
@@ -377,7 +378,7 @@ class GcsBlobUpath(BlobUpath):
                     client=self._client(),
                     retry=retry
                     or DEFAULT_RETRY.with_predicate(
-                        if_exception_type(TooManyRequests)
+                        if_exception_type(TooManyRequests, ServiceUnavailable)
                     ).with_delay(1.0, 10.0, 1.5),
                     # default retry is None w/o `if_generation_match=0`.
                 )
@@ -744,7 +745,9 @@ class GcsBlobUpath(BlobUpath):
         try:
             try:
                 Retry(
-                    predicate=if_exception_type(TooManyRequests, FileExistsError),
+                    predicate=if_exception_type(
+                        TooManyRequests, FileExistsError, ServiceUnavailable
+                    ),
                     initial=1.0,
                     maximum=10.0,
                     multiplier=1.5,
@@ -757,7 +760,7 @@ class GcsBlobUpath(BlobUpath):
                         and not isinstance(exc, TooManyRequests)
                     )
                     .with_timeout(timeout)
-                    .with_delay(1.0, 20.0),
+                    .with_delay(1.0, 10.0, 1.5),
                 )
                 self._generation = lockfile._blob_.generation
                 # By default, no retry on `FileExistsError`, but here we want to retry on it.
@@ -890,7 +893,7 @@ class GcsBlobUpath(BlobUpath):
             client=self._client(),
             retry=retry
             or DEFAULT_RETRY.with_predicate(
-                if_exception_type(TooManyRequests)
+                if_exception_type(TooManyRequests, ServiceUnavailable)
             ).with_delay(1.0, 10.0, 1.5),
         )
         # `blob.metadata` (`self._blob_.metadata`) now contains the updated metadata,

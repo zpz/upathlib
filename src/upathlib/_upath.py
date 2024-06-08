@@ -61,7 +61,9 @@ class FileInfo:
     ctime: float  #: Creation time as a POSIX timetamp.
     mtime: float  #: Last modification time as a POSIX timestamp.
     time_created: datetime.datetime  #: Creation time as an ``datetime`` object.
-    time_modified: datetime.datetime  #: Last modification time as an ``datetime`` object.
+    time_modified: (
+        datetime.datetime
+    )  #: Last modification time as an ``datetime`` object.
     size: int  #: In bytes.
     details: Any  #: Platform-dependent.
 
