@@ -9,9 +9,7 @@ import logging
 import os
 import time
 from collections.abc import Iterator
-from datetime import datetime, timezone
 from io import BufferedReader, BytesIO, UnsupportedOperation
-from typing import Optional
 
 import google.auth
 from google import resumable_media
@@ -19,14 +17,11 @@ from google.api_core.exceptions import (
     NotFound,
     PreconditionFailed,
     RetryError,
-    ServiceUnavailable,
-    TooManyRequests,
 )
 from google.api_core.retry import Retry, if_exception_type
 from google.cloud import storage
 from google.cloud.storage.retry import (
     DEFAULT_RETRY,
-    DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
 )
 from typing_extensions import Self
 
@@ -44,6 +39,8 @@ from typing_extensions import Self
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
+
+
 
 # To see retry info, add the following in user code.
 # There is one message per retry.
@@ -360,7 +357,7 @@ class GcsBlobUpath(BlobUpath):
         overwrite=False,
         content_type=None,
         size=None,
-        retry: Optional[Retry] = None,
+        retry=DEFAULT_RETRY,
     ):
         if self._path == "/":
             raise UnsupportedOperation(f"can not write to root as a blob: '{self}'")
@@ -369,71 +366,35 @@ class GcsBlobUpath(BlobUpath):
         # going forward, including during retry, hence we don't need to worry about
         # rewinding `file_obj` for retry.
 
-        if overwrite:
+        if_generation_match = None if overwrite else 0
+        
+        def func():
+            file_obj.seek(0)
+            self._blob().upload_from_file(
+                file_obj,
+                content_type=content_type,
+                size=size,
+                client=self._client(),
+                if_generation_match=if_generation_match,
+                retry=None
+            )
+
+        # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
+        # uploading. `resumable_media` has its own retry facilities. When a retriable exception
+        # happens but time is up, the original exception is raised.
+        # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
+        # raise `RetryError` with the original exception as its `.cause` attribute.
+
+        # If `file_obj` is large, this will sequentially upload chunks.
+
+        try:
             try:
-                self._blob().upload_from_file(
-                    file_obj,
-                    content_type=content_type,
-                    size=size,
-                    client=self._client(),
-                    retry=retry
-                    or DEFAULT_RETRY.with_predicate(
-                        if_exception_type(TooManyRequests, ServiceUnavailable)
-                    ).with_delay(1.0, 10.0, 1.5),
-                    # default retry is None w/o `if_generation_match=0`.
-                )
+                retry(func)()
                 # Blob data rate limit is 1 update per second.
             except RetryError as e:
                 raise e.cause
-        else:
-            try:
-                try:
-                    self._blob().upload_from_file(
-                        file_obj,
-                        content_type=content_type,
-                        size=size,
-                        client=self._client(),
-                        if_generation_match=0,
-                        retry=retry or DEFAULT_RETRY_IF_GENERATION_SPECIFIED,
-                    )
-                    # using the default retry
-
-                    # For the parameter `retry` of `Blob.upload_from_file`,
-                    # custom predicates in `retry` will not be passed through into `Blob.upload_from_file`; only the time/delay
-                    # settings are used. See `google.cloud.storage._helpers._api_core_retry_to_resumable_media_retry`,
-                    # which is applied on `retry` in `google.cloud.storage.blob.Blob._do_multipart_upload` and
-                    # `google.cloud.storage.blob.Blob._do_resumable_upload`.
-                    #
-                    # The retriable status codes are defined in `google.resumable_media.common.RETRYABLE`.
-                    # As of 10/24/2023, they are
-                    #
-                    # RETRYABLE = (
-                    #     http.client.TOO_MANY_REQUESTS,  # 429
-                    #     http.client.REQUEST_TIMEOUT,  # 408
-                    #     http.client.INTERNAL_SERVER_ERROR,  # 500
-                    #     http.client.BAD_GATEWAY,  # 502
-                    #     http.client.SERVICE_UNAVAILABLE,  # 503
-                    #     http.client.GATEWAY_TIMEOUT,  # 504
-                    # )
-                    #
-                    # These are the same codes in `google.cloud.storage.retry.DEFAULT_RETRY`.
-                    # The latter adds a few exception types.
-                    #
-                    # I've concluded that passing in a custom `retry` into `upload_from_file`
-                    # may not be very useful.
-
-                    # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
-                    # uploading. `resumable_media` has its own retry facilities. When a retriable exception
-                    # happens but time is up, the original exception is raised.
-                    # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
-                    # raise `RetryError` with the original exception as its `.cause` attribute.
-
-                    # If `file_obj` is large, this will sequentially upload chunks.
-
-                except RetryError as e:
-                    raise e.cause
-            except PreconditionFailed as e:
-                raise FileExistsError(f"File exists: '{self}'") from e
+        except PreconditionFailed as e:
+            raise FileExistsError(f"File exists: '{self}'") from e
 
         # TODO: set "create_time", 'update_time" to be the same
         # as the source local file?
@@ -745,58 +706,45 @@ class GcsBlobUpath(BlobUpath):
         try:
             try:
                 Retry(
-                    predicate=if_exception_type(
-                        TooManyRequests, FileExistsError, ServiceUnavailable
-                    ),
+                    predicate=if_exception_type(FileExistsError),
                     initial=1.0,
                     maximum=10.0,
-                    multiplier=1.5,
+                    multiplier=1.2,
                     timeout=timeout,
                 )(lockfile.write_bytes)(
                     b"0",
                     overwrite=False,
-                    retry=DEFAULT_RETRY.with_predicate(
-                        lambda exc: DEFAULT_RETRY._predicate(exc)
-                        and not isinstance(exc, TooManyRequests)
-                    )
-                    .with_timeout(timeout)
-                    .with_delay(1.0, 10.0, 1.5),
                 )
                 self._generation = lockfile._blob_.generation
-                # By default, no retry on `FileExistsError`, but here we want to retry on it.
-                # By default, retry on `TooManyRequests`, but we don't want the default potential long waits on it.
-                # So we do custom retry on `FileExistsError` and `TooManyRequests`.
-                # The other default retriable types are likely rare and, if they happen, may justify the default long max waits
-                # (60 s), hence use the default retry on them.
             except RetryError as e:
                 # `RetryError` originates from only one place, in `google.cloud.api_core.retry.retry_target`.
                 # The message is "Deadline of ...s exceeded while calling target function, last exception: ...".
                 # We are not losing much info by raising `e.cause` directly. That may ease downstream exception handling.
                 raise e.cause
-        except FileExistsError as e:
-            finfo = lockfile.file_info()
-            now = datetime.now(timezone.utc)
-            file_age = (now - finfo.time_created).total_seconds()
-            if file_age > self._LOCK_EXPIRE_IN_SECONDS:
-                # If the file is old,
-                # assume it is a dead file, that is, the last lock operation
-                # somehow failed and did not delete the file.
-                logger.warning(
-                    "the locker file '%s' was created %d seconds ago; assuming it is dead and deleting it",
-                    self,
-                    int(file_age),
-                )
-                try:
-                    lockfile.remove_file()
-                except FileExistsError:
-                    pass
-                # If this fails, the exception will propagate, which is not LockAcquireError.
-                # After deleting the file, try it again:
-                self._acquire_lease(timeout=timeout)
-            else:
-                raise LockAcquireError(
-                    f"Failed to lock '{self}' trying for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
-                ) from e
+        # except FileExistsError as e:
+        #     finfo = lockfile.file_info()
+        #     now = datetime.now(timezone.utc)
+        #     file_age = (now - finfo.time_created).total_seconds()
+        #     if file_age > self._LOCK_EXPIRE_IN_SECONDS:
+        #         # If the file is old,
+        #         # assume it is a dead file, that is, the last lock operation
+        #         # somehow failed and did not delete the file.
+        #         logger.warning(
+        #             "the locker file '%s' was created %d seconds ago; assuming it is dead and deleting it",
+        #             self,
+        #             int(file_age),
+        #         )
+        #         try:
+        #             lockfile.remove_file()
+        #         except FileExistsError:
+        #             pass
+        #         # If this fails, the exception will propagate, which is not LockAcquireError.
+        #         # After deleting the file, try it again:
+        #         self._acquire_lease(timeout=timeout)
+        #     else:
+        #         raise LockAcquireError(
+        #             f"Failed to lock '{self}' trying for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
+        #         ) from e
         except Exception as e:
             raise LockAcquireError(
                 f"Failed to lock '{self}' trying for {time.perf_counter() - t0:.2f} seconds; gave up on {e!r}"
@@ -813,9 +761,8 @@ class GcsBlobUpath(BlobUpath):
                     lockfile._blob().delete(
                         client=self._client(),
                         if_generation_match=self._generation,
-                        retry=DEFAULT_RETRY.with_delay(1.0, 10.0),
                     )
-                    # The current worker (whose has created this lock file) should be the only one
+                    # The current worker (who has created this lock file) should be the only one
                     # that does this deletion.
                     self._generation = None
                 except RetryError as e:
@@ -881,7 +828,7 @@ class GcsBlobUpath(BlobUpath):
         # something has to be written as the blob data so that the blob exists.
         return self._blob(reload=True).metadata
 
-    def write_meta(self, data: dict[str, str], retry: Optional[Retry] = None):
+    def write_meta(self, data: dict[str, str]):
         # The values should be small. There's a size limit: 8 KiB for all
         # custom keys and values combined.
         # `data` only needs to include elements you want to update.
@@ -891,13 +838,11 @@ class GcsBlobUpath(BlobUpath):
         blob.metadata = data
         blob.patch(
             client=self._client(),
-            retry=retry
-            or DEFAULT_RETRY.with_predicate(
-                if_exception_type(TooManyRequests, ServiceUnavailable)
-            ).with_delay(1.0, 10.0, 1.5),
+            retry=DEFAULT_RETRY,
         )
         # `blob.metadata` (`self._blob_.metadata`) now contains the updated metadata,
         # not just the input `data`, but the current updated metadata of the blob.
-
+        #
         # Metadata rate limit is 1 update per second.
-        # Default retry is None if there is no precondition on metageneration.
+        # Default retry in Google code is None if there is no precondition on metageneration.
+        # TODO: think more about this retry.
