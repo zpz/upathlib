@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
+## [0.9.6] - 2024-06-20
+
+- Finetuning about GCS retry.
+
+
 ## [0.9.5] - 2024-06-07
 
 - `GcsBlobUpath.write_meta` adds retry on `ServiceUnavailable`.
