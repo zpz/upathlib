@@ -18,7 +18,7 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.9.5"
+__version__ = "0.9.6"
 
 
 from pathlib import Path
