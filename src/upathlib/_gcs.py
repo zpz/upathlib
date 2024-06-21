@@ -40,8 +40,6 @@ from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
 
-
-
 # To see retry info, add the following in user code.
 # There is one message per retry.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
@@ -367,7 +365,7 @@ class GcsBlobUpath(BlobUpath):
         # rewinding `file_obj` for retry.
 
         if_generation_match = None if overwrite else 0
-        
+
         def func():
             file_obj.seek(0)
             self._blob().upload_from_file(
@@ -376,7 +374,7 @@ class GcsBlobUpath(BlobUpath):
                 size=size,
                 client=self._client(),
                 if_generation_match=if_generation_match,
-                retry=None
+                retry=None,
             )
 
         # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
