@@ -80,7 +80,7 @@ class VersionedUploadable(ABC):
     def resolve_version(
         cls, version: str, remote: bool | None = None
     ) -> tuple[str, bool]:
-        '''
+        """
         Given ``version`` as one of the special values---'latest-local', 'latest-remote', and 'latest'---or
         an actual version string, and ``remote`` as ``None`` or explicit ``True``/``False``, figure out
         the actual version and its remote-ness.
@@ -96,7 +96,7 @@ class VersionedUploadable(ABC):
             If ``version`` is an actual version string, then ``version`` and ``remote`` are returned as is,
             even if ``remote`` is ``None``. It is checked that ``version`` is a valid version string, but
             existence of the version is not checked.
-        
+
         remote
             If ``True``, look in remote (cloud) storage only.
             If ``False``, look in local storage only.
@@ -118,7 +118,7 @@ class VersionedUploadable(ABC):
             Raises ``ValueError`` if the parameters are incompatible.
 
             Raises ``VersionNotFoundError`` if no version is found that satisfies the request.
-        '''
+        """
         if version == "latest-local":
             if remote is True:
                 raise ValueError(
@@ -180,7 +180,7 @@ class VersionedUploadable(ABC):
     @classmethod
     @abstractmethod
     def local_cls_upath(cls) -> LocalUpath:
-        '''
+        """
         A subclass implements this method to determine the full path on the local disk
         for the entity represented by the particular subclass,
         i.e. a particular type of "dataset".
@@ -195,38 +195,38 @@ class VersionedUploadable(ABC):
         "info.json".
 
         .. seealso:: :meth:`local_version_upath`.
-        '''
+        """
         raise NotImplementedError
 
     @classmethod
     @abstractmethod
     def remote_cls_upath(cls) -> BlobUpath:
-        '''
+        """
         Analogous to :meth:`local_cls_upath` but on the remote side.
 
         .. seealso:: :meth:`remote_version_upath`.
-        '''
+        """
         raise NotImplementedError
 
     @classmethod
     def local_version_upath(cls, version: str) -> LocalUpath:
-        '''
+        """
         Root directory of the specified version in the local storage.
-        '''
+        """
         assert is_version(version)
-        return cls.local_cls_upath() / 'versions' / version
-    
+        return cls.local_cls_upath() / "versions" / version
+
     @classmethod
     def remote_version_upath(cls, version: str) -> BlobUpath:
-        '''
+        """
         Root directory of the specified version in the remote storage.
-        '''
+        """
         assert is_version(version)
-        return cls.remote_cls_upath() / 'versions' / version
+        return cls.remote_cls_upath() / "versions" / version
 
     @classmethod
     def local_versions(cls) -> list[str]:
-        '''
+        """
         Get a (potentially empty) list of the versions that exist on the local disk.
 
         The elements in the list are sorted from small (old) to large (new).
@@ -234,36 +234,36 @@ class VersionedUploadable(ABC):
         Because ``remote_versions`` and ``local_versions`` get "directories"
         v/o checking their content, they might get invalid (corrupt or empty)
         versions. User should delete such bad versions as they are discovered.
-        '''
+        """
         ll = (cls.local_cls_upath() / "versions").iterdir()
         return sorted(p.name for p in ll)
 
     @classmethod
     def remote_versions(cls) -> list[str]:
-        '''
+        """
         Analogous to :meth:`local_versions` but on the remote side.
-        '''
+        """
         ll = (cls.remote_cls_upath() / "versions").iterdir()
         return sorted(p.name for p in ll)
 
     @classmethod
     def has_local_version(cls, version: str) -> bool:
-        '''
+        """
         A version is considered existent if and only if the file "info.json"
         exists in its root directory.
-        '''
+        """
         return (cls.local_version_upath(version) / "info.json").is_file()
 
     @classmethod
     def has_remote_version(cls, version: str) -> bool:
-        '''
+        """
         Analogous to :meth:`has_local_version` but on the remote side.
-        '''
+        """
         return (cls.remote_version_upath(version) / "info.json").is_file()
 
     @classmethod
     def remove_local_version(cls, version: str, **kwargs) -> None:
-        '''
+        """
         Delete the entire directory of the specified version on the local disk.
 
         By default, there is neither warning before the deletion nor progress printouts.
@@ -275,21 +275,21 @@ class VersionedUploadable(ABC):
             If the version does not exist, it's a no-op.
         **kwargs
             Passed on to :meth:`~upathlib.Upath.remove_dir`.
-        '''
+        """
         cls.local_version_upath(version).remove_dir(**kwargs)
 
     @classmethod
     def remove_remote_version(cls, version: str, **kwargs) -> None:
-        '''
+        """
         Analogous to :meth:`remove_local_version` but on the remote side.
-        '''
+        """
         cls.remote_version_upath(version).remove_dir(**kwargs)
 
     @classmethod
     def new(
         cls, *, tag: str = None, remote: bool = False, **kwargs
     ) -> VersionedUploadable:
-        '''
+        """
         If a subclass needs additional setup on a newly created object, they may
         choose to override this classmethod ``new``.
 
@@ -298,7 +298,7 @@ class VersionedUploadable(ABC):
 
         The returned object has attribute ``info``, which is an empty dict.
         Nothing has been written to storage.
-        '''
+        """
         remote = bool(remote)
         # Ensure this is not `None`.
 
@@ -322,7 +322,7 @@ class VersionedUploadable(ABC):
     def __init__(
         self, version: str, *, remote: bool | None = None, require_exists: bool = True
     ):
-        '''
+        """
         This loads up an **existing** version for reading and writing.
         The create a **new** version, use the classmethod :meth:`new`.
 
@@ -349,7 +349,7 @@ class VersionedUploadable(ABC):
             ``VersionNotFoundError`` is raised. Usually you should leave this at the default.
             This is mainly for the call of ``__init__`` in :meth:`new`, where it needs to use
             ``require_exists=False``.
-        '''
+        """
         a, b = self.resolve_version(version, remote)
         #: version of the object
         self.version: str = a
