@@ -136,11 +136,9 @@ class LocalUpath(Upath, os.PathLike):
 
     def write_bytes(
         self, data: bytes | BufferedReader, *, overwrite: bool = False
-    ) -> int:
+    ):
         """
         Write the bytes ``data`` to the current file.
-
-        Return the number of bytes written.
         """
         if self.is_file():
             if not overwrite:
@@ -152,7 +150,7 @@ class LocalUpath(Upath, os.PathLike):
             )  # bytes-like object, such as bytes, bytearray, array.array, memoryview
         except TypeError:
             data = data.read()  # file-like object, like BytesIO, that is at beginning
-        return self.path.write_bytes(data)
+        self.path.write_bytes(data)
 
         # If `self` is an existing directory, will raise `IsADirectoryError`.
         # If `self` is an existing file, will overwrite.
