@@ -274,7 +274,7 @@ class GcsBlobUpath(BlobUpath):
         #
         # This object is suitable for making read/write calls that
         # talk to the storage. It's not suitable for accessing "properties" that
-        # simply returns whatever is in the Blob object (which may be extirely
+        # simply returns whatever is in the Blob object (which may be entirely
         # disconnected from the actual blob in the cloud), for example, `metadata`.
 
         if reload:
@@ -303,7 +303,7 @@ class GcsBlobUpath(BlobUpath):
         If there is a dummy blob with name ``f"{self.name}/"``,
         this will return ``True``.
         This is the case after creating a "folder" on the GCP dashboard.
-        In programatic use, it's recommended to avoid such situations so that
+        In programmatic use, it's recommended to avoid such situations so that
         ``is_dir()`` returns ``True`` if and only if there are blobs
         "under" the current path.
         """
@@ -378,7 +378,7 @@ class GcsBlobUpath(BlobUpath):
             )
 
         # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
-        # uploading. `resumable_media` has its own retry facilities. When a retriable exception
+        # uploading. `resumable_media` has its own retry facilities. When a retry-eligible exception
         # happens but time is up, the original exception is raised.
         # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
         # raise `RetryError` with the original exception as its `.cause` attribute.

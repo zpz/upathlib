@@ -20,7 +20,7 @@ class ResourceExistsError(Exception):
 
 
 class FakeBlobStore:
-    """A in-memory blobstore for illustration purposes"""
+    """A in-memory blob store for illustration purposes"""
 
     def __init__(self):
         self._data = {

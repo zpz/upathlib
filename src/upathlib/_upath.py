@@ -58,7 +58,7 @@ class LockReleaseError(RuntimeError):
 
 @dataclass
 class FileInfo:
-    ctime: float  #: Creation time as a POSIX timetamp.
+    ctime: float  #: Creation time as a POSIX timestamp.
     mtime: float  #: Last modification time as a POSIX timestamp.
     time_created: datetime.datetime  #: Creation time as an ``datetime`` object.
     time_modified: (
@@ -233,7 +233,7 @@ class Upath(abc.ABC):
         The `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_
         version of the internal path string.
 
-        In the subclass :class:`LocalUpath`, this property is overriden to return a
+        In the subclass :class:`LocalUpath`, this property is overridden to return a
         `pathlib.Path <https://docs.python.org/3/library/pathlib.html#pathlib.Path>`_,
         which is a subclass of
         `pathlib.PurePath <https://docs.python.org/3/library/pathlib.html#pathlib.PurePath>`_.
@@ -339,7 +339,7 @@ class Upath(abc.ABC):
 
         Examples
         --------
-        In a blobstore with blobs
+        In a blob store with blobs
 
         ::
 

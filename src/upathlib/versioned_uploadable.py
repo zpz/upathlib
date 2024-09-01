@@ -4,7 +4,7 @@
 1. The dataset is identified by a version string that is generated and sortable (datetime-based),
    so that the "newest" is always the "latest" version, and code can infer the latest version.
    The full path of the storage location is managed for the user, who only needs the version.
-2. The storage can be either local (on disk) or remote (in a cloud blobstore). There are methods to download/upload between local and remote storages.
+2. The storage can be either local (on disk) or remote (in a cloud blob store). There are methods to download/upload between local and remote storages.
 3. Within the dataset, one can conveniently specify sub-directories and files relative to the "root",
    and read/write. This navigation is the same regardless of whether the storage is local or remote.
 """
@@ -21,9 +21,6 @@ from upathlib import BlobUpath, LocalUpath, Upath
 from upathlib._util import is_version, make_version
 
 logger = logging.getLogger(__name__)
-
-
-VERSION_STR_LEN = 8 + 1 + 6  # '20210816-082342'
 
 
 class VersionExistsError(Exception):
@@ -135,9 +132,10 @@ class VersionedUploadable(ABC):
 
     @classmethod
     def parse_version(cls, version: str) -> dict[str, str]:
+        version_str_len = 8 + 1 + 6  # '20210816-082342'
         return {
-            "datetime": version[:VERSION_STR_LEN],
-            "tag": version[(VERSION_STR_LEN + 1) :],
+            "datetime": version[:version_str_len],
+            "tag": version[(version_str_len + 1) :],
         }
 
     @classmethod
@@ -269,13 +267,15 @@ class VersionedUploadable(ABC):
 
         if remote:
             upath = cls.remote_version_upath(version)
-            assert not upath.is_file()
-            assert not upath.is_dir()
+            if upath.is_file() or upath.is_dir():
+                raise VersionExistsError(f"remote version '{version}' of {cls.__name__} already exists")
         else:
             upath = cls.local_version_upath(version)
-            assert not upath.is_file()
+            if upath.is_file():
+                raise VersionExistsError(f"local version '{version}' of {cls.__name__} already exists")
             if upath.is_dir():
-                assert not list(upath.iterdir())  # empty directory
+                if list(upath.iterdir()):  # not empty
+                    raise VersionExistsError(f"local version '{version}' of {cls.__name__} already exists")
                 upath.rmrf()
 
         obj = cls(version, remote=remote, require_exists=False, **kwargs)  # type: ignore
