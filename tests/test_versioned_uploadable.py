@@ -3,7 +3,6 @@ import os.path
 from upathlib import LocalUpath
 from upathlib.versioned_uploadable import VersionedUploadable
 
-
 joinpath = os.path.join
 
 
@@ -14,68 +13,67 @@ class MyVersionedUploadable(VersionedUploadable):
     @classmethod
     def local_cls_upath(cls) -> LocalUpath:
         return LocalUpath(
-            '/tmp/upathlib-test/local/data/versioned-uploadables',
-            cls.__name__,
-        )
-    
-    @classmethod
-    def remote_cls_upath(cls) -> LocalUpath:
-        return LocalUpath(
-            '/tmp/upathlib-test/remote/data/versioned-uploadables',
+            "/tmp/upathlib-test/local/data/versioned-uploadables",
             cls.__name__,
         )
 
+    @classmethod
+    def remote_cls_upath(cls) -> LocalUpath:
+        return LocalUpath(
+            "/tmp/upathlib-test/remote/data/versioned-uploadables",
+            cls.__name__,
+        )
 
 
 def _test_vu():
     box = MyVersionedUploadable.new()
-    box.path('abc.txt').write_text('abc')
-    box.path('sub/abc.pkl').write_pickle({'x': 'abc'})
-    box.path('sub/deep/abc.json').write_json({'y': 'xyz'})
+    box.path("abc.txt").write_text("abc")
+    box.path("sub/abc.pkl").write_pickle({"x": "abc"})
+    box.path("sub/deep/abc.json").write_json({"y": "xyz"})
     assert not MyVersionedUploadable.has_local_version(box.version)
 
     box.save()
     assert MyVersionedUploadable.has_local_version(box.version)
 
-    assert box.path('abc.txt').read_text() == 'abc'
-    assert box.path('sub/abc.pkl').read_pickle() == {'x': 'abc'}
-    assert box.path('sub/deep/abc.json').read_json() == {'y': 'xyz'}
+    assert box.path("abc.txt").read_text() == "abc"
+    assert box.path("sub/abc.pkl").read_pickle() == {"x": "abc"}
+    assert box.path("sub/deep/abc.json").read_json() == {"y": "xyz"}
 
     n = box.upload()
     assert n == 4  # including 'info.json'
 
     rbox = MyVersionedUploadable(box.version, remote=True)
 
-    assert rbox.path('abc.txt').read_text() == 'abc'
-    assert rbox.path('sub/abc.pkl').read_pickle() == {'x': 'abc'}
-    assert rbox.path('sub/deep/abc.json').read_json() == {'y': 'xyz'}
+    assert rbox.path("abc.txt").read_text() == "abc"
+    assert rbox.path("sub/abc.pkl").read_pickle() == {"x": "abc"}
+    assert rbox.path("sub/deep/abc.json").read_json() == {"y": "xyz"}
 
-    rbox.path('sub/def.txt').write_text('def')
-    assert rbox.path('sub/def.txt').read_text() == 'def'
+    rbox.path("sub/def.txt").write_text("def")
+    assert rbox.path("sub/def.txt").read_text() == "def"
 
-    n = rbox.download('sub/def.txt')
+    n = rbox.download("sub/def.txt")
     assert n == 1
-    assert box.path('sub/def.txt').read_text() == 'def'
+    assert box.path("sub/def.txt").read_text() == "def"
 
     n = rbox.download()
-    rbox.path('abc.txt').write_text('123', overwrite=True)
+    rbox.path("abc.txt").write_text("123", overwrite=True)
     n = rbox.download()
     assert n == 0
 
     n = rbox.download(overwrite=True)
     assert n == 5
 
-    box.path('new/good/data1.txt').write_text('yes')
-    box.path('new/bad/data2.txt').write_text('no')
-    n = box.upload('new')
+    box.path("new/good/data1.txt").write_text("yes")
+    box.path("new/bad/data2.txt").write_text("no")
+    n = box.upload("new")
     assert n == 2
 
-    assert rbox.path('new/good/data1.txt').read_text() == 'yes'
+    assert rbox.path("new/good/data1.txt").read_text() == "yes"
 
-    (box.upath / 'sub/def.txt').remove_file()
-    assert not box.path('sub/def.txt').is_file()
-    (rbox.upath / 'sub/def.txt').remove_file()
-    assert not rbox.path('sub/def.txt').is_file()
+    (box.upath / "sub/def.txt").remove_file()
+    assert not box.path("sub/def.txt").is_file()
+    (rbox.upath / "sub/def.txt").remove_file()
+    assert not rbox.path("sub/def.txt").is_file()
 
     MyVersionedUploadable.remove_local_version(box.version)
     assert not MyVersionedUploadable.has_local_version(box.version)
@@ -94,16 +92,16 @@ def _test_vu():
 def test_vu():
     def _upload_dir(self, source, **kwargs):
         return source.copy_dir(self, **kwargs)
-    
+
     def _upload_file(self, source, **kwargs):
         return source.copy_file(self, **kwargs)
-    
+
     def _download_dir(self, target, **kwargs):
         return self.copy_dir(target, **kwargs)
-    
+
     def _download_file(self, target, **kwargs):
         return self.copy_file(target, **kwargs)
-    
+
     LocalUpath.download_dir = _download_dir
     LocalUpath.download_file = _download_file
     LocalUpath.upload_dir = _upload_dir
@@ -111,7 +109,7 @@ def test_vu():
     try:
         _test_vu()
     finally:
-        delattr(LocalUpath, 'download_dir')
-        delattr(LocalUpath, 'download_file')
-        delattr(LocalUpath, 'upload_dir')
-        delattr(LocalUpath, 'upload_file')
+        delattr(LocalUpath, "download_dir")
+        delattr(LocalUpath, "download_file")
+        delattr(LocalUpath, "upload_dir")
+        delattr(LocalUpath, "upload_file")
