@@ -268,14 +268,20 @@ class VersionedUploadable(ABC):
         if remote:
             upath = cls.remote_version_upath(version)
             if upath.is_file() or upath.is_dir():
-                raise VersionExistsError(f"remote version '{version}' of {cls.__name__} already exists")
+                raise VersionExistsError(
+                    f"remote version '{version}' of {cls.__name__} already exists"
+                )
         else:
             upath = cls.local_version_upath(version)
             if upath.is_file():
-                raise VersionExistsError(f"local version '{version}' of {cls.__name__} already exists")
+                raise VersionExistsError(
+                    f"local version '{version}' of {cls.__name__} already exists"
+                )
             if upath.is_dir():
                 if list(upath.iterdir()):  # not empty
-                    raise VersionExistsError(f"local version '{version}' of {cls.__name__} already exists")
+                    raise VersionExistsError(
+                        f"local version '{version}' of {cls.__name__} already exists"
+                    )
                 upath.rmrf()
 
         obj = cls(version, remote=remote, require_exists=False, **kwargs)  # type: ignore
