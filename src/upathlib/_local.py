@@ -134,9 +134,7 @@ class LocalUpath(Upath, os.PathLike):
         except (IsADirectoryError, FileNotFoundError) as e:
             raise FileNotFoundError(f"No such file: '{self}'") from e
 
-    def write_bytes(
-        self, data: bytes | BufferedReader, *, overwrite: bool = False
-    ):
+    def write_bytes(self, data: bytes | BufferedReader, *, overwrite: bool = False):
         """
         Write the bytes ``data`` to the current file.
         """
