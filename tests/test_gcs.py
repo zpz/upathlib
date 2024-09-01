@@ -4,8 +4,9 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-import upathlib._tests
 from google.api_core.exceptions import NotFound
+
+import upathlib._tests
 from upathlib import GcsBlobUpath
 from upathlib._util import utcnow
 

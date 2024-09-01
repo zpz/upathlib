@@ -367,7 +367,7 @@ class GcsBlobUpath(BlobUpath):
         if_generation_match = None if overwrite else 0
 
         def func():
-            file_obj.seek(0)
+            file_obj.seek(0)  # needed in case of retry
             self._blob().upload_from_file(
                 file_obj,
                 content_type=content_type,

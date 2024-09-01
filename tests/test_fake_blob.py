@@ -5,8 +5,9 @@ from collections.abc import Iterator
 from datetime import datetime
 from uuid import uuid4
 
-import upathlib._tests
 from typing_extensions import Self
+
+import upathlib._tests
 from upathlib import BlobUpath, FileInfo
 
 

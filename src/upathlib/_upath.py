@@ -377,7 +377,7 @@ class Upath(abc.ABC):
         In a local file system, there can be empty directories.
         However, it is recommended to not have empty directories.
 
-        There is no method for "creating an tempty dir" (like the Linux command ``mkdir``).
+        There is no method for "creating an empty dir" (like the Linux command ``mkdir``).
         Simply create a file under the dir, and the dir will come into being.
         This is analogous to we create files all the time---we don't "create" an empty file
         in advance; we simply write to the would-be path of the file to be created.
@@ -601,7 +601,7 @@ class Upath(abc.ABC):
         quiet: bool,
         reversed=False,
         concurrent: bool = True,
-    ):
+    ) -> int:
         def foo():
             source_path = source.path
             ovwt = overwrite
@@ -653,7 +653,7 @@ class Upath(abc.ABC):
         Immediate children of ``self`` will be copied as immediate children of the target path.
 
         There is no such error as "target directory exists" as the copy-operation
-        only concerns invidivual files.
+        only concerns individual files.
         If the target "directory" contains files that do not have counterparts
         in the source directory, they will stay untouched.
 
@@ -685,7 +685,7 @@ class Upath(abc.ABC):
             concurrent=concurrent,
         )
 
-    def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
+    def _copy_file(self, target: Upath, *, overwrite: bool = False):
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
     def copy_file(self, target: str | Upath, *, overwrite: bool = False) -> None:
@@ -718,6 +718,8 @@ class Upath(abc.ABC):
         of the "directory" concept on local disk. As long as this path is not an
         existing blob, the copy will proceed with no problem.
         Nevertheless, such naming is confusing and better avoided.
+
+        Return the number of files copied (either 0 or 1).
         """
         if isinstance(target, str):
             target_ = self.parent / target
@@ -772,7 +774,7 @@ class Upath(abc.ABC):
         """Yield the immediate (i.e. non-recursive) children
         of the current dir (i.e. ``self``).
 
-        The yieled elements are instances of the same class.
+        The yielded elements are instances of the same class.
         Each yielded element is either a file or a dir.
         There is no guarantee on the order of the returned elements.
 
@@ -798,7 +800,7 @@ class Upath(abc.ABC):
         """Yield files under the current dir (i.e. ``self``) *recursively*.
         The method name means "recursive iterdir".
 
-        The yieled elements are instances of the same class.
+        The yielded elements are instances of the same class.
         They represent existing files.
 
         Compared to :meth:`iterdir`, this is recursive, and yields
@@ -848,7 +850,7 @@ class Upath(abc.ABC):
     @abc.abstractmethod
     def lock(self, *, timeout: int = None) -> Self:
         """Lock the current file (i.e. ``self``), in order to have exclusive access to the code block
-        that has possesion of the lock.
+        that has possession of the lock.
 
         ``timeout``: if the lock can't be acquired within ``timeout`` seconds,
         ``LockAcquireError`` is raised. If ``None``, wait for a default
@@ -856,7 +858,7 @@ class Upath(abc.ABC):
 
         ``timeout=0`` is a valid input, meaning making exactly one attempt to acquire a lock.
 
-        Once a lock is acquired, it will not expire until this contexmanager exits.
+        Once a lock is acquired, it will not expire until this contextmanager exits.
         In other words, this is timeout for the "lock acquisition", not for the
         lock itself. Actual waiting time could be slightly longer or shorter.
 
@@ -868,7 +870,7 @@ class Upath(abc.ABC):
         a subclass should use ``yield`` in its implementation.
         The ``yield`` statement should yield `self`.
 
-        One way to achive cooperative locking on a file via this
+        One way to achieve cooperative locking on a file via this
         lock is like this::
 
             f = Upath('abc.txt')
