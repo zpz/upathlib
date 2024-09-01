@@ -12,16 +12,13 @@
 from __future__ import annotations
 
 import logging
+import string
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from io import UnsupportedOperation
 from typing import Any
-import string
-from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
-
 
 from upathlib import BlobUpath, LocalUpath, Upath
-
 
 logger = logging.getLogger(__name__)
 
@@ -33,16 +30,15 @@ def is_version(version: str) -> bool:
     # "[A-Za-z0-9][A-Za-z0-9._-]*"
     if not version:
         return False
-    return (version[0] in ALNUM) and all(v in ALNUM or v in '._-' for v in version)
+    return (version[0] in ALNUM) and all(v in ALNUM or v in "._-" for v in version)
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-
 def make_version(tag: str = None) -> str:
-    '''
+    """
     Make a version string based on current UTC time in this format
 
     ::
@@ -53,16 +49,14 @@ def make_version(tag: str = None) -> str:
 
     Such version strings are sortable by time as there is practically no chance of collision
     between two versions.
-    '''
-    ver = utcnow().strftime('%Y%m%d-%H%M%S')
+    """
+    ver = utcnow().strftime("%Y%m%d-%H%M%S")
     if tag:
-        tag = tag.strip(' _-')
+        tag = tag.strip(" _-")
         if tag:
             assert is_version(tag)
-            ver = ver + '-' + tag
+            ver = ver + "-" + tag
     return ver
-
-
 
 
 VERSION_STR_LEN = 8 + 1 + 6  # '20210816-082342'
@@ -77,40 +71,45 @@ class VersionNotFoundError(Exception):
 
 
 class VersionedUploadable(ABC):
-    '''
+    """
     A subclass will customize :meth:`remote_cls_upath` and :meth:`local_cls_upath`.
-    '''
-
+    """
 
     @classmethod
-    def resolve_version(cls, version: str, remote: bool | None = None) -> tuple[str, bool]:
-        if version == 'latest-local':
+    def resolve_version(
+        cls, version: str, remote: bool | None = None
+    ) -> tuple[str, bool]:
+        if version == "latest-local":
             if remote is True:
-                raise ValueError("version 'latest-local' is not valid with `remote=True`")
+                raise ValueError(
+                    "version 'latest-local' is not valid with `remote=True`"
+                )
             vers = cls.get_local_versions()
             if not vers:
                 raise VersionNotFoundError(
-                    f'could not find a local version of {cls.__name__}'
+                    f"could not find a local version of {cls.__name__}"
                 )
             version = vers[-1]
             return version, False
 
-        if version == 'latest-remote':
+        if version == "latest-remote":
             if remote is False:
-                raise ValueError("version 'latest-remote' is not valid with `remote=False`")
+                raise ValueError(
+                    "version 'latest-remote' is not valid with `remote=False`"
+                )
             vers = cls.get_remote_versions()
             if not vers:
                 raise VersionNotFoundError(
-                    f'could not find a remote version of {cls.__name__}'
+                    f"could not find a remote version of {cls.__name__}"
                 )
             version = vers[-1]
             return version, True
 
-        if version == 'latest':
+        if version == "latest":
             if remote is True:
-                return cls.resolve_version('latest-remote', True)
+                return cls.resolve_version("latest-remote", True)
             if remote is False:
-                return cls.resolve_version('latest-local', False)
+                return cls.resolve_version("latest-local", False)
             assert remote is None
             v_remote = cls.get_remote_versions()
             v_local = cls.get_local_versions()
@@ -125,8 +124,8 @@ class VersionedUploadable(ABC):
             if v_local:
                 v_l = v_local[-1]
                 return v_l, False
-            raise VersionNotFoundError(f'could not find a version of {cls.__name__}')
-        
+            raise VersionNotFoundError(f"could not find a version of {cls.__name__}")
+
         assert is_version(version)
         # Exact version string (not 'latest...') are not checked for existence.
         return version, remote
@@ -134,63 +133,61 @@ class VersionedUploadable(ABC):
     @classmethod
     def parse_version(cls, version: str) -> dict[str, str]:
         return {
-            'datetime': version[:VERSION_STR_LEN],
-            'tag': version[(VERSION_STR_LEN + 1):],
+            "datetime": version[:VERSION_STR_LEN],
+            "tag": version[(VERSION_STR_LEN + 1) :],
         }
-    
+
     @classmethod
     @abstractmethod
     def local_cls_upath(cls) -> LocalUpath:
         raise NotImplementedError
-    
+
     @classmethod
     @abstractmethod
     def remote_cls_upath(cls) -> BlobUpath:
         raise NotImplementedError
-    
 
     @classmethod
     def get_local_versions(cls) -> list[str]:
-        ll = (cls.local_cls_upath() / 'versions').iterdir()
+        ll = (cls.local_cls_upath() / "versions").iterdir()
         return sorted(p.name for p in ll)
-    
+
     @classmethod
     def get_remote_versions(cls) -> list[str]:
-        ll = (cls.remote_cls_upath() / 'versions').iterdir()
+        ll = (cls.remote_cls_upath() / "versions").iterdir()
         return sorted(p.name for p in ll)
 
     @classmethod
     def has_local_version(cls, version: str) -> bool:
-        return (cls.local_cls_upath() / 'versions' / version / 'info.json').is_file()
-    
+        return (cls.local_cls_upath() / "versions" / version / "info.json").is_file()
 
     @classmethod
     def has_remote_version(cls, version: str) -> bool:
-        return (cls.remote_cls_upath() / 'versions' / version / 'info.json').is_file()
-    
+        return (cls.remote_cls_upath() / "versions" / version / "info.json").is_file()
 
     @classmethod
     def rm_local_version(cls, version: str, **kwargs) -> None:
-        (cls.local_cls_upath() / 'versions' / version).remove_dir(**kwargs)
-    
+        (cls.local_cls_upath() / "versions" / version).remove_dir(**kwargs)
 
     @classmethod
     def rm_remote_version(cls, version: str, **kwargs) -> None:
-        (cls.remote_cls_upath() / 'versions' / version).remove_dir(**kwargs)
+        (cls.remote_cls_upath() / "versions" / version).remove_dir(**kwargs)
 
     @classmethod
-    def new(cls, *, tag: str = None, remote: bool = False, **kwargs) -> VersionedUploadable:
+    def new(
+        cls, *, tag: str = None, remote: bool = False, **kwargs
+    ) -> VersionedUploadable:
         remote = bool(remote)
         # Ensure this is not `None`.
 
         version = make_version(tag)
 
         if remote:
-            upath = cls.remote_cls_upath() / 'versions' / version
+            upath = cls.remote_cls_upath() / "versions" / version
             assert not upath.is_file()
             assert not upath.is_dir()
         else:
-            upath = cls.local_cls_upath() / 'versions' / version
+            upath = cls.local_cls_upath() / "versions" / version
             assert not upath.is_file()
             if upath.is_dir():
                 assert not list(upath.iterdir())  # empty directory
@@ -199,9 +196,10 @@ class VersionedUploadable(ABC):
         obj = cls(version, remote=remote, require_exists=False, **kwargs)  # type: ignore
         # `kwargs`, if not empty, contains parameters accepted by `__init__` of a subclass
         return obj
-    
-    
-    def __init__(self, version: str, *, remote: bool | None = None, require_exists: bool = True):
+
+    def __init__(
+        self, version: str, *, remote: bool | None = None, require_exists: bool = True
+    ):
         a, b = self.resolve_version(version, remote)
         #: version of the object
         self.version: str = a
@@ -221,9 +219,9 @@ class VersionedUploadable(ABC):
                 raise VersionNotFoundError(
                     f"could not find version '{self.version}' of {self.__class__.__name__}"
                 )
-        
+
         try:
-            self.info = self.path('info.json').read_json()
+            self.info = self.path("info.json").read_json()
         except FileNotFoundError:
             if require_exists:
                 raise VersionNotFoundError(
@@ -237,7 +235,6 @@ class VersionedUploadable(ABC):
         # A subclass often needs to check `self.exists()` before loading things.
         # It may also do different things according to the value of `self.remote`.
 
-
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}(version='{self.version}', remote={self.remote})"
@@ -245,9 +242,9 @@ class VersionedUploadable(ABC):
 
     def __str__(self) -> str:
         return self.__repr__()
-    
+
     def as_local(self, *, require_exists: bool = True, **kwargs) -> VersionedUploadable:
-        '''
+        """
         Return the *local* object of this version of this class.
         If ``self`` is local, then return ``self``.
         Otherwise, return a new object.
@@ -255,56 +252,57 @@ class VersionedUploadable(ABC):
         This method does not modify ``self``.
 
         `kwargs`: additional parameters defined and required by a subclass.
-        '''
+        """
         if not self.remote:
             return self
         return self.__class__(
-            self.version, remote=False, require_exists=require_exists, **kwargs,
+            self.version,
+            remote=False,
+            require_exists=require_exists,
+            **kwargs,
         )
-    
 
-    def as_remote(self, *, require_exists: bool = True, **kwargs) -> VersionedUploadable:
+    def as_remote(
+        self, *, require_exists: bool = True, **kwargs
+    ) -> VersionedUploadable:
         if self.remote:
             return self
         return self.__class__(
-            self.version, remote=True, require_exists=require_exists, **kwargs,
+            self.version,
+            remote=True,
+            require_exists=require_exists,
+            **kwargs,
         )
-        
-
-
 
     @property
     def local_upath(self) -> LocalUpath:
-        '''
+        """
         Root directory of this version on the local storage,
         regardless of whether ``self`` is local or remote.
-        '''
-        return self.local_cls_upath() / 'versions' / self.version
-    
+        """
+        return self.local_cls_upath() / "versions" / self.version
 
     @property
     def remote_upath(self) -> BlobUpath:
-        '''
+        """
         Root directory of this version on the remote storage,
         regardless of whether ``self`` is local or remote.
-        '''
-        return self.remote_cls_upath() / 'versions' / self.version
-    
+        """
+        return self.remote_cls_upath() / "versions" / self.version
+
     @property
     def upath(self) -> Upath:
-        '''
+        """
         Return the root directory of ``self``.
 
         This is consistent with the remote-ness of ``self``.
-        '''
+        """
         if self.remote:
             return self.remote_upath
         return self.local_upath
-    
 
-    
     def path(self, *args: str) -> Upath:
-        '''
+        """
         Return a path relative to the root directory of ``self``.
 
         Examples:
@@ -326,28 +324,26 @@ class VersionedUploadable(ABC):
         otherwise, the returned path is remote.
 
         .. note:: Don't start ``args`` with ``'/'``.
-        '''
+        """
         return self.upath.joinpath(*args)
 
-
     def exists(self) -> bool:
-        '''
+        """
         A version is considered existent if and only if the file "info.json"
         exists in its root directory.
-        '''
-        return self.path('info.json').is_file()
+        """
+        return self.path("info.json").is_file()
 
     def save(self) -> None:
-        '''
+        """
         A subclass should re-implement this method to save its own stuff
         like data, summary, and whatever, and in the end call
         ``super().save()``.
-        '''
-        self.path('info.json').write_json(self.info, overwrite=True)
-
+        """
+        self.path("info.json").write_json(self.info, overwrite=True)
 
     def download(self, path: str = None, *, overwrite: bool = False, **kwargs) -> int:
-        '''
+        """
         Download the entire dataset or specified parts of it.
 
         If the current object already points to a local version, then
@@ -389,17 +385,16 @@ class VersionedUploadable(ABC):
         You should not use ``overwrite=True`` lightly just to ensure it proceeds.
         The default ``overwrite=False`` prevents re-downloading when the local version
         already exists. Try to benefit from such savings as far as you can.
-        '''
+        """
         if not self.remote:
             raise UnsupportedOperation(
-                'can not download an object that is in local mode'
+                "can not download an object that is in local mode"
             )
         if not self.exists():
-            raise RuntimeError(f'object {self!r} does not exist')
-        
+            raise RuntimeError(f"object {self!r} does not exist")
+
         source = self.upath
         target = self.local_upath
-    
 
         if path:
             source = source / path
@@ -411,24 +406,23 @@ class VersionedUploadable(ABC):
 
         if not overwrite:
             if self.as_local(require_exists=False).exists():
-                logger.info('local version of %r exists; upload is skipped', self)
+                logger.info("local version of %r exists; upload is skipped", self)
                 return 0
         return source.upload_dir(target, overwrite=True, **kwargs)
 
-
     def upload(self, path: str = None, *, overwrite: bool = False, **kwargs) -> int:
-        '''
+        """
         Analogous to ``download``.
 
         Return the number of files uploaded.
-        '''
+        """
         if self.remote:
             raise UnsupportedOperation(
-                'can not upload an object that is in remote mode'
+                "can not upload an object that is in remote mode"
             )
         if not self.exists():
-            raise RuntimeError(f'object {self!r} does not exist')
-        
+            raise RuntimeError(f"object {self!r} does not exist")
+
         source = self.upath
         target = self.remote_upath
 
@@ -441,13 +435,14 @@ class VersionedUploadable(ABC):
                 return target.upload_dir(source, overwrite=overwrite)
         if not overwrite:
             if self.as_remote(require_exists=False).exists():
-                logger.info('remote version of %r exists; upload is skipped', self)
+                logger.info("remote version of %r exists; upload is skipped", self)
                 return 0
         return target.upload_dir(source, overwrite=True, **kwargs)
 
-
-    def ensure_local(self, *, init_kwargs: dict[str, Any] = None, **kwargs) -> VersionedUploadable:
-        '''
+    def ensure_local(
+        self, *, init_kwargs: dict[str, Any] = None, **kwargs
+    ) -> VersionedUploadable:
+        """
         Return a local object of this version that exists.
 
         If ``self`` is local, then ``self`` is returned.
@@ -467,7 +462,7 @@ class VersionedUploadable(ABC):
 
         .. note:: Calling ``ensure_local`` does not make the current object local;
             you need to receive and use the returned object, which *is* local.
-        '''
+        """
         if not self.remote:
             return self
         self.download(**kwargs)

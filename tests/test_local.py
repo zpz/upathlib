@@ -3,6 +3,7 @@ import pathlib
 from uuid import uuid4
 
 import pytest
+
 import upathlib._tests
 from upathlib import LocalUpath, serializer
 

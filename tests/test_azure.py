@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
+
 import upathlib._tests
 from upathlib._azure import AzureBlobUpath, ResourceExistsError, ResourceNotFoundError
 
