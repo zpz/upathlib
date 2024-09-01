@@ -296,6 +296,12 @@ True
 .. autoclass:: upathlib.multiplexer.Multiplexer
 
 
+Using upathlib to implement a manager of versioned datasets with backup in the cloud
+====================================================================================
+
+.. autoclass:: upathlib.versioned_uploadable.VersionedUploadable
+
+
 Indices
 =======
 
