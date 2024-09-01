@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import TypeVar
 
 from ._upath import PathType, Upath
-from ._util import utcnow
+from ._util import utcnow, make_version
 
 logger = logging.getLogger(__name__)
 
@@ -28,23 +28,6 @@ def decode(y: str):
     Convert the output of ``encode`` back to the original Python object.
     """
     return pickle.loads(base64.standard_b64decode(y.encode()))
-
-
-def make_version(tag: str = None):
-    """
-    Make a version string based on current UTC time in this format::
-
-        '20240113-073825-tag'
-
-    where `'-tag'` is omitted if ``tag`` is falsy.
-    """
-    version = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
-    if tag:
-        tag = tag.strip(" _-")
-        # TODO: this does not strip all possible combinations.
-        if tag:
-            version = version + "-" + tag
-    return version
 
 
 Element = TypeVar("Element")

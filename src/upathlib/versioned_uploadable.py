@@ -1,5 +1,5 @@
 """
-``VersionedUploadable`` helps store and us a "dataset" in an exclusive directory in consistent and convenient ways. Specifically,
+``VersionedUploadable`` helps store and use a "dataset" in an exclusive directory in consistent and convenient ways. Specifically,
 
 1. The dataset is identified by a version string that is generated and sortable (datetime-based),
    so that the "newest" is always the "latest" version, and code can infer the latest version.
@@ -13,51 +13,16 @@ from __future__ import annotations
 
 import functools
 import logging
-import string
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from io import UnsupportedOperation
 from typing import Any
 
 from upathlib import BlobUpath, LocalUpath, Upath
+from upathlib._util import is_version, make_version
+
 
 logger = logging.getLogger(__name__)
 
-
-ALNUM = string.ascii_letters + string.digits
-
-
-def is_version(version: str) -> bool:
-    # "[A-Za-z0-9][A-Za-z0-9._-]*"
-    if not version:
-        return False
-    return (version[0] in ALNUM) and all(v in ALNUM or v in "._-" for v in version)
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def make_version(tag: str = None) -> str:
-    """
-    Make a version string based on current UTC time in this format
-
-    ::
-
-        '20210816-082342-tag'
-
-    where `'-tag'` is omitted if ``tag`` is falsy.
-
-    Such version strings are sortable by time as there is practically no chance of collision
-    between two versions.
-    """
-    ver = utcnow().strftime("%Y%m%d-%H%M%S")
-    if tag:
-        tag = tag.strip(" _-")
-        if tag:
-            assert is_version(tag)
-            ver = ver + "-" + tag
-    return ver
 
 
 VERSION_STR_LEN = 8 + 1 + 6  # '20210816-082342'

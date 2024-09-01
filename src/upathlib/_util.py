@@ -4,6 +4,7 @@ import warnings
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+import string
 
 MAX_THREADS = min(32, (os.cpu_count() or 1) + 4)
 """
@@ -15,6 +16,40 @@ For others, you may want to specify a smaller value.
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+ALNUM = string.ascii_letters + string.digits
+
+
+def is_version(version: str) -> bool:
+    # "[A-Za-z0-9][A-Za-z0-9._-]*"
+    if not version:
+        return False
+    return (version[0] in ALNUM) and all(v in ALNUM or v in "._-" for v in version)
+
+
+
+def make_version(tag: str = None) -> str:
+    """
+    Make a version string based on current UTC time in this format
+
+    ::
+
+        '20210816-082342-tag'
+
+    where `'-tag'` is omitted if ``tag`` is falsy.
+
+    Such version strings are sortable by time as there is practically no chance of collision
+    between two versions.
+    """
+    ver = utcnow().strftime("%Y%m%d-%H%M%S")
+    if tag:
+        tag = tag.strip(" _-")
+        if tag:
+            assert is_version(tag)
+            ver = ver + "-" + tag
+    return ver
+
 
 
 # Copied from ``mpservice.concurrent.futures``.
