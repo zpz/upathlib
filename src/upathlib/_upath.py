@@ -601,7 +601,7 @@ class Upath(abc.ABC):
         quiet: bool,
         reversed=False,
         concurrent: bool = True,
-    ):
+    ) -> int:
         def foo():
             source_path = source.path
             ovwt = overwrite
@@ -685,7 +685,7 @@ class Upath(abc.ABC):
             concurrent=concurrent,
         )
 
-    def _copy_file(self, target: Upath, *, overwrite: bool = False) -> None:
+    def _copy_file(self, target: Upath, *, overwrite: bool = False):
         target.write_bytes(self.read_bytes(), overwrite=overwrite)
 
     def copy_file(self, target: str | Upath, *, overwrite: bool = False) -> None:
@@ -718,6 +718,8 @@ class Upath(abc.ABC):
         of the "directory" concept on local disk. As long as this path is not an
         existing blob, the copy will proceed with no problem.
         Nevertheless, such naming is confusing and better avoided.
+
+        Return the number of files copied (either 0 or 1).
         """
         if isinstance(target, str):
             target_ = self.parent / target

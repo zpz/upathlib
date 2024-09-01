@@ -489,13 +489,14 @@ class VersionedUploadable(ABC):
             )
 
         source = self.upath
-        target = self.local_upath
+        target = self.local_version_upath(self.version)
 
         if path:
             source = source / path
             target = target / path
             if source.is_file():
-                return source.download_file(target, overwrite=overwrite)
+                source.download_file(target, overwrite=overwrite)
+                return 1
             else:
                 return source.download_dir(target, overwrite=overwrite)
 
@@ -503,7 +504,7 @@ class VersionedUploadable(ABC):
             if self.has_local_version(self.version):
                 logger.info("local version of %r exists; upload is skipped", self)
                 return 0
-        return source.upload_dir(target, overwrite=True, **kwargs)
+        return source.download_dir(target, overwrite=True, **kwargs)
 
     def upload(self, path: str = None, *, overwrite: bool = False, **kwargs) -> int:
         """
@@ -517,13 +518,14 @@ class VersionedUploadable(ABC):
             )
 
         source = self.upath
-        target = self.remote_upath
+        target = self.remote_version_upath(self.version)
 
         if path:
             source = source / path
             target = target / path
             if source.is_file():
-                return target.upload_file(source, overwrite=overwrite)
+                target.upload_file(source, overwrite=overwrite)
+                return 1
             else:
                 return target.upload_dir(source, overwrite=overwrite)
         if not overwrite:
