@@ -20,9 +20,7 @@ from typing import Any
 from upathlib import BlobUpath, LocalUpath, Upath
 from upathlib._util import is_version, make_version
 
-
 logger = logging.getLogger(__name__)
-
 
 
 VERSION_STR_LEN = 8 + 1 + 6  # '20210816-082342'

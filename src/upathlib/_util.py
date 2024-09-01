@@ -1,10 +1,10 @@
 import os
+import string
 import threading
 import warnings
 import weakref
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-import string
 
 MAX_THREADS = min(32, (os.cpu_count() or 1) + 4)
 """
@@ -28,7 +28,6 @@ def is_version(version: str) -> bool:
     return (version[0] in ALNUM) and all(v in ALNUM or v in "._-" for v in version)
 
 
-
 def make_version(tag: str = None) -> str:
     """
     Make a version string based on current UTC time in this format
@@ -49,7 +48,6 @@ def make_version(tag: str = None) -> str:
             assert is_version(tag)
             ver = ver + "-" + tag
     return ver
-
 
 
 # Copied from ``mpservice.concurrent.futures``.

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import TypeVar
 
 from ._upath import PathType, Upath
-from ._util import utcnow, make_version
+from ._util import make_version, utcnow
 
 logger = logging.getLogger(__name__)
 
