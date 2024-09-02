@@ -29,6 +29,7 @@ from azure.storage.blob import BlobClient, BlobLeaseClient, ContainerClient
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
+from ._local import LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import utcnow
 
@@ -154,13 +155,22 @@ class AzureBlobUpath(BlobUpath):
                 )
                 assert copy["copy_status"] == "success", copy["copy_status"]
 
-    def _copy_file(self, target: Upath, *, overwrite=False):
-        if isinstance(target, AzureBlobUpath):
-            target._copy_file_from(self, overwrite=overwrite)
+    def _copy_file(self, source: Upath, target: Upath, *, overwrite=False):
+        if isinstance(source, AzureBlobUpath):
+            if isinstance(target, AzureBlobUpath):
+                target._copy_file_from(source, overwrite=overwrite)
+                return
+            if isinstance(target, LocalUpath):
+                source._download_file(target, overwrite=overwrite)
+                return
         else:
-            super()._copy_file(target, overwrite=overwrite)
+            assert isinstance(target, AzureBlobUpath)
+            if isinstance(source, LocalUpath):
+                target._upload_file(source, overwrite=overwrite)
+                return
+        super()._copy_file(source, target, overwrite=overwrite)
 
-    def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
+    def _download_file(self, target: LocalPathType, *, overwrite=False) -> None:
         target = _resolve_local_path(target)
         if target.is_file():
             if not overwrite:
@@ -177,7 +187,7 @@ class AzureBlobUpath(BlobUpath):
                 data = self._blob_client.download_blob()
                 data.readinto(f)
 
-    def upload_file(self, source: LocalPathType, *, overwrite: bool = False):
+    def _upload_file(self, source: LocalPathType, *, overwrite: bool = False):
         source = _resolve_local_path(source)
         if self.is_file():
             if not overwrite:

@@ -1,10 +1,16 @@
 """
-``VersionedUploadable`` helps store and us a "dataset" in an exclusive directory in consistent and convenient ways. Specifically,
+``VersionedUploadable`` helps store and use a "dataset" in an exclusive directory in consistent and convenient ways. Specifically,
 
 1. The dataset is identified by a version string that is generated and sortable (datetime-based),
    so that the "newest" is always the "latest" version, and code can infer the latest version.
    The full path of the storage location is managed for the user, who only needs the version.
-2. The storage can be either local (on disk) or remote (in a cloud blobstore). There are methods to download/upload between local and remote storages.
+
+2. The storage can be either local (on disk) or remote (in a cloud blob store). There are methods to download/upload between local and remote storages.
+
+   However, "local" are "remote" are just labels for the two storage locations. They can be both on local disk, or both
+   in the same cloud storage (in different "locations"), or in two different cloud storages, or one on local disk and the other
+   in a cloud blob store.
+
 3. Within the dataset, one can conveniently specify sub-directories and files relative to the "root",
    and read/write. This navigation is the same regardless of whether the storage is local or remote.
 """
@@ -13,54 +19,14 @@ from __future__ import annotations
 
 import functools
 import logging
-import string
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from io import UnsupportedOperation
 from typing import Any
 
 from upathlib import BlobUpath, LocalUpath, Upath
+from upathlib._util import is_version, make_version
 
 logger = logging.getLogger(__name__)
-
-
-ALNUM = string.ascii_letters + string.digits
-
-
-def is_version(version: str) -> bool:
-    # "[A-Za-z0-9][A-Za-z0-9._-]*"
-    if not version:
-        return False
-    return (version[0] in ALNUM) and all(v in ALNUM or v in "._-" for v in version)
-
-
-def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def make_version(tag: str = None) -> str:
-    """
-    Make a version string based on current UTC time in this format
-
-    ::
-
-        '20210816-082342-tag'
-
-    where `'-tag'` is omitted if ``tag`` is falsy.
-
-    Such version strings are sortable by time as there is practically no chance of collision
-    between two versions.
-    """
-    ver = utcnow().strftime("%Y%m%d-%H%M%S")
-    if tag:
-        tag = tag.strip(" _-")
-        if tag:
-            assert is_version(tag)
-            ver = ver + "-" + tag
-    return ver
-
-
-VERSION_STR_LEN = 8 + 1 + 6  # '20210816-082342'
 
 
 class VersionExistsError(Exception):
@@ -172,9 +138,10 @@ class VersionedUploadable(ABC):
 
     @classmethod
     def parse_version(cls, version: str) -> dict[str, str]:
+        version_str_len = 8 + 1 + 6  # '20210816-082342'
         return {
-            "datetime": version[:VERSION_STR_LEN],
-            "tag": version[(VERSION_STR_LEN + 1) :],
+            "datetime": version[:version_str_len],
+            "tag": version[(version_str_len + 1) :],
         }
 
     @classmethod
@@ -306,13 +273,21 @@ class VersionedUploadable(ABC):
 
         if remote:
             upath = cls.remote_version_upath(version)
-            assert not upath.is_file()
-            assert not upath.is_dir()
+            if upath.is_file() or upath.is_dir():
+                raise VersionExistsError(
+                    f"remote version '{version}' of {cls.__name__} already exists"
+                )
         else:
             upath = cls.local_version_upath(version)
-            assert not upath.is_file()
+            if upath.is_file():
+                raise VersionExistsError(
+                    f"local version '{version}' of {cls.__name__} already exists"
+                )
             if upath.is_dir():
-                assert not list(upath.iterdir())  # empty directory
+                if list(upath.iterdir()):  # not empty
+                    raise VersionExistsError(
+                        f"local version '{version}' of {cls.__name__} already exists"
+                    )
                 upath.rmrf()
 
         obj = cls(version, remote=remote, require_exists=False, **kwargs)  # type: ignore
@@ -337,7 +312,7 @@ class VersionedUploadable(ABC):
             If an explicit bool, it must be compatible with ``version``. For example,
             ``version='latest-remote'`` and ``remote=False`` are not compatible.
 
-            If ``None``, and ``version='latest'`, then the latest version between local and remote
+            If ``None``, and ``version='latest'``, then the latest version between local and remote
             is found and used. If local and remote have the same latest version, then the local one
             is used.
 
@@ -495,16 +470,16 @@ class VersionedUploadable(ABC):
             source = source / path
             target = target / path
             if source.is_file():
-                source.download_file(target, overwrite=overwrite)
+                target.copy_file(source, overwrite=overwrite)
                 return 1
             else:
-                return source.download_dir(target, overwrite=overwrite)
+                return target.copy_dir(source, overwrite=overwrite, **kwargs)
 
         if not overwrite:
             if self.has_local_version(self.version):
                 logger.info("local version of %r exists; upload is skipped", self)
                 return 0
-        return source.download_dir(target, overwrite=True, **kwargs)
+        return target.copy_dir(source, overwrite=True, **kwargs)
 
     def upload(self, path: str = None, *, overwrite: bool = False, **kwargs) -> int:
         """
@@ -524,15 +499,15 @@ class VersionedUploadable(ABC):
             source = source / path
             target = target / path
             if source.is_file():
-                target.upload_file(source, overwrite=overwrite)
+                target.copy_file(source, overwrite=overwrite)
                 return 1
             else:
-                return target.upload_dir(source, overwrite=overwrite)
+                return target.copy_dir(source, overwrite=overwrite, **kwargs)
         if not overwrite:
             if self.has_remote_version(self.version):
                 logger.info("remote version of %r exists; upload is skipped", self)
                 return 0
-        return target.upload_dir(source, overwrite=True, **kwargs)
+        return target.copy_dir(source, overwrite=True, **kwargs)
 
     def ensure_local(
         self, *, init_kwargs: dict[str, Any] = None, **kwargs
@@ -564,5 +539,17 @@ class VersionedUploadable(ABC):
         return self.__class__(
             self.version,
             remote=False,
+            **(init_kwargs or {}),
+        )
+
+    def ensure_remote(
+        self, *, init_kwargs: dict[str, Any] = None, **kwargs
+    ) -> VersionedUploadable:
+        if self.remote:
+            return self
+        self.upload(**kwargs)
+        return self.__class__(
+            self.version,
+            remote=True,
             **(init_kwargs or {}),
         )

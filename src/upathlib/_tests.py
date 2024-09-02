@@ -181,28 +181,28 @@ def test_copy(p: Upath):
         source_file = source / "testfile"
         source_file.write_text("abc", overwrite=True)
 
-        source_file.copy_file(target)
+        target.copy_file(source_file)
         assert target.read_text() == "abc"
 
         with pytest.raises(FileNotFoundError if IS_WIN else NotADirectoryError):
             # cant' write to `target/'samplefile'`
             # because `target` is a file.
-            source.copy_dir(target.joinpath("samplefile"))
+            target.joinpath("samplefile").copy_dir(source)
 
         target.rmrf()
         p2 = target.joinpath("samplefile")
-        source.copy_dir(p2)
+        p2.copy_dir(source)
         p3 = p2 / source_file.name
         assert target.ls() == [p2]
         assert p2.ls() == [p3]
         assert p3.read_text() == "abc"
 
         p1 = source / "a" / "b" / "c"
-        assert p2.copy_dir(p1) == 1
+        assert p1.copy_dir(p2) == 1
         p4 = p1 / source_file.name
         assert p4.read_text() == "abc"
 
-        assert p2.copy_dir(source / "a" / "b") == 1
+        assert (source / "a" / "b").copy_dir(p2) == 1
         assert (source / "a" / "b" / source_file.name).read_text() == "abc"
     finally:
         target.rmrf()

@@ -37,6 +37,7 @@ from typing_extensions import Self
 # you may hack certain attributes of this object.
 # See `google.api_core.retry.exponential_sleep_generator`.
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
+from ._local import LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
 
@@ -274,7 +275,7 @@ class GcsBlobUpath(BlobUpath):
         #
         # This object is suitable for making read/write calls that
         # talk to the storage. It's not suitable for accessing "properties" that
-        # simply returns whatever is in the Blob object (which may be extirely
+        # simply returns whatever is in the Blob object (which may be entirely
         # disconnected from the actual blob in the cloud), for example, `metadata`.
 
         if reload:
@@ -303,7 +304,7 @@ class GcsBlobUpath(BlobUpath):
         If there is a dummy blob with name ``f"{self.name}/"``,
         this will return ``True``.
         This is the case after creating a "folder" on the GCP dashboard.
-        In programatic use, it's recommended to avoid such situations so that
+        In programmatic use, it's recommended to avoid such situations so that
         ``is_dir()`` returns ``True`` if and only if there are blobs
         "under" the current path.
         """
@@ -378,7 +379,7 @@ class GcsBlobUpath(BlobUpath):
             )
 
         # `upload_from_file` ultimately uses `google.resumable_media.requests` to do the
-        # uploading. `resumable_media` has its own retry facilities. When a retriable exception
+        # uploading. `resumable_media` has its own retry facilities. When a retry-eligible exception
         # happens but time is up, the original exception is raised.
         # This is in contrast to `google.cloud.api_core.retry.Retry`, which will
         # raise `RetryError` with the original exception as its `.cause` attribute.
@@ -527,25 +528,34 @@ class GcsBlobUpath(BlobUpath):
     # According to Google doc, https://cloud.google.com/storage/quotas,
     #   There is a limit on writes to the same object name. This limit is once per second.
 
-    def _copy_file(self, target: Upath, *, overwrite=False) -> None:
-        if isinstance(target, GcsBlobUpath):
-            # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
-            try:
-                self._bucket().copy_blob(
-                    self._blob(),
-                    target._bucket(),
-                    target.blob_name,
-                    client=self._client(),
-                    if_generation_match=None if overwrite else 0,
-                )
-            except NotFound as e:
-                raise FileNotFoundError(f"No such file: '{self}'") from e
-            except PreconditionFailed as e:
-                raise FileExistsError(f"File exists: '{target}'") from e
+    def _copy_file(self, source: Upath, target: Upath, *, overwrite=False) -> None:
+        if isinstance(source, GcsBlobUpath):
+            if isinstance(target, GcsBlobUpath):
+                # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
+                try:
+                    source._bucket().copy_blob(
+                        source._blob(),
+                        target._bucket(),
+                        target.blob_name,
+                        client=source._client(),
+                        if_generation_match=None if overwrite else 0,
+                    )
+                except NotFound as e:
+                    raise FileNotFoundError(f"No such file: '{source}'") from e
+                except PreconditionFailed as e:
+                    raise FileExistsError(f"File exists: '{target}'") from e
+                return
+            if isinstance(target, LocalUpath):
+                source._download_file(target, overwrite=overwrite)
+                return
         else:
-            super()._copy_file(target, overwrite=overwrite)
+            assert isinstance(target, GcsBlobUpath)
+            if isinstance(source, LocalUpath):
+                target._upload_file(source, overwrite=overwrite)
+                return
+        super()._copy_file(source, target, overwrite=overwrite)
 
-    def download_file(
+    def _download_file(
         self, target: LocalPathType, *, overwrite=False, concurrent=True
     ) -> None:
         """
@@ -573,7 +583,7 @@ class GcsBlobUpath(BlobUpath):
             target.remove_file()
             raise
 
-    def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
+    def _upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
         Upload the content of ``source`` to the current blob.
         """

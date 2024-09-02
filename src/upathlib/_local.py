@@ -153,18 +153,51 @@ class LocalUpath(Upath, os.PathLike):
         # If `self` is an existing directory, will raise `IsADirectoryError`.
         # If `self` is an existing file, will overwrite.
 
-    def _copy_file(self, target: Upath, *, overwrite: bool = False):
-        if isinstance(target, LocalUpath):
-            if not overwrite and target.is_file():
-                raise FileExistsError(f"File exists: '{target}'")
-            os.makedirs(target.parent, exist_ok=True)
-            # If `p` is a file and we try to `os.makedirs(p / 'subdir`)`,
-            # on Linux it raises `NotADirectoryError`;
-            # on Windows it raises `FileNotFoundError`.
-            shutil.copyfile(self.path, target.path)
-            # If target already exists, it will be overwritten.
-        else:
-            super()._copy_file(target, overwrite=overwrite)
+    def _copy_file(
+        self, source: LocalUpath, target: LocalUpath, *, overwrite: bool = False
+    ):
+        if not overwrite and target.is_file():
+            raise FileExistsError(f"File exists: '{target}'")
+        os.makedirs(target.parent, exist_ok=True)
+        # If `p` is a file and we try to `os.makedirs(p / 'subdir`)`,
+        # on Linux it raises `NotADirectoryError`;
+        # on Windows it raises `FileNotFoundError`.
+        shutil.copyfile(source.path, target.path)
+        # If target already exists, it will be overwritten.
+
+    def copy_file(self, source: str | Upath, *, overwrite: bool = False) -> None:
+        if is_local_path(source):
+            return super().copy_file(source, overwrite=overwrite)
+            # This will call `self._copy_file`.
+
+        # The source side may have implemented efficient downloading.
+        return source._copy_file(source, self, overwrite=overwrite)
+
+    def copy_dir(
+        self,
+        source: str | Upath,
+        *,
+        overwrite: bool = False,
+        quiet: bool = False,
+        concurrent: bool = True,
+    ) -> int:
+        if is_local_path(source):
+            return super().copy_dir(
+                source, quiet=quiet, overwrite=overwrite, concurrent=concurrent
+            )
+
+        # The source side may have implemented efficient downloading.
+        if not quiet:
+            print(f"Copying from {source!r} into {self!r}", file=sys.stderr)
+        return source._dir_to_dir(
+            source=source,
+            target=self,
+            method="copy_file",
+            method_on_source=False,
+            quiet=quiet,
+            overwrite=overwrite,
+            concurrent=concurrent,
+        )
 
     def remove_dir(self, **kwargs) -> int:
         """
@@ -210,16 +243,17 @@ class LocalUpath(Upath, os.PathLike):
 
         if isinstance(target, LocalUpath):
             target = target._path
-        target_ = self.parent / target
-        if target_ == self:
+        target = self.parent / target
+        if target == self:
             return self
 
         if not quiet:
-            print(f"Renaming {self!r} to {target_!r}", file=sys.stderr)
-        self._copy_dir(
-            self,
-            target_,
-            "rename_file",
+            print(f"Renaming {self!r} to {target!r}", file=sys.stderr)
+        self._dir_to_dir(
+            source=self,
+            target=target,
+            method="rename_file",
+            method_on_source=True,
             overwrite=overwrite,
             quiet=quiet,
             concurrent=concurrent,
@@ -238,7 +272,7 @@ class LocalUpath(Upath, os.PathLike):
 
         _remove_empty_dir(self.path)
 
-        return target_
+        return target
 
     def _rename_file(self, target: str, *, overwrite=False):
         target = self.parent / target
@@ -330,3 +364,7 @@ class LocalUpath(Upath, os.PathLike):
 
 
 LocalPathType = str | pathlib.Path | LocalUpath
+
+
+def is_local_path(p):
+    return isinstance(p, (str, pathlib.Path, LocalUpath))
