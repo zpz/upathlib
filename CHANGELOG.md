@@ -9,8 +9,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 - API changes to the methods `copy_file` and `copy_dir`: the first parameter used to be the "target", now it is the "source".
   Now, both methods write to `self`. This is consistent with the `write_*` methods of files.
-- Clarified how "download_*" and "upload_*" implementations of a blob store relate to the generic "copy_dir" and "copy_file"
-  methods. Now, calling "copy_dir" and "copy_file" will delegate to tailored "download_*" and "upload_*" methods when available.
+- Clarified how `download_*` and `upload_*` implementations of a blob store relate to the generic `copy_dir` and `copy_file`
+  methods. Now, calling `copy_dir` and `copy_file` will delegate to tailored `download_*` and `upload_*` methods when available.
 
 ## [0.9.6] - 2024-06-20
 
