@@ -7,9 +7,10 @@
 
 2. The storage can be either local (on disk) or remote (in a cloud blob store). There are methods to download/upload between local and remote storages.
 
-   However, "local" are "remote" are just labels for the two storage locations. They can be both on local disk, or both
+   However, "local" and "remote" are just labels for the two storage locations. They can be both on local disk, or both
    in the same cloud storage (in different "locations"), or in two different cloud storages, or one on local disk and the other
-   in a cloud blob store.
+   in a cloud blob store. This is controlled by the classmethods :meth:`VersionedUploadable.local_cls_upath` and :meth:`VersionedUploadable.remote_cls_upath`,
+   which should be implemented by subclasses.
 
 3. Within the dataset, one can conveniently specify sub-directories and files relative to the "root",
    and read/write. This navigation is the same regardless of whether the storage is local or remote.
