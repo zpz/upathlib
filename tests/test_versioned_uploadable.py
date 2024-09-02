@@ -87,4 +87,3 @@ def test_vu():
 
     box.remove_local_version(box.version)
     assert not box.has_local_version(box.version)
-

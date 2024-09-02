@@ -6,7 +6,7 @@
    The full path of the storage location is managed for the user, who only needs the version.
 
 2. The storage can be either local (on disk) or remote (in a cloud blob store). There are methods to download/upload between local and remote storages.
-   
+
    However, "local" are "remote" are just labels for the two storage locations. They can be both on local disk, or both
    in the same cloud storage (in different "locations"), or in two different cloud storages, or one on local disk and the other
    in a cloud blob store.
@@ -542,7 +542,9 @@ class VersionedUploadable(ABC):
             **(init_kwargs or {}),
         )
 
-    def ensure_remote(self, *, init_kwargs: dict[str, Any] = None, **kwargs) -> VersionedUploadable:
+    def ensure_remote(
+        self, *, init_kwargs: dict[str, Any] = None, **kwargs
+    ) -> VersionedUploadable:
         if self.remote:
             return self
         self.upload(**kwargs)

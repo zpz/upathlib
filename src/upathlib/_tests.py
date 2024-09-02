@@ -202,7 +202,7 @@ def test_copy(p: Upath):
         p4 = p1 / source_file.name
         assert p4.read_text() == "abc"
 
-        assert (source / 'a' / 'b').copy_dir(p2) == 1
+        assert (source / "a" / "b").copy_dir(p2) == 1
         assert (source / "a" / "b" / source_file.name).read_text() == "abc"
     finally:
         target.rmrf()

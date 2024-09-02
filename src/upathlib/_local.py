@@ -153,7 +153,9 @@ class LocalUpath(Upath, os.PathLike):
         # If `self` is an existing directory, will raise `IsADirectoryError`.
         # If `self` is an existing file, will overwrite.
 
-    def _copy_file(self, source: LocalUpath, target: LocalUpath, *, overwrite: bool = False):
+    def _copy_file(
+        self, source: LocalUpath, target: LocalUpath, *, overwrite: bool = False
+    ):
         if not overwrite and target.is_file():
             raise FileExistsError(f"File exists: '{target}'")
         os.makedirs(target.parent, exist_ok=True)
@@ -180,13 +182,22 @@ class LocalUpath(Upath, os.PathLike):
         concurrent: bool = True,
     ) -> int:
         if is_local_path(source):
-            return super().copy_dir(source, quiet=quiet, overwrite=overwrite, concurrent=concurrent)
-        
+            return super().copy_dir(
+                source, quiet=quiet, overwrite=overwrite, concurrent=concurrent
+            )
+
         # The source side may have implemented efficient downloading.
         if not quiet:
             print(f"Copying from {source!r} into {self!r}", file=sys.stderr)
-        return source._dir_to_dir(source=source, target=self, method='copy_file',
-                                  method_on_source=False, quiet=quiet, overwrite=overwrite, concurrent=concurrent)
+        return source._dir_to_dir(
+            source=source,
+            target=self,
+            method="copy_file",
+            method_on_source=False,
+            quiet=quiet,
+            overwrite=overwrite,
+            concurrent=concurrent,
+        )
 
     def remove_dir(self, **kwargs) -> int:
         """

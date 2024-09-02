@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pathlib
-import sys
 from collections.abc import Iterator
 
 from typing_extensions import Self

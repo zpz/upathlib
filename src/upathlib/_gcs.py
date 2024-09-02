@@ -37,9 +37,9 @@ from typing_extensions import Self
 # you may hack certain attributes of this object.
 # See `google.api_core.retry.exponential_sleep_generator`.
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
+from ._local import LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
-from ._local import LocalUpath
 
 # To see retry info, add the following in user code.
 # There is one message per retry.

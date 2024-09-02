@@ -29,9 +29,9 @@ from azure.storage.blob import BlobClient, BlobLeaseClient, ContainerClient
 from typing_extensions import Self
 
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
+from ._local import LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import utcnow
-from ._local import LocalUpath
 
 # End user may want to do this:
 # logging.getLogger("azure.storage").setLevel(logging.WARNING)

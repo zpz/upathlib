@@ -615,11 +615,11 @@ class Upath(abc.ABC):
                     )
                 else:
                     yield (
-                            getattr(target / extra, method),
-                            (p,),
-                            {"overwrite": ovwt},
-                            extra,
-                        )
+                        getattr(target / extra, method),
+                        (p,),
+                        {"overwrite": ovwt},
+                        extra,
+                    )
 
         n = 0
         if concurrent:
@@ -669,13 +669,13 @@ class Upath(abc.ABC):
             source = target.parent / source
         if source == target:
             return 0
-            
+
         if not quiet:
             print(f"Copying from {source!r} into {target!r}", file=sys.stderr)
         return self._dir_to_dir(
             source=source,
             target=target,
-            method='copy_file',
+            method="copy_file",
             method_on_source=False,
             overwrite=overwrite,
             quiet=quiet,
@@ -703,7 +703,7 @@ class Upath(abc.ABC):
         then the ``self`` will be overwritten.
 
         If ``type(source)`` is ``LocalUpath`` and ``self`` is an existing directory,
-        then ``IsADirectoryError`` is raised. 
+        then ``IsADirectoryError`` is raised.
         In a cloud blob store, there is no concrete "directory".
         For example, suppose ``self`` is 'gs://mybucket/backup/record' on Google Cloud Storage,
         and ``source`` is '/experiment/data', then ``source`` is 'gs://mybucket/experiment/data'.
