@@ -468,9 +468,8 @@ class Upath(abc.ABC):
         """
         return self._with_path(str(self.path.with_name(name)))
 
-    # def with_stem(self, stem: str) -> Self:
-    #     # Available in Python 3.9+.
-    #     return self._with_path(str(self.path.with_stem(stem)))
+    def with_stem(self, stem: str) -> Self:
+        return self._with_path(str(self.path.with_stem(stem)))
 
     def with_suffix(self, suffix: str) -> Self:
         """
@@ -591,15 +590,15 @@ class Upath(abc.ABC):
     def read_pickle_zstd(self, **kwargs) -> Any:
         return ZstdPickleSerializer.load(self, **kwargs)
 
-    def _copy_dir(
+    def _dir_to_dir(
         self,
-        source,
-        dest,
-        method: str,
         *,
+        source,
+        target,
+        method: str,
+        method_on_source: bool,
         overwrite: bool,
         quiet: bool,
-        reversed=False,
         concurrent: bool = True,
     ) -> int:
         def foo():
@@ -607,20 +606,20 @@ class Upath(abc.ABC):
             ovwt = overwrite
             for p in source.riterdir():
                 extra = str(p.path.relative_to(source_path))
-                if reversed:
+                if method_on_source:
                     yield (
-                        getattr(dest / extra, method),
-                        (p,),
+                        getattr(p, method),
+                        (target / extra,),
                         {"overwrite": ovwt},
                         extra,
                     )
                 else:
                     yield (
-                        getattr(p, method),
-                        (dest / extra,),
-                        {"overwrite": ovwt},
-                        extra,
-                    )
+                            getattr(target / extra, method),
+                            (p,),
+                            {"overwrite": ovwt},
+                            extra,
+                        )
 
         n = 0
         if concurrent:
@@ -634,27 +633,25 @@ class Upath(abc.ABC):
 
     def copy_dir(
         self,
-        target: str | Upath,
+        source: str | Upath,
         *,
         overwrite: bool = False,
         quiet: bool = False,
         concurrent: bool = True,
     ) -> int:
-        """Copy the content of the current directory (i.e. ``self``) recursively to ``target``.
+        """Copy the content of the source directory recursively to ``self``.
 
-        If ``target`` is an string, then it is in the same store the the current path,
+        If ``source`` is an string, then it is in the same store as the current path,
         and it is either absolute, or relative to ``self.parent``.
-        In this case,
-        the directory created by this operation will be the path ``self.parent / target``.
 
-        If ``target`` is not a string, then it must be an instance of a :meth:`Upath` subclass,
+        If ``source`` is not a string, then it must be an instance of a :meth:`Upath` subclass,
         and it may be in any store system.
 
-        Immediate children of ``self`` will be copied as immediate children of the target path.
+        Immediate children of ``source`` will be copied as immediate children of ``self``.
 
         There is no such error as "target directory exists" as the copy-operation
         only concerns individual files.
-        If the target "directory" contains files that do not have counterparts
+        If the target directory (i.e. ``self``) contains files that do not have counterparts
         in the source directory, they will stay untouched.
 
         ``overwrite`` is file-wise. If ``False``, any existing target file will raise ``FileExistsError`` and
@@ -667,68 +664,63 @@ class Upath(abc.ABC):
         int
             The number of files copied.
         """
-        if isinstance(target, str):
-            target_ = self.parent / target
-            if target_ == self:
-                return 0
-        else:
-            target_ = target
-
+        target = self
+        if isinstance(source, str):
+            source = target.parent / source
+        if source == target:
+            return 0
+            
         if not quiet:
-            print(f"Copying from {self!r} into {target_!r}", file=sys.stderr)
-        return self._copy_dir(
-            self,
-            target_,
-            "copy_file",
+            print(f"Copying from {source!r} into {target!r}", file=sys.stderr)
+        return self._dir_to_dir(
+            source=source,
+            target=target,
+            method='copy_file',
+            method_on_source=False,
             overwrite=overwrite,
             quiet=quiet,
             concurrent=concurrent,
         )
 
-    def _copy_file(self, target: Upath, *, overwrite: bool = False):
-        target.write_bytes(self.read_bytes(), overwrite=overwrite)
+    def _copy_file(self, source: Upath, target: Upath, *, overwrite: bool = False):
+        target.write_bytes(source.read_bytes(), overwrite=overwrite)
 
-    def copy_file(self, target: str | Upath, *, overwrite: bool = False) -> None:
-        """Copy the current file (i.e. ``self``) to ``target``.
+    def copy_file(self, source: str | Upath, *, overwrite: bool = False) -> None:
+        """Copy the ``source`` file to the current file (i.e. ``self``).
 
-        If ``target`` is str, then it is in the same store as the current path,
+        If ``source`` is str, then it is in the same store as the current path,
         and it is either absolute, or relative to ``self.parent``.
-        In this case, the file created by this operation will the path ``self.parent / target``.
         For example, if ``self`` is ``'/a/b/c/d.txt'``, then
-        ``target='e.txt'`` means ``'/a/b/c/e.txt'``.
+        ``source='e.txt'`` means ``'/a/b/c/e.txt'``.
 
-        If ``target`` is not a string, then it must be an instance of a :meth:`Upath` subclass,
+        If ``source`` is not a string, then it must be an instance of a :meth:`Upath` subclass,
         and it may be in any storage system.
 
-        ``target`` is the target file, *not* a target directory to "copy into".
+        If ``source`` is not an existing file, ``FileNotFoundError`` is raised.
 
-        If ``self`` is not an existing file, ``FileNotFoundError`` is raised.
-
-        If ``target`` is an existing file and ``overwrite`` is ``False``,
+        If ``self`` is an existing file and ``overwrite`` is ``False``,
         ``FileExistsError`` is raised. If ``overwrite`` is ``True``,
-        then the file will be overwritten.
+        then the ``self`` will be overwritten.
 
-        If ``type(self)`` is ``LocalUpath`` and ``target`` is an existing directory,
-        then ``IsADirectoryError`` is raised. In a cloud blob store, there is no concrete "directory".
-        For example, suppose ``self`` is the path 'gs://mybucket/experiment/data' on
-        Google Cloud Storage, and ``target`` is '/backup/record', then
-        the target path is 'gs://mybucket/backup/record'.
+        If ``type(source)`` is ``LocalUpath`` and ``self`` is an existing directory,
+        then ``IsADirectoryError`` is raised. 
+        In a cloud blob store, there is no concrete "directory".
+        For example, suppose ``self`` is 'gs://mybucket/backup/record' on Google Cloud Storage,
+        and ``source`` is '/experiment/data', then ``source`` is 'gs://mybucket/experiment/data'.
         If there exists blob 'gs://mybucket/backup/record/y', then we say 'gs://mybucket/backup/record'
         is a "directory". However, this is merely a "virtual" concept, or an emulation
-        of the "directory" concept on local disk. As long as this path is not an
+        of the "directory" concept on local disk. As long as the ``self`` path is not an
         existing blob, the copy will proceed with no problem.
         Nevertheless, such naming is confusing and better avoided.
 
         Return the number of files copied (either 0 or 1).
         """
-        if isinstance(target, str):
-            target_ = self.parent / target
-            if target_ == self:
-                return
-        else:
-            target_ = target
-
-        self._copy_file(target_, overwrite=overwrite)
+        target = self
+        if isinstance(source, str):
+            source = target.parent / source
+        if source == target:
+            return
+        self._copy_file(source, target, overwrite=overwrite)
 
     def remove_dir(self, *, quiet: bool = True, concurrent: bool = True) -> int:
         """Remove the current directory (i.e. ``self``) and all its contents recursively.

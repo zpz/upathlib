@@ -109,13 +109,13 @@ class FakeBlobUpath(BlobUpath):
     def is_file(self) -> bool:
         return _store.exists(self._bucket, self._path)
 
-    def _copy_file(self, target, *, overwrite=False):
-        if isinstance(target, FakeBlobUpath):
+    def _copy_file(self, source, target, *, overwrite=False):
+        if isinstance(source, FakeBlobUpath) and isinstance(target, FakeBlobUpath):
             _store.copy_blob(
-                self._bucket, self._path, target._path, overwrite=overwrite
+                source._bucket, source._path, target._path, overwrite=overwrite
             )
         else:
-            super()._copy_file(target, overwrite=overwrite)
+            super()._copy_file(source, target, overwrite=overwrite)
 
     @contextlib.contextmanager
     def lock(self, *, timeout=None):

@@ -90,67 +90,28 @@ class BlobUpath(Upath):
     def download_dir(
         self,
         target: LocalPathType,
-        *,
-        overwrite: bool = False,
-        quiet: bool = False,
         **kwargs,
     ) -> int:
-        """
-        A specialization of :meth:`~upathlib.Upath.copy_dir` where the target location
-        is on the local disk.
-        """
         target = _resolve_local_path(target)
+        return target.copy_dir(self, **kwargs)
 
-        if not quiet:
-            print(f"Downloading from {self!r} into {target!r}", file=sys.stderr)
-        return self._copy_dir(
-            self,
-            target,
-            "download_file",
-            overwrite=overwrite,
-            quiet=quiet,
-            **kwargs,
-        )
-
-    def download_file(self, target: LocalPathType, *, overwrite=False) -> None:
-        """
-        A specialization of :meth:`~upathlib.Upath.copy_file` where the target location
-        is on the local disk.
-
-        Subclass is expected to override with a more efficient implementation.
-        """
-        self.copy_file(target, overwrite=overwrite)
+    def download_file(self, target: LocalPathType, **kwargs) -> None:
+        target = _resolve_local_path(target)
+        target.copy_file(self, **kwargs)
 
     def upload_dir(
         self,
         source: LocalPathType,
-        *,
-        overwrite: bool = False,
-        quiet: bool = False,
         **kwargs,
     ) -> int:
-        """
-        A specialization of :meth:`~upathlib.Upath.copy_dir` for :class:`~upathlib.LocalUpath`
-        where the target location is in a cloud blob store.
-        """
         source = _resolve_local_path(source)
-        if not quiet:
-            print(f"Importing from {source!r} into {self!r}", file=sys.stderr)
-        return self._copy_dir(
-            source,
-            self,
-            "upload_file",
-            overwrite=overwrite,
-            quiet=quiet,
-            reversed=True,
-            **kwargs,
-        )
+        return self.copy_dir(source, **kwargs)
 
-    def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
-        """
-        A specialization of :meth:`~upathlib.Upath.copy_file` for :class:`~upathlib.LocalUpath`
-        where the target location is in a cloud blob store.
+    def upload_file(self, source: LocalPathType, **kwargs) -> None:
+        source = _resolve_local_path(source)
+        self.copy_file(source, **kwargs)
 
-        Subclass is expected to override with a more efficient implementation.
-        """
-        source.copy_file(self, overwrite=overwrite)
+    # If a subclass has efficient implementations for downloading and uploading,
+    # don't override the methods `download_dir`, `download_file`, `upload_dir`,
+    # `upload_file`. Instead, call those implementations in `_dir_to_dir`
+    # and `_copy_file`.

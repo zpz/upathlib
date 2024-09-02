@@ -25,7 +25,7 @@ class MyVersionedUploadable(VersionedUploadable):
         )
 
 
-def _test_vu():
+def test_vu():
     box = MyVersionedUploadable.new()
     box.path("abc.txt").write_text("abc")
     box.path("sub/abc.pkl").write_pickle({"x": "abc"})
@@ -88,28 +88,3 @@ def _test_vu():
     box.remove_local_version(box.version)
     assert not box.has_local_version(box.version)
 
-
-def test_vu():
-    def _upload_dir(self, source, **kwargs):
-        return source.copy_dir(self, **kwargs)
-
-    def _upload_file(self, source, **kwargs):
-        return source.copy_file(self, **kwargs)
-
-    def _download_dir(self, target, **kwargs):
-        return self.copy_dir(target, **kwargs)
-
-    def _download_file(self, target, **kwargs):
-        return self.copy_file(target, **kwargs)
-
-    LocalUpath.download_dir = _download_dir
-    LocalUpath.download_file = _download_file
-    LocalUpath.upload_dir = _upload_dir
-    LocalUpath.upload_file = _upload_file
-    try:
-        _test_vu()
-    finally:
-        delattr(LocalUpath, "download_dir")
-        delattr(LocalUpath, "download_file")
-        delattr(LocalUpath, "upload_dir")
-        delattr(LocalUpath, "upload_file")

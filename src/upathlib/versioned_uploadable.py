@@ -4,7 +4,13 @@
 1. The dataset is identified by a version string that is generated and sortable (datetime-based),
    so that the "newest" is always the "latest" version, and code can infer the latest version.
    The full path of the storage location is managed for the user, who only needs the version.
+
 2. The storage can be either local (on disk) or remote (in a cloud blob store). There are methods to download/upload between local and remote storages.
+   
+   However, "local" are "remote" are just labels for the two storage locations. They can be both on local disk, or both
+   in the same cloud storage (in different "locations"), or in two different cloud storages, or one on local disk and the other
+   in a cloud blob store.
+
 3. Within the dataset, one can conveniently specify sub-directories and files relative to the "root",
    and read/write. This navigation is the same regardless of whether the storage is local or remote.
 """
@@ -306,7 +312,7 @@ class VersionedUploadable(ABC):
             If an explicit bool, it must be compatible with ``version``. For example,
             ``version='latest-remote'`` and ``remote=False`` are not compatible.
 
-            If ``None``, and ``version='latest'`, then the latest version between local and remote
+            If ``None``, and ``version='latest'``, then the latest version between local and remote
             is found and used. If local and remote have the same latest version, then the local one
             is used.
 
@@ -464,16 +470,16 @@ class VersionedUploadable(ABC):
             source = source / path
             target = target / path
             if source.is_file():
-                source.download_file(target, overwrite=overwrite)
+                target.copy_file(source, overwrite=overwrite)
                 return 1
             else:
-                return source.download_dir(target, overwrite=overwrite)
+                return target.copy_dir(source, overwrite=overwrite, **kwargs)
 
         if not overwrite:
             if self.has_local_version(self.version):
                 logger.info("local version of %r exists; upload is skipped", self)
                 return 0
-        return source.download_dir(target, overwrite=True, **kwargs)
+        return target.copy_dir(source, overwrite=True, **kwargs)
 
     def upload(self, path: str = None, *, overwrite: bool = False, **kwargs) -> int:
         """
@@ -493,15 +499,15 @@ class VersionedUploadable(ABC):
             source = source / path
             target = target / path
             if source.is_file():
-                target.upload_file(source, overwrite=overwrite)
+                target.copy_file(source, overwrite=overwrite)
                 return 1
             else:
-                return target.upload_dir(source, overwrite=overwrite)
+                return target.copy_dir(source, overwrite=overwrite, **kwargs)
         if not overwrite:
             if self.has_remote_version(self.version):
                 logger.info("remote version of %r exists; upload is skipped", self)
                 return 0
-        return target.upload_dir(source, overwrite=True, **kwargs)
+        return target.copy_dir(source, overwrite=True, **kwargs)
 
     def ensure_local(
         self, *, init_kwargs: dict[str, Any] = None, **kwargs
@@ -533,5 +539,15 @@ class VersionedUploadable(ABC):
         return self.__class__(
             self.version,
             remote=False,
+            **(init_kwargs or {}),
+        )
+
+    def ensure_remote(self, *, init_kwargs: dict[str, Any] = None, **kwargs) -> VersionedUploadable:
+        if self.remote:
+            return self
+        self.upload(**kwargs)
+        return self.__class__(
+            self.version,
+            remote=True,
             **(init_kwargs or {}),
         )

@@ -39,6 +39,7 @@ from typing_extensions import Self
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
 from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
+from ._local import LocalUpath
 
 # To see retry info, add the following in user code.
 # There is one message per retry.
@@ -527,25 +528,34 @@ class GcsBlobUpath(BlobUpath):
     # According to Google doc, https://cloud.google.com/storage/quotas,
     #   There is a limit on writes to the same object name. This limit is once per second.
 
-    def _copy_file(self, target: Upath, *, overwrite=False) -> None:
-        if isinstance(target, GcsBlobUpath):
-            # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
-            try:
-                self._bucket().copy_blob(
-                    self._blob(),
-                    target._bucket(),
-                    target.blob_name,
-                    client=self._client(),
-                    if_generation_match=None if overwrite else 0,
-                )
-            except NotFound as e:
-                raise FileNotFoundError(f"No such file: '{self}'") from e
-            except PreconditionFailed as e:
-                raise FileExistsError(f"File exists: '{target}'") from e
+    def _copy_file(self, source: Upath, target: Upath, *, overwrite=False) -> None:
+        if isinstance(source, GcsBlobUpath):
+            if isinstance(target, GcsBlobUpath):
+                # https://cloud.google.com/storage/docs/copying-renaming-moving-objects
+                try:
+                    source._bucket().copy_blob(
+                        source._blob(),
+                        target._bucket(),
+                        target.blob_name,
+                        client=source._client(),
+                        if_generation_match=None if overwrite else 0,
+                    )
+                except NotFound as e:
+                    raise FileNotFoundError(f"No such file: '{source}'") from e
+                except PreconditionFailed as e:
+                    raise FileExistsError(f"File exists: '{target}'") from e
+                return
+            if isinstance(target, LocalUpath):
+                source._download_file(target, overwrite=overwrite)
+                return
         else:
-            super()._copy_file(target, overwrite=overwrite)
+            assert isinstance(target, GcsBlobUpath)
+            if isinstance(source, LocalUpath):
+                target._upload_file(source, overwrite=overwrite)
+                return
+        super()._copy_file(source, target, overwrite=overwrite)
 
-    def download_file(
+    def _download_file(
         self, target: LocalPathType, *, overwrite=False, concurrent=True
     ) -> None:
         """
@@ -573,7 +583,7 @@ class GcsBlobUpath(BlobUpath):
             target.remove_file()
             raise
 
-    def upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
+    def _upload_file(self, source: LocalPathType, *, overwrite=False) -> None:
         """
         Upload the content of ``source`` to the current blob.
         """
