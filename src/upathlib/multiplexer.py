@@ -127,7 +127,7 @@ class Multiplexer(Iterable[Element], Sized):
 
     def __getstate__(self):
         return self.path, self._session_id, self._timeout
-    
+
     def __setstate__(self, data):
         self.path, self._session_id, self._timeout = data
         self._worker_id = None
