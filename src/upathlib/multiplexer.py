@@ -126,7 +126,12 @@ class Multiplexer(Iterable[Element], Sized):
         return self._worker_id
 
     def __getstate__(self):
-        raise TypeError(f"Can't pickle {self.__class__.__name__} object")
+        return self.path, self._session_id, self._timeout
+    
+    def __setstate__(self, data):
+        self.path, self._session_id, self._timeout = data
+        self._worker_id = None
+        self._data = (self.path / "data.pickle").read_pickle()
 
     def __len__(self) -> int:
         """
