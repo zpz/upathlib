@@ -1,7 +1,7 @@
-'''
+"""
 ``Multiplexer`` is a utility for distributing a set of control parameters to multiple workers, which consume the parameters collectively,
 i.e. each control parameter is consumed by exactly one worker.
-'''
+"""
 
 import base64
 import logging
