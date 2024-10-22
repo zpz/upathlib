@@ -1,4 +1,7 @@
-from __future__ import annotations
+'''
+``Multiplexer`` is a utility for distributing a set of control parameters to multiple workers, which consume the parameters collectively,
+i.e. each control parameter is consumed by exactly one worker.
+'''
 
 import base64
 import logging
@@ -53,6 +56,12 @@ class Multiplexer(Iterable[Element], Sized):
     2. In "worker" code, use the ID that was returned by :meth:`create_read_session` to instantiate
     a Multiplexer and iterate over it. In so doing, multiple workers will obtain the data elements
     collectively, i.e., each element is obtained by exactly one worker.
+
+    As far as this utility is concerned, the coordinator does not need to wait for the workers
+    to finish consuming the data. The coordinator process or machine may quit and let the workers
+    continue with their job. Usually you should take care of job tracking separately.
+
+    See :meth:`create_read_session` for more details.
     """
 
     @classmethod
@@ -68,10 +77,19 @@ class Multiplexer(Iterable[Element], Sized):
         ----------
         data
             The data elements that need to be distributed. The elements should be pickle-able.
+
+            Importantly, `data` (the dataset) is meant to contain a modest number (say, up to thousands)
+            of "control parameters", not massive number of raw data elements.
+            This is because distributing each data element by this utility incurs nontrivial overhead.
+            Each data element is meant to trigger a substantial amount of processing in a worker,
+            making the overhead of obtaining the data element worthwhile.
+
+            Based on this understanding, the elements in `data` are simply saved in a single pickle file,
+            and each worker will fetch a copy of this file.
         path
             A directory where the data and any supporting info will be saved.
             The directory can be existent or non-existent.
-            A sub-directory will be created under ``path`` to storage data and info about
+            A sub-directory will be created under ``path`` to store data and info about
             this particular multiplexer. The name of the subdirectory is a datetime string.
             ``tag`` is appended to the sub-directory name to be more informative, if so desired.
 
@@ -79,10 +97,14 @@ class Multiplexer(Iterable[Element], Sized):
             or processes on each machine.
             If ``path`` is on the local disk, then the workers are in threads or processes on the same machine.
 
-            However, there are no strong reasons to use this facility on a local machine.
+            However, there are no strong reasons to use this facility on a local machine, because the same
+            functionality can be achieved by a queue-based solution.
 
             Usually this class is used to distribute data to a cluster of machines, hence
             this path points to a location in a cloud storage that is supported by ``upathlib``.
+
+            Since `path` is a "root directory" hosting Multiplexers (each in a randomly named sub-directory),
+            a subclass may choose to fix this directory so that :meth:`new` does away with this parameter.
         """
         from upathlib import resolve_path
 
