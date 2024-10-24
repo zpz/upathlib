@@ -299,6 +299,11 @@ True
 Using upathlib to implement a manager of versioned datasets with backup in the cloud
 ====================================================================================
 
+.. automodule:: upathlib.versioned_uploadable
+    :no-members:
+    :no-undoc-members:
+    :no-special-members:
+
 .. autoclass:: upathlib.versioned_uploadable.VersionedUploadable
 
 
