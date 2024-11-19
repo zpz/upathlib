@@ -11,6 +11,7 @@ import time
 from collections.abc import Iterator
 from io import BufferedReader, BytesIO, UnsupportedOperation
 
+from cloudly.gcp.auth import get_credentials, get_project_id
 from google import resumable_media
 from google.api_core.exceptions import (
     NotFound,
@@ -23,8 +24,6 @@ from google.cloud.storage.retry import (
     DEFAULT_RETRY,
 )
 from typing_extensions import Self
-from cloudly.gcp.auth import get_project_id, get_credentials
-
 
 # Many blob methods have a parameter `timeout`.
 # The default value, 60 seconds, is defined as ``google.cloud.storage.constants._DEFAULT_TIMEOUT``.
@@ -40,7 +39,7 @@ from cloudly.gcp.auth import get_project_id, get_credentials
 from ._blob import BlobUpath, LocalPathType, _resolve_local_path
 from ._local import LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, Upath
-from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
+from ._util import MAX_THREADS, get_shared_thread_pool
 
 # To see retry info, add the following in user code.
 # There is one message per retry.
@@ -98,7 +97,8 @@ class GcsBlobUpath(BlobUpath):
         cred, renewed = get_credentials(return_state=True)
         if cls._CLIENT is None or renewed:
             cls._CLIENT = storage.Client(
-                project=get_project_id(), credentials=cred,
+                project=get_project_id(),
+                credentials=cred,
             )
         return cls._CLIENT
 
