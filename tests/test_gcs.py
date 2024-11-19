@@ -1,6 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from io import BytesIO
-from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -8,7 +7,6 @@ from google.api_core.exceptions import NotFound
 
 import upathlib._tests
 from upathlib import GcsBlobUpath
-from upathlib._util import utcnow
 
 
 class Blob:
@@ -174,16 +172,9 @@ class Client:
 @pytest.fixture()
 def gcp(mocker):
     print()
-    # mocker.patch('upathlib.gcp.service_account')
     mocker.patch("upathlib._gcs.storage.Client", Client)
-    mocker.patch("upathlib._gcs.GcsBlobUpath._PROJECT_ID", "abc")
-    mocker.patch(
-        "upathlib._gcs.GcsBlobUpath._CREDENTIALS",
-        SimpleNamespace(
-            token="x",  # noqa: S106
-            expiry=(utcnow() + timedelta(days=1)).replace(tzinfo=None),  # noqa: S106
-        ),  # noqa: S106
-    )  # noqa: S106
+    mocker.patch("upathlib._gcs.get_project_id", lambda: "abc")
+    mocker.patch("upathlib._gcs.get_credentials", lambda return_state: (None, False))
     mocker.patch("upathlib._gcs.GcsBlobUpath._CLIENT", Client())
     c = GcsBlobUpath(
         "/tmp/test",
