@@ -11,7 +11,6 @@ import time
 from collections.abc import Iterator
 from io import BufferedReader, BytesIO, UnsupportedOperation
 
-import google.auth
 from google import resumable_media
 from google.api_core.exceptions import (
     NotFound,
@@ -24,6 +23,8 @@ from google.cloud.storage.retry import (
     DEFAULT_RETRY,
 )
 from typing_extensions import Self
+from cloudly.gcp.auth import get_project_id, get_credentials
+
 
 # Many blob methods have a parameter `timeout`.
 # The default value, 60 seconds, is defined as ``google.cloud.storage.constants._DEFAULT_TIMEOUT``.
@@ -45,7 +46,7 @@ from ._util import MAX_THREADS, get_shared_thread_pool, utcnow
 # There is one message per retry.
 # logging.getLogger('google.api_core.retry').setLevel(logging.DEBUG)
 
-__all__ = ["GcsBlobUpath", "get_google_auth"]
+__all__ = ["GcsBlobUpath"]
 
 
 logger = logging.getLogger(__name__)
@@ -65,86 +66,6 @@ NOTSET = object()
 assert hasattr(DEFAULT_RETRY, "with_timeout")
 
 
-def get_google_auth(
-    project_id=None,
-    credentials=None,
-    *,
-    scopes: list[str] = None,
-    valid_for_seconds: int = 600,
-):
-    """
-    If you have GCP account_info in a dict with these elements
-    (not sure everything here is required)::
-
-        'type': 'service_account',
-        'project_id':
-        'private_key_id':
-        'private_key':
-            '-----BEGIN PRIVATE KEY-----\\n'
-            + private_key.encode('latin1').decode('unicode_escape')
-            + '\\n-----END PRIVATE KEY-----\\n',
-        'client_email':
-        'client_id':
-        'auth_uri': 'https://accounts.google.com/o/oauth2/auth',
-        'token_uri': 'https://oauth2.googleapis.com/token',
-        'auth_provider_x509_cert_url': 'https://www.googleapis.com/oauth2/v1/certs',
-        'client_x509_cert_url': f"https://www.googleapis.com/robot/v1/metadata/x509/{client_email.replace('@', '%40')}"
-
-    then ``credentials`` are obtained by
-
-    ::
-
-        google.oauth2.service_account.Credentials.from_service_account_info(
-            account_info, scopes=['https://www.googleapis.com/auth/cloud-platform'])
-
-    Code that runs on a GCP machine may be able to infer ``credentials`` and ``project_id``
-    via `google.auth.default() <https://googleapis.dev/python/google-auth/latest/user-guide.html#application-default-credentials>`_.
-
-    If you have `project_id` and `credentials` obtained from this function
-    with a different value of `scopes`, I believe you should NOT provide them
-    (at least `credentials`) in a new call, so that `google.auth.default` is
-    guaranteed to be called with a new value for `scopes`.
-    """
-    renewed = False
-    if project_id is None or credentials is None:
-        cred, pid = google.auth.default(
-            scopes=scopes or ["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        if credentials is None:
-            credentials = cred
-        if project_id is None:
-            project_id = pid
-        renewed = True
-
-    if (
-        not credentials.token
-        or (credentials.expiry - utcnow().replace(tzinfo=None)).total_seconds()
-        < valid_for_seconds
-    ):
-        try:
-            Retry(
-                predicate=if_exception_type(
-                    google.auth.exceptions.RefreshError,
-                    google.auth.exceptions.TransportError,
-                ),
-                initial=1.0,
-                maximum=10.0,
-                timeout=300.0,
-            )(credentials.refresh)(google.auth.transport.requests.Request())
-            # One check shows that this token expires in one hour.
-        except RetryError as e:
-            raise e.cause
-        renewed = True
-
-    if renewed:
-        logger.debug("Google credentials refreshed")
-
-    return project_id, credentials, renewed
-    # User should keep the `project_id` and `credentials` and pass them into
-    # the next call to this function. That can avoid unncessary HTTP calls
-    # if the credential is still valid.
-
-
 class GcsBlobUpath(BlobUpath):
     """
     GcsBlobUpath implements the :class:`~upathlib.Upath` API for
@@ -152,8 +73,6 @@ class GcsBlobUpath(BlobUpath):
     `google-cloud-storage <https://github.com/googleapis/python-storage/tree/main>`_.
     """
 
-    _PROJECT_ID: str = None
-    _CREDENTIALS: google.auth.credentials.Credentials = None
     _CLIENT: storage.Client = None
     # The `storage.Client` object is not pickle-able.
     # But if it is copied into another "forked" process, it will function properly.
@@ -176,12 +95,10 @@ class GcsBlobUpath(BlobUpath):
 
         This does not make HTTP calls if things in cache are still valid.
         """
-        cls._PROJECT_ID, cls._CREDENTIALS, renewed = get_google_auth(
-            cls._PROJECT_ID, cls._CREDENTIALS
-        )
+        cred, renewed = get_credentials(return_state=True)
         if cls._CLIENT is None or renewed:
             cls._CLIENT = storage.Client(
-                project=cls._PROJECT_ID, credentials=cls._CREDENTIALS
+                project=get_project_id(), credentials=cred,
             )
         return cls._CLIENT
 
@@ -264,7 +181,7 @@ class GcsBlobUpath(BlobUpath):
         """
         cl = self._client()
         # This will make HTTP calls only if needed.
-        return cl.bucket(self.bucket_name, user_project=self._PROJECT_ID)
+        return cl.bucket(self.bucket_name, user_project=get_project_id())
         # This does not make HTTP calls.
 
     def _blob(self, *, reload=False) -> storage.Blob:

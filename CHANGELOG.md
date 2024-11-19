@@ -5,9 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.9.8] - in progress
+## [0.9.8] - 2024-11-18
 
 - `Multiplexer` object now supports pickling.
+- Function `get_google_auth` was removed; now using utilities from `cloudly`.
 
 
 ## [0.9.7] - 2024-09-02
