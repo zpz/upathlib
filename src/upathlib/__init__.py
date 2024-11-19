@@ -18,7 +18,7 @@ It does not care whether the storage is local or in a cloud blob store---it
 simply uses the common API to operate the storage.
 """
 
-__version__ = "0.9.8b1"
+__version__ = "0.9.8"
 
 
 from pathlib import Path
@@ -28,7 +28,7 @@ from ._local import LocalPathType, LocalUpath
 from ._upath import FileInfo, LockAcquireError, LockReleaseError, PathType, Upath
 
 try:
-    from ._gcs import GcsBlobUpath, get_google_auth
+    from ._gcs import GcsBlobUpath
 except ImportError:
     pass
 try:
