@@ -1,7 +1,9 @@
 upathlib
 ========
 
-UPDATE: after 0.9.8, development of this package continues in the repo [cloudly](https://github.com/zpz/cloudly) as part of the ``cloudly`` package.
+UPDATE: after 0.9.8, development of this package continues in the repo 
+`cloudly <https://github.com/zpz/cloudly>`_
+as part of the ``cloudly`` package.
 The main APIs are defined in ``cloudly.upathlib``, whereas cloud-specific implementations reside in the cloud sub-packages
 like ``cloudly.gcp``, etc.
 
