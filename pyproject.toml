@@ -69,7 +69,7 @@ exclude = ["tests/benchmarks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "S", "I001"]  # isort
-ignore = ["E501", "S101", "S102", "S103", "S104", "S108", "S301", "S311", "S608"]
+ignore = ["F403", "E501", "S101", "S102", "S103", "S104", "S108", "S301", "S311", "S608"]
 
 
 [tool.ruff.lint.per-file-ignores]
