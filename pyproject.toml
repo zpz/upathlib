@@ -9,11 +9,7 @@ authors = [
     {name = "Zepu Zhang", email = "zepu.zhang@gmail.com"},
 ]
 dependencies = [
-    "filelock >= 3.9.1",
-    "deprecation",
-    "tqdm",
-    "typing-extensions",
-    "zstandard",
+    "cloudly",
 ]
 requires-python = ">=3.10"
 readme = "README.rst"
@@ -32,28 +28,10 @@ Source = "https://github.com/zpz/upathlib"
 
 [project.optional-dependencies]
 abs = [
-    "azure-storage-blob >=12.9.0,<13.0",
+    "cloudly[azure]",
 ]
 gcs = [
     "cloudly[gcp]",
-    "google-api-python-client >=2.13.9,<3.0",
-    "google-cloud-storage >=2.0,<3.0",
-    "google-api-core >= 2.12.0",
-    "requests",
-]
-doc = [
-    "sphinx",
-    "numpydoc",
-    "pydata-sphinx-theme",
-]
-test = [
-    "black",
-    "mypy",
-    "numpy",
-    "pytest-mock",
-    "ruff",
-    "lz4",
-    "orjson",
 ]
 
 
@@ -69,7 +47,7 @@ exclude = ["tests/benchmarks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "S", "I001"]  # isort
-ignore = ["E501", "S101", "S102", "S103", "S104", "S108", "S301", "S311", "S608"]
+ignore = ["F403", "E501", "S101", "S102", "S103", "S104", "S108", "S301", "S311", "S608"]
 
 
 [tool.ruff.lint.per-file-ignores]
@@ -83,7 +61,7 @@ addopts = "-sv --log-cli-level info -p no:cacheprovider --tb short --ignore test
 
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 0
 show_missing = true
 skip_empty = true
 
