@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 
-## [0.9.9] - 2024-12-20
+## [0.9.9] - in progress
 
 - The package `upathlib` is merged into `cloudly`. The package `upathlib` becomes a proxy pointing to relevant parts of `cloudly` for backward compatibility for existing users of `upathlib`.
 
