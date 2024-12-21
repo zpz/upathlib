@@ -1,6 +1,14 @@
 upathlib
 ========
 
+UPDATE: after 0.9.8, development of this package continues in the repo [cloudly](https://github.com/zpz/cloudly) as part of the ``cloudly`` package.
+The main APIs are defined in ``cloudly.upathlib``, whereas cloud-specific implementations reside in the cloud sub-packages
+like ``cloudly.gcp``, etc.
+
+Users are recommended to use ``cloudly`` directly.
+
+----END OF UPDATE----
+
 The package ``upathlib``
 defines a unified API for cloud blob store (aka "object store") as well as local file systems.
 
